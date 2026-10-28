@@ -1,0 +1,212 @@
+{
+  "platform": "Ascend950DT",
+  "driver": "26.2.0.b020",
+  "cann": "9.2.0-beta.2",
+  "python": "3.12.13",
+  "torch": "2.10.0+cpu",
+  "torch_npu": "2.10.0.post6",
+  "image_sha256": "efd60a649cda9314ade288368136987bc3a8abe412a0806bd12d0cac548886ee",
+  "libascendcl_sha256": "a49ef2a9d5edcc764355d4456e11407401a4efb76889cf83efd360b5416d6c08",
+  "cpu_quota": 8,
+  "host_memory_limit_gib": 48,
+  "container_shm_gib": 12,
+  "guard_poll_interval_seconds": 5,
+  "foreign_device_process_detected_in_accepted_windows": false,
+  "window_start_checks": [
+    {
+      "window": "common_perf0_source",
+      "start_time": "2026-10-28T15:36:21.758879+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "common_perf1_deepep",
+      "start_time": "2026-10-28T15:37:53.551356+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "common_perf2_deepep",
+      "start_time": "2026-10-28T15:39:44.295512+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "common_perf3_source",
+      "start_time": "2026-10-28T15:41:32.662597+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "k3_perf0_source",
+      "start_time": "2026-10-28T15:31:10.600719+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "k3_perf1_deepep",
+      "start_time": "2026-10-28T15:32:38.772251+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "k3_perf2_deepep",
+      "start_time": "2026-10-28T15:33:51.752684+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    },
+    {
+      "window": "k3_perf3_source",
+      "start_time": "2026-10-28T15:35:04.828494+08:00",
+      "free_devices": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "health": [
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning",
+        "Warning"
+      ]
+    }
+  ],
+  "measured_harness_sha256": "07a7ca71c9203b2d9975190a13f533031f199f602a7ff7308dfdf9d40e0f5cb4",
+  "delivered_harness_sha256": "d799d3e69c8c282dd844ade8788ed7c3e569e1f2829dbfb820823d5e3a5ddf87",
+  "harness_ast_identical_after_formatting": true
+}

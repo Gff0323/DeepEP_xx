@@ -1,0 +1,192 @@
+{
+  "precision_reference_checked": false,
+  "backend": "source",
+  "rank": 0,
+  "plan": {
+    "m": 4096,
+    "k": 7168,
+    "f": 4096,
+    "ep": 8,
+    "e": 4,
+    "topk": 16
+  },
+  "shape": "common",
+  "mode": "bf16",
+  "variant": "baseline",
+  "phases": {
+    "forward": {
+      "samples_ms": [
+        29.174163818359375,
+        29.16398811340332,
+        29.298282623291016,
+        29.16501235961914,
+        29.192750930786133,
+        29.161083221435547,
+        29.1496639251709,
+        29.270662307739258,
+        29.149524688720703,
+        29.256622314453125,
+        29.183467864990234,
+        29.157590866088867,
+        29.131101608276367,
+        29.189970016479492,
+        29.168384552001953,
+        29.1263370513916,
+        29.13262367248535,
+        29.139442443847656,
+        29.14682960510254,
+        29.127897262573242
+      ],
+      "p50_ms": 29.162535667419434,
+      "p95_ms": 29.272043323516847,
+      "mean_ms": 29.17426996231079,
+      "min_ms": 29.1263370513916,
+      "max_ms": 29.298282623291016
+    },
+    "backward": {
+      "samples_ms": [
+        59.89887619018555,
+        59.88685607910156,
+        59.85826110839844,
+        59.935142517089844,
+        59.90434265136719,
+        59.94607162475586,
+        59.9205207824707,
+        59.96895980834961,
+        59.9085693359375,
+        59.92490768432617,
+        59.9139404296875,
+        59.92287826538086,
+        59.999664306640625,
+        59.96293640136719,
+        59.886329650878906,
+        59.90373611450195,
+        59.896995544433594,
+        59.93500518798828,
+        59.9660530090332,
+        59.872257232666016
+      ],
+      "p50_ms": 59.9172306060791,
+      "p95_ms": 59.97049503326416,
+      "mean_ms": 59.92061519622803,
+      "min_ms": 59.85826110839844,
+      "max_ms": 59.999664306640625
+    }
+  },
+  "counts": [
+    16384,
+    16384,
+    16384,
+    16384
+  ],
+  "input_hashes": {
+    "X": {
+      "shape": [
+        4096,
+        7168
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "93ec461f127122596ca2a1c9d99ff3d0736f9f85e5f93a46c9f28fc12e8959a4"
+    },
+    "ids": {
+      "shape": [
+        4096,
+        16
+      ],
+      "dtype": "torch.int32",
+      "sha256": "68db8815f9ed39e4c07d6a480c51768653f131ba10ed53526892cbd4c7169851"
+    },
+    "p": {
+      "shape": [
+        4096,
+        16
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "c281b357c0c38ad79ad2c82b3f4144a4214beaf079e177c72fa5bc5eda567024"
+    },
+    "W1": {
+      "shape": [
+        4,
+        8192,
+        7168
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "e232365b3517394d2625460370c43492367eb21cbc27f8c5c2809c4ef46f8d2f"
+    },
+    "W2": {
+      "shape": [
+        4,
+        7168,
+        4096
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "8ba4eec48078a4bd4acb01b171b2540af7c307202ce9f93c48cd2ca5739b512f"
+    },
+    "dY": {
+      "shape": [
+        4096,
+        7168
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "5ec40c41198773886b33b3f53fdfdcf0624d8767f165fd7cb2ca17ffe7eb86cb"
+    }
+  },
+  "output_hashes": {
+    "Y": {
+      "shape": [
+        4096,
+        7168
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "980d52381f0b11d0fd9d911f4447556f6f1a1fc09e8e637fbf8bcf417eebaac5"
+    },
+    "dX": {
+      "shape": [
+        4096,
+        7168
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "4d76e18022c3802a19f287ba9157ccb8b503596fb005dd1ba1a002b9607289ca"
+    },
+    "dp": {
+      "shape": [
+        4096,
+        16
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "f4216377fc17c2436c6702283f9912bafac790dd9ab12bffd0abbbcf178b3fd2"
+    },
+    "dW1": {
+      "shape": [
+        4,
+        8192,
+        7168
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "72740da1455784eef1313b0f6c2fdea7168834f69edc54872d22dc185e02b3a8"
+    },
+    "dW2": {
+      "shape": [
+        4,
+        7168,
+        4096
+      ],
+      "dtype": "torch.bfloat16",
+      "sha256": "c93c196d9e526320d9f53abc5870716c4b57c9b7a5e0e7966da17e2e7348bd17"
+    }
+  },
+  "libraries": {
+    "libascend_megamoe_bf16.so": "5054308109a2c556bcc52eb94cfecda8532e04635ee04ed0c48845b50ea46da9",
+    "_C.cpython-312-aarch64-linux-gnu.so": "0890cf709fd61d36f43222e094d1ea8cc2ce83fecb79731ff21fc552eb8ec8a6"
+  },
+  "decoupled": 0,
+  "warmup": 5,
+  "loops": 20,
+  "memory": {
+    "torch_peak_allocated_bytes": 6212969984,
+    "torch_peak_reserved_bytes": 6425673728,
+    "symmetric_window_bytes": 3221225472,
+    "scope": "Torch allocator peaks exclude the separately allocated SHMEM window and driver memory"
+  },
+  "scope": "Complete operator forward and autograd.grad backward Events; router, forward preparation for backward, loss generation and optimizer excluded; no Timer"
+}

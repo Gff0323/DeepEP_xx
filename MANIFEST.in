@@ -9,6 +9,7 @@ include requirements-build.txt
 recursive-include cmake *.cmake CMakeLists.txt
 recursive-include csrc *.cpp *.hpp *.h
 recursive-include docs *.md
+prune docs/megamoe_train_migration
 recursive-include scripts *.py *.sh
 recursive-include tests *.py *.json *.cpp *.h *.md
 recursive-include benchmarks *.py *.json *.csv *.md
