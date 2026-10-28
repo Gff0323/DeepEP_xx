@@ -6,8 +6,7 @@ weights, `w1` and `w2`. Integer expert IDs and expert counts are not differentia
 It is designed for **Ascend950**. Other Ascend generations are unsupported.
 
 The BF16 source is frozen at **b8cff148**, not a moving `train` branch. See
-[provenance](NOTICE.md), [migration plan (中文)](docs/MIGRATION_PLAN_ZH.md),
-[validation](docs/VALIDATION.md) and [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
+[provenance](NOTICE.md) and [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
 This is a separate training component alongside `experiments/megamoe` (inference).
 W8A8 and other training variants may add their own Host/kernel/API/tests here;
 they are not implemented by this BF16 import.
@@ -129,5 +128,5 @@ python experiments/megamoe_train/tests/bf16/test_mega_moe_backward.py 0,1 \
 
 Repeat with `none`, `mxfp8`, `auto` and `--swiglu-limit 0.05` as appropriate.
 The precision runner retains source thresholds and reports each rank. CPU
-layout/reference tests do not qualify NPU functionality. Actual executed cases,
-dependency changes and untested scope are recorded in the validation report.
+layout/reference tests do not qualify NPU functionality. Record the exact device
+cases, dependency versions and build artifacts before qualifying a deployment.

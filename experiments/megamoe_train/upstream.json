@@ -13,7 +13,7 @@
       "source": "csrc/launcher.cpp",
       "target": "csrc/bf16/launcher.cpp",
       "source_sha256": "9c1e8cf66ee91d02b150c8adee06fe1dbf06830c09456d57cac8c4acf2e5cd71",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "csrc/launcher.h",
@@ -55,37 +55,31 @@
       "source": "docs/BF16_BACKWARD_DISPATCH_READY.md",
       "target": "docs/BF16_BACKWARD_DISPATCH_READY.md",
       "source_sha256": "005597383b02061c985b3f85de3777c826da53e1b5a96743bc5045d562de97e8",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "docs/BF16_DISPATCH_READY_DEFAULTS.md",
       "target": "docs/BF16_DISPATCH_READY_DEFAULTS.md",
       "source_sha256": "cbb8df25858cf235b3cb7ecf5ffb7b817e09de28537159429bde0c50cc260c30",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "docs/BF16_SWIGLU_NUMERICS.md",
       "target": "docs/BF16_SWIGLU_NUMERICS.md",
       "source_sha256": "4d9e04dd7d13428791886859625b4f5d0e5ffa8f9cf263adce06985e07e694d1",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
-    },
-    {
-      "source": "docs/BF16_TRAIN_SYNC_20261028.md",
-      "target": "docs/BF16_TRAIN_SYNC_20261028.md",
-      "source_sha256": "fde61a9d87d560e70c8b7be9a614c735a2c95c448b828521995fcb0bbf811f8d",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "docs/BF16_VECTOR_ROUTING_OPTIMIZATION.md",
       "target": "docs/BF16_VECTOR_ROUTING_OPTIMIZATION.md",
       "source_sha256": "942bf8ff332b256c05fc1609dd1b541e7e653bbe8bc6d3226d979fb25fdd566e",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "include/ascend_megamoe/kernels/launch.h",
       "target": "csrc/bf16/kernel_launch.h",
       "source_sha256": "97a30bee7422c01716359536f8cf292e12396ccfd9125e2c1c1310e3274c95d1",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "kernels/common/include/copy_l0c_to_ub.hpp",
@@ -223,7 +217,7 @@
       "source": "kernels/mega_moe_bf16/README.md",
       "target": "csrc/kernels/bf16/README.md",
       "source_sha256": "26da69809a14f71455cd215ecb115f28b06f0dfb76494cee5bec7c22c203610a",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "kernels/mega_moe_bf16/include/backward_dispatch_ready.h",
@@ -367,132 +361,132 @@
       "source": "test/megamoe_bf16_test/bf16_data_cache.py",
       "target": "tests/bf16/bf16_data_cache.py",
       "source_sha256": "29f1d7af4282bb2ca2a604b92030dd68b9820433f33c86d356dfa26cba19ff32",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/mega_moe_bf16_golden.py",
       "target": "tests/bf16/mega_moe_bf16_golden.py",
       "source_sha256": "f524e9dfcec411a3bfd5c9f5a20101782055dcee977a429a9df7402a92157a94",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/mega_moe_cases.csv",
       "target": "tests/bf16/mega_moe_cases.csv",
       "source_sha256": "df0e7c424da0c8e70230b97bcf845f934e8271eb8580ed94129d3704b90d0d19",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/physical_server_support.py",
       "target": "tests/bf16/physical_server_support.py",
       "source_sha256": "08c961ea291cb30b2748c9a66a4d0356bdd6140823a8f25d8191f694fcb57933",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/saved_gate_up_reference.py",
       "target": "tests/bf16/saved_gate_up_reference.py",
       "source_sha256": "7901feffcb415159af7c5b273111c20feb766a575f6afecba62df8b1b8bbd186",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/saved_mxfp8_reference.py",
       "target": "tests/bf16/saved_mxfp8_reference.py",
       "source_sha256": "1ab8c6790318581250282a4f3023cff409efa3814270f0b22daf7149734feb05",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_backward_dispatch_policy.cpp",
       "target": "tests/bf16/test_backward_dispatch_policy.cpp",
       "source_sha256": "1c66e9ed6a6cf63d7eed7437d4369ac4bba48de1532c1472fa07ce0030be620b",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_backward_dispatch_schedule.cpp",
       "target": "tests/bf16/test_backward_dispatch_schedule.cpp",
       "source_sha256": "75d293ccc0cd3702b5dbdeaaf101d47414e7b1b9435cbddc991d6945cae7b6ae",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_bf16_data_cache.py",
       "target": "tests/bf16/test_bf16_data_cache.py",
       "source_sha256": "04e84557dc483e8e354f70139f7c77f157b5cc0a0fe086d1a595c5925a283a1b",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_forward_swiglu_policy.cpp",
       "target": "tests/bf16/test_forward_swiglu_policy.cpp",
       "source_sha256": "e34391b374f3d2092aa09c156237d73c975849773ee8c3781e9fd1dc77363b92",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_gmm1_schedule.py",
       "target": "tests/bf16/test_gmm1_schedule.py",
       "source_sha256": "ef710e20be568eb43eb0e7d0316a5879ab220617dd94e11c27a9969af5e087e7",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_mega_moe.py",
       "target": "tests/bf16/test_mega_moe.py",
       "source_sha256": "2bf76bd2e8ee1c11593dee1271d98db4ef70b898d8c28ab70195d083e07657b1",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_mega_moe_backward.py",
       "target": "tests/bf16/test_mega_moe_backward.py",
       "source_sha256": "0c8e9df9836f5615951a494d81e12238d8bcada08c62b2ae74a387c3ce1decad",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_physical_launcher.py",
       "target": "tests/bf16/test_physical_launcher.py",
       "source_sha256": "96344b7144b686470839c56284e49018dd7b5d1a1b96622651876cd326ef30ab",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_routing_modes.py",
       "target": "tests/bf16/test_routing_modes.py",
       "source_sha256": "794763ce0567e40f80386d46e6a45344da6ea7dc288407f0aa261a342471d753",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_saved_gate_up_clip_masks.py",
       "target": "tests/bf16/test_saved_gate_up_clip_masks.py",
       "source_sha256": "4a838a085e0449db43ff308efda2550b78897bd13749ee4658466162f6839a0a",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_saved_gate_up_modes.py",
       "target": "tests/bf16/test_saved_gate_up_modes.py",
       "source_sha256": "9140372dac07a24d41f641e2b220eea4cebb77f1b37a01fa178c11b840d7b735",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_saved_gate_up_mxfp8.py",
       "target": "tests/bf16/test_saved_gate_up_mxfp8.py",
       "source_sha256": "a81b86938207ca1ef0c9b4e8b93dc900cfa608fb0ae9f048f9939c73f6f685c8",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_swiglu_backward_numerics.py",
       "target": "tests/bf16/test_swiglu_backward_numerics.py",
       "source_sha256": "8b77c1290583c1eb3e95f2fe9d7a0161bda17e869dda63e5ddb9d4cdb65ad7df",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_topk_weight_gather.cpp",
       "target": "tests/bf16/test_topk_weight_gather.cpp",
       "source_sha256": "86d6c797109f78e57feb93c4934d3c8689834d19f3f70cddd439b21818cde76d",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "test/megamoe_bf16_test/test_workspace_layout.py",
       "target": "tests/bf16/test_workspace_layout.py",
       "source_sha256": "93ed37c686d8be54be2bca855c5cef9c8bf2930ec6d8f4020afc50bba1c58126",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately"
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
     {
       "source": "csrc/torch_classes.cpp",
       "target": "csrc/bindings.cpp",
-      "adaptation": "See NOTICE.md and migration plan; framework/build/tests/docs reviewed separately",
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently",
       "source_sha256": "95420689f4a9e673efd4a2f8655cb7b08743c8d06a43d620ed20a934c7373fb4"
     }
   ],
@@ -506,14 +500,19 @@
     "README.md",
     "NOTICE.md",
     "LICENSE",
-    "scripts/check_source_import.py",
-    "docs/MIGRATION_PLAN_ZH.md",
-    "docs/VALIDATION.md"
+    "scripts/check_source_import.py"
   ],
   "replaced_source_components": {
     "csrc/shmem_instance.*": "Root deep_ep._runtime.Runtime and csrc/runtime/session.*; no second SHMEM init/finalize",
     "ascend_megamoe/__init__.py": "python/deep_ep_experimental/megamoe_train/bf16.py",
     "CMakeLists.txt/setup.py/cmake": "Root optional build plus module CMakeLists.txt",
     "AGENTS.md/check_bf16_delivery_scope.py": "check_source_import.py; original branch-specific release policy is not installed in the fork"
-  }
+  },
+  "source_process_documents_not_distributed": [
+    {
+      "source": "docs/BF16_TRAIN_SYNC_20261028.md",
+      "source_sha256": "fde61a9d87d560e70c8b7be9a614c735a2c95c448b828521995fcb0bbf811f8d",
+      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
+    }
+  ]
 }

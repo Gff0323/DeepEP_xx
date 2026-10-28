@@ -1,5 +1,3 @@
-> 源 b8cff148 的算法/历史说明；本次 GitHub 迁移验证以 [VALIDATION.md](VALIDATION.md) 为准。
-
 # BF16反向Dispatch细分与配套分核
 
 本方案在已有SwiGLU/Gather稳定优化之上，提前交付dO行块供dHp计算。前向逻辑、保存模式、梯度数学和舍入顺序保持不变。
@@ -40,5 +38,3 @@
 - `backward_dispatch_ready.h`：实际行依赖查询，跳过空source。
 - `backward_dispatch_schedule.h`及`backward_dispatch_schedule_math.h`：发布阶段映射、3宽N顺序、跨组尾块后置。
 - `mega_moe_bf16_backward_catlass_impl.h`：dHp消费ready、保持完整专家交付。
-
-验证记录在工作区外的`diagnostics/bf16_backward_dispatch_stable_20261024`及Profiling原分析报告，避免将设备脚本和实验候选带入正式分支。
