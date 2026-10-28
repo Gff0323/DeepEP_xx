@@ -2,7 +2,6 @@
 
 from pathlib import Path
 import runpy
-import threading
 from types import SimpleNamespace
 
 import pytest
@@ -69,7 +68,7 @@ def test_optional_package_combinations(monkeypatch, training, inference, fused):
     assert len(captured["packages"]) == len(set(captured["packages"]))
 
 
-def test_training_close_rejects_live_graph_and_drains_stream():
+def test_training_close_drains_stream_and_is_idempotent():
     # Exercise the actual wrapper's close method without importing Torch/NPU.
     import ast
 
@@ -83,19 +82,13 @@ def test_training_close_rejects_live_graph_and_drains_stream():
     namespace = {}
     exec(compile(ast.Module(body=[method], type_ignores=[]), str(source), "exec"), namespace)
     calls = []
-    owner = SimpleNamespace(
-        _lock=threading.RLock(),
+    op = SimpleNamespace(
         _closed=False,
-        _pending={1},
         _stream=SimpleNamespace(synchronize=lambda: calls.append("sync")),
         _runtime=SimpleNamespace(ensure_alive=lambda: None, close=lambda: calls.append("session-close")),
-        _op=SimpleNamespace(close=lambda: calls.append("op-close")),
+        _executor=SimpleNamespace(close=lambda: calls.append("op-close")),
     )
     close = namespace["close"]
-    with pytest.raises(RuntimeError, match="pending autograd"):
-        close(owner)
-    assert calls == []
-    owner._pending.clear()
-    close(owner)
-    close(owner)
-    assert calls == ["sync", "session-close", "op-close"] and owner._closed
+    close(op)
+    close(op)
+    assert calls == ["sync", "session-close", "op-close"] and op._closed

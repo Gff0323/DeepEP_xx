@@ -50,8 +50,8 @@ def check(ref=None, staged=False):
             checked += 1
     for relative in manifest["adapted_required_files"]:
         read(relative)
-    if checked != 52:
-        raise RuntimeError(f"Incomplete fixed source scope: expected 52 preserved C++ files, got {checked}")
+    if checked != 49:
+        raise RuntimeError(f"Incomplete fixed source scope: expected 49 preserved C++ files, got {checked}")
     print(
         f"PASS: {checked} preserved C++ files; {len(manifest['files'])} imports and runtime/API/build adapters present"
     )

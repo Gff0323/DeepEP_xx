@@ -199,11 +199,9 @@ class DataCacheTests(unittest.TestCase):
             with (
                 patch.dict("sys.modules", {"torch": torch, "torch.multiprocessing": mp}),
                 patch.dict(os.environ, {variant: "1"}),
-                patch.object(runner, "check_saved_packed_weights") as saved,
                 patch.object(golden, "compare") as compare,
             ):
                 runner.run_case(args, CASE, self.root / variant)
-                saved.assert_called_once()
                 compare.assert_called_once()
         self.assertEqual(mp.spawn.call_count, 1)
         self.assertEqual(len(self.calls), 1)

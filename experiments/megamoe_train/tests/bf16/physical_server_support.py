@@ -2,7 +2,7 @@
 """Internal physical-server coordination for test_mega_moe.py.
 
 The existing test_mega_moe.sh / test_mega_moe.py remain the only user entry points.
-The TCPStore control port exchanges configuration, status and small row indices;
+The TCPStore control port exchanges configuration and status;
 the operator still communicates through SHMEM on its separate bootstrap port.
 """
 
@@ -89,35 +89,6 @@ class Coordinator:
         ]
         if any(item != manifests[0] for item in manifests):
             raise ValueError(f"Server configurations differ; no kernel launched: {manifests}")
-
-    def exchange_orders(self, case, data_dir, local_ranks):
-        per_rank_bytes = case["M"] * case["TOPK"] * 4
-
-        def read_local():
-            parts = []
-            for rank in local_ranks:
-                part = self.runner.rank_file(data_dir, rank, "output_saved_row_idx", case).read_bytes()
-                if len(part) != per_rank_bytes:
-                    raise ValueError(f"rank {rank}: invalid saved row-index byte count")
-                parts.append(part)
-            return b"".join(parts)
-
-        payload = self.phase("read_orders", read_local)
-        all_orders = self.gather("orders", payload)
-
-        def save_remote():
-            for node, blob in enumerate(all_orders):
-                if len(blob) != len(local_ranks) * per_rank_bytes:
-                    raise ValueError(f"server {node}: invalid saved row-index byte count")
-                for local_rank in range(len(local_ranks)):
-                    rank = node * len(local_ranks) + local_rank
-                    if rank not in local_ranks:
-                        begin = local_rank * per_rank_bytes
-                        self.runner.rank_file(data_dir, rank, "output_saved_row_idx", case).write_bytes(
-                            blob[begin : begin + per_rank_bytes]
-                        )
-
-        self.phase("exchange_orders", save_remote)
 
     def report_performance(self, case, local_rows, data_dir):
         rows = [
@@ -246,7 +217,7 @@ def run_multinode(args, runner, control_port, timeout):
 
         # On the physical master, PyTorch 2.7.1's libuv backend failed a
         # localhost 256 KiB round trip; the legacy backend passed on both hosts.
-        # Select it explicitly for the row-index exchange as well as control data.
+        # Select it explicitly for the control data.
         store = dist.TCPStore(
             master_ip, control_port, server_num, server_index == 0, timeout=timedelta(seconds=timeout), use_libuv=False
         )

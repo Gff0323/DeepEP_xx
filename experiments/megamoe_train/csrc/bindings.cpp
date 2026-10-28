@@ -2,12 +2,10 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
-#include <tuple>
 
 #include <acl/acl.h>
 #include <pybind11/pybind11.h>
 #include <torch/extension.h>
-#include <torch/script.h>
 
 #include "shmem.h"
 
@@ -16,7 +14,7 @@
 #include "csrc/bf16/mega_moe.h"
 #include "csrc/bf16/mega_moe_bf16.h"
 
-namespace deepep::megamoe_train::torch_classes {
+namespace deepep::megamoe_train {
 namespace {
 
 constexpr std::size_t kDeviceLargePageBytes = 2 * 1024 * 1024;
@@ -26,9 +24,9 @@ constexpr int64_t kMegaMoeContextBytes = static_cast<int64_t>(sizeof(uint32_t) *
 
 // This object borrows a checked root Session window; it never initializes,
 // allocates or finalizes SHMEM. Python owns the Session until explicit close.
-class MegaMoeBF16 {
+class BF16Executor {
 public:
-    MegaMoeBF16(uintptr_t address, int64_t bytes, int rank, int world_size, torch::Tensor like)
+    BF16Executor(uintptr_t address, int64_t bytes, int rank, int world_size, torch::Tensor like)
         : address_(address), bytes_(bytes), rank_(rank), world_size_(world_size)
     {
         TORCH_CHECK(address != 0 && bytes > 0 && bytes % kDeviceLargePageBytes == 0,
@@ -39,71 +37,32 @@ public:
         ffts_addr_ = shmemx_get_ffts_config();
         (void)Context(like);
     }
-    int64_t local_mem_size() const
-    {
-        return bytes_;
-    }
 
-    void prepare_context(const torch::Tensor& like)
-    {
-        TORCH_CHECK(address_ != 0, "training operator has been closed");
-        (void)Context(like);
-    }
-
-    void destroy()
+    void close()
     {
         address_ = 0;
         context_ = torch::Tensor();
     }
 
-    deepep::megamoe_train::ops::MegaMoeBF16ForwardResult compute(torch::Tensor x, torch::Tensor topk_ids,
-                                                                 torch::Tensor topk_weights, torch::Tensor weight1,
-                                                                 torch::Tensor weight2, int64_t max_recv_tokens,
-                                                                 std::string save_gmm1_output)
+    ops::ForwardResult forward(torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights,
+                               torch::Tensor weight1, torch::Tensor weight2, int64_t max_recv_tokens,
+                               double swiglu_limit, const std::string& save_gmm1_output)
     {
         TORCH_CHECK(address_ != 0, "training operator has been closed");
-        return deepep::megamoe_train::ops::MegaMoeBF16(Context(x), x, topk_ids, topk_weights, weight1, weight2,
-                                                       max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(),
-                                                       ffts_addr_, SymmetricBuffer(), save_gmm1_output);
+        return ops::MegaMoeBF16Forward(Context(x), x, topk_ids, topk_weights, weight1, weight2, max_recv_tokens, rank_,
+                                       world_size_, SymmetricBufferBytes(), ffts_addr_, SymmetricBuffer(), swiglu_limit,
+                                       save_gmm1_output);
     }
 
-    // Training ABI: packed Dispatch output is independent from compact saved
-    // state so the framework can decide whether to retain it for backward.
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> compute_train(
-        torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights, torch::Tensor weight1,
-        torch::Tensor weight2, int64_t max_recv_tokens, double swiglu_limit, std::string save_gmm1_output)
+    ops::BackwardResult backward(torch::Tensor grad_y, torch::Tensor topk_weights, torch::Tensor weight1,
+                                 torch::Tensor weight2, torch::Tensor counts, torch::Tensor saved_state,
+                                 torch::Tensor dispatch_output, int64_t max_recv_tokens, double swiglu_limit,
+                                 const std::string& save_gmm1_output)
     {
         TORCH_CHECK(address_ != 0, "training operator has been closed");
-        return deepep::megamoe_train::ops::MegaMoeBF16Forward(
-            Context(x), x, topk_ids, topk_weights, weight1, weight2, max_recv_tokens, rank_, world_size_,
-            SymmetricBufferBytes(), ffts_addr_, SymmetricBuffer(), swiglu_limit, save_gmm1_output);
-    }
-
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> backward(
-        torch::Tensor grad_y, torch::Tensor topk_weights, torch::Tensor weight1, torch::Tensor weight2,
-        torch::Tensor expert_token_nums, torch::Tensor training_saved_state, torch::Tensor dispatch_output,
-        int64_t max_recv_tokens, double swiglu_limit, std::string save_gmm1_output)
-    {
-        TORCH_CHECK(address_ != 0, "training operator has been closed");
-        auto [grad_x, grad_topk_weights, grad_weight1, grad_weight2, unused_backward_workspace] =
-            deepep::megamoe_train::ops::MegaMoeBF16Backward(
-                Context(grad_y), grad_y, topk_weights, weight1, weight2, expert_token_nums, training_saved_state,
-                dispatch_output, max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(), ffts_addr_,
-                SymmetricBuffer(), swiglu_limit, save_gmm1_output);
-        (void)unused_backward_workspace;
-        return {grad_x, grad_topk_weights, grad_weight1, grad_weight2};
-    }
-
-    std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> backward_debug(
-        torch::Tensor grad_y, torch::Tensor topk_weights, torch::Tensor weight1, torch::Tensor weight2,
-        torch::Tensor expert_token_nums, torch::Tensor training_saved_state, torch::Tensor dispatch_output,
-        int64_t max_recv_tokens, double swiglu_limit, std::string save_gmm1_output)
-    {
-        TORCH_CHECK(address_ != 0, "training operator has been closed");
-        return deepep::megamoe_train::ops::MegaMoeBF16Backward(
-            Context(grad_y), grad_y, topk_weights, weight1, weight2, expert_token_nums, training_saved_state,
-            dispatch_output, max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(), ffts_addr_, SymmetricBuffer(),
-            swiglu_limit, save_gmm1_output);
+        return ops::MegaMoeBF16Backward(Context(grad_y), grad_y, topk_weights, weight1, weight2, counts, saved_state,
+                                        dispatch_output, max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(),
+                                        ffts_addr_, SymmetricBuffer(), swiglu_limit, save_gmm1_output);
     }
 
 private:
@@ -151,19 +110,26 @@ private:
     int context_world_size_ = -1;
 };
 
-}  // namespace deepep::megamoe_train::torch_classes
+}  // namespace deepep::megamoe_train
 
 namespace py = pybind11;
 PYBIND11_MODULE(_C, module)
 {
-    using deepep::megamoe_train::torch_classes::MegaMoeBF16;
-    module.attr("abi_version") = 1;
-    py::class_<MegaMoeBF16>(module, "BF16")
+    using deepep::megamoe_train::BF16Executor;
+    namespace ops = deepep::megamoe_train::ops;
+    py::class_<ops::ForwardResult>(module, "ForwardResult")
+        .def_readonly("y", &ops::ForwardResult::y)
+        .def_readonly("counts", &ops::ForwardResult::counts)
+        .def_readonly("saved_state", &ops::ForwardResult::saved_state)
+        .def_readonly("dispatch_output", &ops::ForwardResult::dispatch_output);
+    py::class_<ops::BackwardResult>(module, "BackwardResult")
+        .def_readonly("dx", &ops::BackwardResult::dx)
+        .def_readonly("dtopk_weights", &ops::BackwardResult::dtopk_weights)
+        .def_readonly("dw1", &ops::BackwardResult::dw1)
+        .def_readonly("dw2", &ops::BackwardResult::dw2);
+    py::class_<BF16Executor>(module, "BF16")
         .def(py::init<uintptr_t, int64_t, int, int, torch::Tensor>())
-        .def("compute", &MegaMoeBF16::compute)
-        .def("compute_train", &MegaMoeBF16::compute_train)
-        .def("backward", &MegaMoeBF16::backward)
-        .def("backward_debug", &MegaMoeBF16::backward_debug)
-        .def("close", &MegaMoeBF16::destroy)
-        .def("local_mem_size", &MegaMoeBF16::local_mem_size);
+        .def("forward", &BF16Executor::forward)
+        .def("backward", &BF16Executor::backward)
+        .def("close", &BF16Executor::close);
 }

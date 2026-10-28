@@ -8,7 +8,7 @@ differences are taken inside the FP32 SwiGLU subgraph, not across BF16 steps.
 
 import unittest
 import numpy as np
-from test_mega_moe_backward import bf16_round, reference_packed_intermediates, decode_backward_workspace
+from swiglu_reference import bf16_round, reference_packed_intermediates
 
 
 def packed(gate, up, dhp, p, limit=0.0):
@@ -81,31 +81,6 @@ class SwiGLUBackwardNumerics(unittest.TestCase):
         dh = bf16_round(bf16_round(p) * bf16_round(dhp))
         silu = np.float32(1.0) / (np.float32(1.0) + np.exp(np.float32(-1.0)))
         self.assertEqual(float(got["gradZ"][0, 256]), float(bf16_round(dh * silu)[0]))
-
-    def test_workspace_plane_name_follows_final_lifetime(self):
-        class CpuBytes:
-            def __init__(self):
-                self.data = np.zeros(1024 * 1024, dtype=np.uint8)
-
-            def detach(self):
-                return self
-
-            def cpu(self):
-                return self
-
-            def contiguous(self):
-                return self
-
-            def numpy(self):
-                return self.data
-
-        workspace, saved = CpuBytes(), CpuBytes()
-        for mode in ("none", "bf16"):
-            result = decode_backward_workspace(
-                workspace, saved, m=1, max_recv=1, k=2, n=512, topk=1, world_size=1, expert_per_rank=1, save_mode=mode
-            )
-            self.assertIn("ptrDO" if mode == "none" else "ptrDX", result)
-            self.assertNotIn("ptrDX" if mode == "none" else "ptrDO", result)
 
 
 if __name__ == "__main__":
