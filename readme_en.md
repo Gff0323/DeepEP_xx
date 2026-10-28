@@ -310,3 +310,7 @@ We thank [DeepSeek DeepEP](https://github.com/deepseek-ai/DeepEP) for the upstre
 ---
 
 Project material for which Lu Lu holds the relevant rights is licensed under the [BSD 2-Clause License](LICENSE). Other source material retains its own copyright notices and license texts.
+
+### MegaMoE BF16 training experiment
+
+[experiments/megamoe_train](experiments/megamoe_train/README.md) adds Ascend950 BF16 forward and autograd backward alongside inference MegaMoE. Enable it with `DEEPEP_BUILD_MEGAMOE_TRAIN=ON` (OFF by default). The source is pinned to b8cff148, preserving all four saved-activation modes and SwiGLU clipping. See the module validation report for qualified scope, the existing H7168 ptrDX exception and pending real-training review.

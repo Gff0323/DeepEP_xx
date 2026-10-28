@@ -310,3 +310,7 @@ MegaMoE 将 dispatch、专家计算、激活/量化及 combine 融合为 W4A8 �
 ---
 
 Lu Lu 持有权利的项目内容采用 [BSD 2-Clause 许可证](LICENSE)。其他来源代码保留各自的版权声明和许可证文本。
+
+### MegaMoE BF16 训练实验模块
+
+Ascend950 专用的完整前向/autograd 反向位于 [experiments/megamoe_train](experiments/megamoe_train/README.md)，与推理模块并列。通过 `DEEPEP_BUILD_MEGAMOE_TRAIN=ON` 可选构建（默认关闭）；源固定为 b8cff148，保留 bf16/none/mxfp8/auto 保存模式和 SwiGLU clipping。配套验证范围、H7168 ptrDX 已知问题及框架短训练待验收项见模块文档。

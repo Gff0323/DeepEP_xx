@@ -24,6 +24,7 @@ from build_support import (  # noqa: E402
 BETA = "experiments/megamoe/python"
 beta_enabled = os.environ.get("DEEPEP_BUILD_MEGAMOE", "OFF") == "ON"
 ep_gmm_fused = enabled("DEEPEP_BUILD_EP_GMM_FUSED")
+train_enabled = enabled("DEEPEP_BUILD_MEGAMOE_TRAIN")
 packages = find_packages(include=["deep_ep", "deep_ep.*"])
 package_dir = {}
 cmdclass = {"build_ext": CMakeBuild, "install_lib": CheckedInstallLib}
@@ -38,17 +39,26 @@ if beta_enabled:
     package_dir["deep_ep_experimental.megamoe"] = BETA + "/deep_ep_experimental/megamoe"
     cmdclass["build"] = VariantBuild
 
+if train_enabled:
+    train_python = "experiments/megamoe_train/python"
+    packages += [name for name in find_packages(where=train_python) if name not in packages]
+    package_dir.setdefault("deep_ep_experimental", train_python + "/deep_ep_experimental")
+    package_dir["deep_ep_experimental.megamoe_train"] = train_python + "/deep_ep_experimental/megamoe_train"
+    cmdclass["build"] = VariantBuild
+    cmdclass["egg_info"] = BuildEggInfo
+
 setup(
     name="ascend-deepep",
     version=(ROOT / "VERSION").read_text(encoding="utf-8").strip(),
     description="DeepEP for Ascend: native runtime and optional communication/GMM operators",
     license_files=["LICENSE", "third-party/deepseek-deepep.LICENSE"]
-    + (["third-party/cann.LICENSE"] if beta_enabled else []),
+    + (["third-party/cann.LICENSE"] if beta_enabled or train_enabled else []),
     python_requires=">=3.11",
     packages=packages,
     package_dir=package_dir,
     package_data={
         "deep_ep_experimental.ep_gmm_fused": ["NOTICE.md", "upstream.json"],
+        "deep_ep_experimental.megamoe_train": ["*.so", "LICENSE", "NOTICE.md", "upstream.json"],
         "deep_ep_experimental.megamoe": ["*.so", "configs/*.json"],
     },
     ext_modules=[Extension("deep_ep._C", sources=[])],
