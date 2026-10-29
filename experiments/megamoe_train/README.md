@@ -6,10 +6,14 @@ weights, `w1` and `w2`. Integer expert IDs and expert counts are not differentia
 It is designed for **Ascend950**. Other Ascend generations are unsupported.
 
 The BF16 source is frozen at **b8cff148**, not a moving `train` branch. See
-[provenance](NOTICE.md) and [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
+[provenance](NOTICE.md), [migration plan (中文)](docs/MIGRATION_PLAN_ZH.md),
+[validation](docs/VALIDATION.md) and [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
+The current API, code architecture, autograd bridge and resource lifetime are
+described in the [framework design (中文)](docs/BF16_FRAMEWORK_DESIGN_ZH.md).
 This is a separate training component alongside `experiments/megamoe` (inference).
-W8A8 and other training variants may add their own Host/kernel/API/tests here;
-they are not implemented by this BF16 import.
+BF16 has its own Host directory, Python module, kernels and tests. Future
+quantized training variants belong in this component and can add peer
+implementations when available; this BF16 import does not implement them.
 
 ## Build and installation
 
@@ -60,11 +64,10 @@ y, counts = op(x, topk_ids, topk_weights, w1, w2, max_recv_tokens,
 op.close()  # collective, before destroying ep_group
 ```
 
-For a standalone launcher use `MegaMoeBF16Train(None, capacity, rank=rank,
-world_size=ep)`. A `deep_ep` StoreGroup is also accepted. Explicit rank launchers
-must ensure consistent arguments themselves. The source `ShmemInstance` is
-replaced by the root Session owner; do not construct a second DeepEP buffer or
-inference runtime concurrently in the same process.
+Pass an existing ProcessGroup or a `deep_ep` StoreGroup as `ep_group`; the
+caller owns that group. The source `ShmemInstance` is replaced by the root
+Session owner; do not construct a second DeepEP buffer or inference runtime
+concurrently in the same process.
 The new Session selects MTE; the source test launcher selected UDMA at SHMEM
 initialization. Current device qualification is single-node. Multi-node
 transport, EP subgroups and larger EP sizes need separate qualification before
@@ -87,11 +90,12 @@ deployment; the API's upper rank bound is not a tested topology guarantee.
   are unsupported. `retain_graph=True` requires keeping the operator open for
   every subsequent backward.
 - `close()` synchronizes the launch stream and releases the root Session
-  collectively. It rejects outstanding unconsumed autograd graphs; complete
-  backward or discard those graphs first. Garbage collection never performs
-  collective SHMEM cleanup. After a device/collective failure restart the job.
-- Ordinary public `forward` has no debug holder or option to discard data
-  required for backward. Tests use a private diagnostic entry.
+  collectively. Callers must complete all required backwards or discard unused
+  graphs before close; the operator does not track pending graphs. Garbage
+  collection never performs collective SHMEM cleanup. After a device/collective
+  failure restart the job.
+- Public `forward` retains data required for backward. Device runners use the
+  same public interface and validate final outputs, counts and gradients.
 
 ## Saved formats and numerical boundaries
 
@@ -122,7 +126,7 @@ python -m pytest -q experiments/megamoe_train/tests/bf16
 # On an otherwise idle Ascend950 node, after installing the wheel:
 python experiments/megamoe_train/tests/bf16/test_mega_moe_backward.py 0,1 \
   --seq 129 --hidden 256 --gmm-n 1024 --topk 4 --expert-per-rank 2 \
-  --routing-mode balanced --save-gmm1-output bf16 --check-intermediates \
+  --routing-mode balanced --save-gmm1-output bf16 \
   --shmem-ip-port tcp://127.0.0.1:29862
 ```
 

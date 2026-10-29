@@ -18,9 +18,17 @@ ROOT = MODULE.parents[1]
 PREFIX = MODULE.relative_to(ROOT).as_posix()
 SOURCE = "b8cff14854d12aef77b6ae54b5890123759b4d28"
 TOKEN = re.compile(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|\w+|[^\s]', re.S)
+HEADER_IMPORT_PATHS = {
+    "tiling.hpp": "csrc/bf16/mega_moe.h",
+    "csrc/kernel_launch.hpp": "csrc/bf16/kernel_launch.h",
+    "csrc/bf16/kernel_launch.hpp": "csrc/bf16/kernel_launch.h",
+}
 
 
 def token_hash(text):
+    # Keep the original fixed hashes when only these local include paths move.
+    for current, imported in HEADER_IMPORT_PATHS.items():
+        text = text.replace(f'#include "{current}"', f'#include "{imported}"')
     # The two aggregate-header guards exclude unrelated, unused HSTU templates
     # in the target CATLASS. Used BF16 MMAD specializations are unchanged.
     text = re.sub(

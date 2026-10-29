@@ -1,5 +1,5 @@
-#include "csrc/bf16/mega_moe_bf16.h"
-#include "csrc/bf16/mega_moe.h"
+#include "training.hpp"
+#include "tiling.hpp"
 
 #include <acl/acl.h>
 #include <algorithm>
@@ -10,8 +10,10 @@
 
 #include <tiling/platform/platform_ascendc.h>
 
-#include "csrc/bf16/check.h"
-#include "csrc/bf16/launcher.h"
+#include "shmem.h"
+
+#include "check.hpp"
+#include "launcher.hpp"
 #include "csrc/kernels/bf16/common/mega_moe_tiling.h"
 #include "csrc/kernels/bf16/include/mega_moe_training_workspace.h"
 #include "csrc/kernels/bf16/include/mega_moe_saved_meta.h"
@@ -19,6 +21,9 @@
 #include "torch_npu/csrc/core/npu/NPUCachingAllocator.h"
 
 namespace {
+
+constexpr std::size_t kDeviceLargePageBytes = 2 * 1024 * 1024;
+constexpr int64_t kMegaMoeContextBytes = static_cast<int64_t>(sizeof(uint32_t) * 2 + sizeof(uint64_t) * 1025);
 
 constexpr std::size_t kBackwardTopkPartialUbBytes = 128ULL * 1024ULL;
 constexpr std::size_t kA5Fp32PerVectorRegister = 64ULL;
@@ -438,3 +443,81 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
 }
 
 }  // namespace deepep::megamoe_train::ops
+
+namespace deepep::megamoe_train {
+
+BF16Executor::BF16Executor(uintptr_t address, int64_t bytes, int rank, int world_size, torch::Tensor like)
+    : address_(address), bytes_(bytes), rank_(rank), world_size_(world_size)
+{
+    TORCH_CHECK(address != 0 && bytes > 0 && bytes % kDeviceLargePageBytes == 0, "invalid borrowed training window");
+    TORCH_CHECK(rank >= 0 && rank < world_size && world_size <= 1024, "invalid training rank/world size");
+    TORCH_CHECK(aclshmem_my_pe() == rank && aclshmem_n_pes() == world_size,
+                "training identity disagrees with the root Session");
+    ffts_addr_ = shmemx_get_ffts_config();
+    (void)Context(like);
+}
+
+void BF16Executor::close()
+{
+    address_ = 0;
+    context_ = torch::Tensor();
+}
+
+ops::ForwardResult BF16Executor::forward(torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights,
+                                         torch::Tensor weight1, torch::Tensor weight2, int64_t max_recv_tokens,
+                                         double swiglu_limit, const std::string& save_gmm1_output)
+{
+    TORCH_CHECK(address_ != 0, "training operator has been closed");
+    return ops::MegaMoeBF16Forward(Context(x), x, topk_ids, topk_weights, weight1, weight2, max_recv_tokens, rank_,
+                                   world_size_, SymmetricBufferBytes(), ffts_addr_, SymmetricBuffer(), swiglu_limit,
+                                   save_gmm1_output);
+}
+
+ops::BackwardResult BF16Executor::backward(torch::Tensor grad_y, torch::Tensor topk_weights, torch::Tensor weight1,
+                                           torch::Tensor weight2, torch::Tensor counts, torch::Tensor saved_state,
+                                           torch::Tensor dispatch_output, int64_t max_recv_tokens, double swiglu_limit,
+                                           const std::string& save_gmm1_output)
+{
+    TORCH_CHECK(address_ != 0, "training operator has been closed");
+    return ops::MegaMoeBF16Backward(Context(grad_y), grad_y, topk_weights, weight1, weight2, counts, saved_state,
+                                    dispatch_output, max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(),
+                                    ffts_addr_, SymmetricBuffer(), swiglu_limit, save_gmm1_output);
+}
+
+torch::Tensor BF16Executor::Context(const torch::Tensor& like)
+{
+    TORCH_CHECK(like.defined(), "MegaMoe BF16 context reference tensor must be defined");
+    TORCH_CHECK(like.device().type() == c10::DeviceType::PrivateUse1,
+                "MegaMoe BF16 context reference tensor must be an NPU tensor");
+    TORCH_CHECK(like.is_contiguous(), "MegaMoe BF16 context reference tensor must be contiguous");
+    TORCH_CHECK(like.scalar_type() == torch::kBFloat16, "MegaMoe BF16 context reference tensor must be bfloat16");
+    const int rank = rank_;
+    const int world_size = world_size_;
+    if (!context_.defined()) {
+        auto new_context = torch::empty({kMegaMoeContextBytes}, like.options().dtype(torch::kUInt8));
+        InitializeMegaMoeBF16Context(new_context, SymmetricBuffer(), rank, world_size);
+        // Publish the persistent state only after initialization succeeds.
+        // A failed first call must remain retryable instead of leaving a
+        // defined but partially initialized context behind.
+        context_ = new_context;
+        context_rank_ = rank;
+        context_world_size_ = world_size;
+    } else {
+        TORCH_CHECK(context_.device() == like.device(), "MegaMoe BF16 context device changed across calls");
+        TORCH_CHECK(context_rank_ == rank && context_world_size_ == world_size,
+                    "MegaMoe BF16 SHMEM rank/world size changed across calls");
+    }
+    return context_;
+}
+
+void* BF16Executor::SymmetricBuffer() const
+{
+    return reinterpret_cast<void*>(address_);
+}
+
+std::size_t BF16Executor::SymmetricBufferBytes() const
+{
+    return static_cast<std::size_t>(bytes_);
+}
+
+}  // namespace deepep::megamoe_train
