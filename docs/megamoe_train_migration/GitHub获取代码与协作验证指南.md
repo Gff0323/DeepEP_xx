@@ -105,6 +105,34 @@ cat "$PACK/commit.txt"
 这一步解决的是 **源码及两个 Git 依赖的获取**。离线编译还要有配套 CANN、Python 构建包，
 以及 SHMEM 构建所需的额外依赖，或者直接交接匹配环境的已验证 SDK/wheel；它们不会自动包含在 bundle 中。
 
+### SHMEM 怎么安装
+
+SHMEM 从仓库锁定版本的源码编译，不是通过 pip 安装。上次先在隔离环境编译出 SDK，
+后续性能测试复用匹配的 SDK。源码、构建依赖和 Python 构建包准备好后，在 Linux 的 DeepEP 根目录执行：
+
+```bash
+source /你的CANN路径/set_env.sh
+export DEEPEP_NPU_ARCH=Ascend950
+python scripts/build_shmem.py
+
+export SHMEM_ROOT="$PWD/third-party/shmem/install/shmem"
+export LD_LIBRARY_PATH="$SHMEM_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+```
+
+蓝区没有外网时，要把 SHMEM 编译所需的额外依赖一并带入；只有源码 bundle 不一定能离线完成编译。
+也可以复制同架构、同 CANN 配套、符合本仓锁定版本的已验证 SDK，包含 `include/`、`lib/`
+和身份文件 `deepep-sdk.json`，然后在仓库根目录执行：
+
+```bash
+export SHMEM_ROOT=/复制后的SHMEM_SDK路径
+export LD_LIBRARY_PATH="$SHMEM_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+python scripts/record_shmem_sdk.py --sdk "$SHMEM_ROOT" --check
+```
+
+SDK 校验通过后，再按训练模块 README 构建安装 DeepEP wheel。已有仓内 SDK 时可用
+`python scripts/build_shmem.py --if-needed` 校验并复用；不要重建其他任务正在使用的 SDK。
+仓库要求 CANN 9.2.0，上次 beta2 配套的 SDK 不能直接当成正式 9.2.0 的验证结果。
+
 ## 5. 联网副本后续如何拿最新修改
 
 在自己的验证副本中，先检查本地修改，再更新：
