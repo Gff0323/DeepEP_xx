@@ -1,7 +1,5 @@
 """CPU checks for per-call saved-state mode and autograd lifetime (no NPU)."""
 
-from contextlib import nullcontext
-from ctypes import c_float
 import ast
 from pathlib import Path
 from types import SimpleNamespace
@@ -29,39 +27,29 @@ class Context:
 class Operator:
     def __init__(self):
         self.calls = []
-        self._op = self
-        self._pending = set()
+        self._executor = self
 
-    def _launch(self):
-        return nullcontext()
-
-    def _record(self, *tensors):
+    def _check_ready(self):
         pass
 
-    def compute_train(self, *args):
+    def forward(self, *args):
         self.calls.append(("forward", args[-2:]))
-        return Tensor(), Tensor(), Tensor(), Tensor(), Tensor()
+        return SimpleNamespace(y=Tensor(), counts=Tensor(), saved_state=Tensor(), dispatch_output=Tensor())
 
     def backward(self, *args):
         self.calls.append(("backward", args[-2:]))
-        return (Tensor(),) * 4
-
-    def backward_debug(self, *args):
-        self.calls.append(("debug", args[-2:]))
-        return (Tensor(),) * 5
+        return SimpleNamespace(dx=Tensor(), dtopk_weights=Tensor(), dw1=Tensor(), dw2=Tensor())
 
 
 def load_bridge():
     # Run the actual autograd bridge without importing the NPU extension.
     tree = ast.parse((ROOT / "python/deep_ep_experimental/megamoe_train/bf16.py").read_text(encoding="utf-8"))
     cls = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "_MegaMoeBF16TrainFunction")
-    metadata = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "_saved_metadata")
     namespace = {
         "torch": SimpleNamespace(autograd=SimpleNamespace(Function=object)),
         "once_differentiable": lambda f: f,
-        "c_float": c_float,
     }
-    exec(compile(ast.Module(body=[metadata, cls], type_ignores=[]), "autograd_bridge", "exec"), namespace)
+    exec(compile(ast.Module(body=[cls], type_ignores=[]), "autograd_bridge", "exec"), namespace)
     return namespace[cls.name]
 
 
@@ -76,14 +64,11 @@ class SavedModeTests(unittest.TestCase):
 
     def test_dispatch_is_retained_until_backward(self):
         bridge = load_bridge()
-        op, ctx, lease = Operator(), Context(), object()
-        op._pending.add(lease)
-        bridge.forward(ctx, op, *(Tensor() for _ in range(5)), 65536, 0.0, "bf16", None, lease)
+        op, ctx = Operator(), Context()
+        bridge.forward(ctx, op, *(Tensor() for _ in range(5)), 65536, 0.0, "bf16")
         self.assertEqual(len(ctx.saved_tensors), 6)
-        self.assertIn(lease, op._pending)
         grads = bridge.backward(ctx, Tensor())
-        self.assertEqual(len(grads), 11)
-        self.assertNotIn(lease, op._pending)
+        self.assertEqual(len(grads), 9)
 
     def test_interleaved_forwards_keep_modes_and_clipping(self):
         bridge = load_bridge()
@@ -92,17 +77,14 @@ class SavedModeTests(unittest.TestCase):
         modes = (("none", 0.0), ("bf16", 0.0), ("mxfp8", 0.05), ("auto", 10.0))
         for mode, limit in modes:
             ctx = Context()
-            holder = {"capture_backward_workspace": True}
-            bridge.forward(ctx, op, *(Tensor() for _ in range(5)), 65536, limit, mode, holder, None)
-            self.assertNotIn(holder["forward_transient_workspace"], ctx.saved_tensors)
+            bridge.forward(ctx, op, *(Tensor() for _ in range(5)), 65536, limit, mode)
             contexts.append(ctx)
         for ctx in reversed(contexts):
             grads = bridge.backward(ctx, Tensor())
-            self.assertEqual(len(grads), 11)
-            self.assertEqual(grads[-5:], (None,) * 5)
-            self.assertIn("backward_workspace", ctx.holder)
+            self.assertEqual(len(grads), 9)
+            self.assertEqual(grads[-3:], (None,) * 3)
         self.assertEqual(op.calls[:4], [("forward", (limit, mode)) for mode, limit in modes])
-        self.assertEqual(op.calls[4:], [("debug", (limit, mode)) for mode, limit in reversed(modes)])
+        self.assertEqual(op.calls[4:], [("backward", (limit, mode)) for mode, limit in reversed(modes)])
 
     def test_cli_modes_and_default(self):
         from test_mega_moe import parse_args

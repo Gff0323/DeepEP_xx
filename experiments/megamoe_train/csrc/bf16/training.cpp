@@ -1,5 +1,5 @@
-#include "csrc/bf16/mega_moe_bf16.h"
-#include "csrc/bf16/mega_moe.h"
+#include "training.hpp"
+#include "tiling.hpp"
 
 #include <acl/acl.h>
 #include <algorithm>
@@ -10,14 +10,20 @@
 
 #include <tiling/platform/platform_ascendc.h>
 
-#include "csrc/bf16/check.h"
-#include "csrc/bf16/launcher.h"
+#include "shmem.h"
+
+#include "check.hpp"
+#include "launcher.hpp"
 #include "csrc/kernels/bf16/common/mega_moe_tiling.h"
 #include "csrc/kernels/bf16/include/mega_moe_training_workspace.h"
 #include "csrc/kernels/bf16/include/mega_moe_saved_meta.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
+#include "torch_npu/csrc/core/npu/NPUCachingAllocator.h"
 
 namespace {
+
+constexpr std::size_t kDeviceLargePageBytes = 2 * 1024 * 1024;
+constexpr int64_t kMegaMoeContextBytes = static_cast<int64_t>(sizeof(uint32_t) * 2 + sizeof(uint64_t) * 1025);
 
 constexpr std::size_t kBackwardTopkPartialUbBytes = 128ULL * 1024ULL;
 constexpr std::size_t kA5Fp32PerVectorRegister = 64ULL;
@@ -182,101 +188,11 @@ torch::Tensor AllocateBackwardWorkspace(const MegaMoeBF16BackwardWorkspaceLayout
 
 namespace deepep::megamoe_train::ops {
 
-MegaMoeBF16ForwardResult MegaMoeBF16(torch::Tensor context, torch::Tensor x, torch::Tensor topkIds,
-                                     torch::Tensor topkWeights, torch::Tensor weight1, torch::Tensor weight2,
-                                     int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes,
-                                     uint64_t ffts_addr, void* symmetricBuffer, const std::string& save_gmm1_output)
-{
-    CheckNpuContiguous(x, "x");
-    CheckNpuContiguous(topkIds, "topk_ids");
-    CheckNpuContiguous(topkWeights, "topk_weights");
-    CheckNpuContiguous(weight1, "weight1");
-    CheckNpuContiguous(weight2, "weight2");
-
-    TORCH_CHECK(x.scalar_type() == torch::kBFloat16, "x must be bfloat16");
-    TORCH_CHECK(topkIds.scalar_type() == torch::kInt32, "topk_ids must be int32");
-    TORCH_CHECK(topkWeights.scalar_type() == torch::kBFloat16, "topk_weights must be bfloat16");
-    TORCH_CHECK(weight1.scalar_type() == torch::kBFloat16, "weight1 must be bfloat16");
-    TORCH_CHECK(weight2.scalar_type() == torch::kBFloat16, "weight2 must be bfloat16");
-    TORCH_CHECK(x.dim() == 2, "x must have shape [m, k]");
-    TORCH_CHECK(topkIds.dim() == 2, "topk_ids must have shape [m, topk]");
-    TORCH_CHECK(topkWeights.sizes() == topkIds.sizes(), "topk_weights shape must match topk_ids");
-    TORCH_CHECK(x.size(0) == topkIds.size(0), "x and topk_ids must have the same token count");
-    TORCH_CHECK(weight1.dim() == 3, "weight1 must be a rank-3 canonical or legacy tensor");
-    TORCH_CHECK(weight2.dim() == 3, "weight2 must be a rank-3 canonical or legacy tensor");
-
-    const int64_t m = x.size(0);
-    const int64_t k = x.size(1);
-    const int64_t topk = topkIds.size(1);
-    const int64_t expertPerRank = weight1.size(0);
-    const auto weightLayout = ResolveBf16WeightLayout(weight1, weight2, k);
-    const int64_t n = weightLayout.n;
-    TORCH_CHECK(m > 0 && k > 0 && topk > 0 && expertPerRank > 0 && n > 0,
-                "all MegaMoe BF16 dimensions must be positive");
-    TORCH_CHECK(worldSize >= 2, "MegaMoe BF16 requires world_size >= 2");
-    TORCH_CHECK(worldSize <= static_cast<int64_t>(MegaMoeBF16Training::kMaxEpRanks),
-                "MegaMoe BF16 supports at most 1024 EP ranks");
-    TORCH_CHECK(m <= 16384, "MegaMoe BF16 supports at most 16384 tokens per rank");
-    TORCH_CHECK(expertPerRank <= static_cast<int64_t>(MegaMoeBF16Training::kMaxLocalExperts),
-                "MegaMoe BF16 supports at most 32 local experts");
-    TORCH_CHECK(expertPerRank * worldSize <= static_cast<int64_t>(MegaMoeBF16Training::kMaxTotalExperts),
-                "MegaMoe BF16 forward total expert count must not exceed 2048");
-    TORCH_CHECK(topk <= expertPerRank * worldSize, "MegaMoe BF16 topk must not exceed the total expert count");
-    TORCH_CHECK(maxRecvTokens > 0, "max_recv_tokens must be positive");
-    TORCH_CHECK(k % 256 == 0 && n % 512 == 0, "MegaMoe BF16 requires k % 256 == 0 and n % 512 == 0");
-    MegaMoeTilingData tiling{};
-    const auto hostTiling =
-        detail::MakeMegaMoeHostTiling(tiling, m, k, n, topk, worldSize, expertPerRank, maxRecvTokens, rank, true,
-                                      0.0,  // Raw compute has no truncation parameter.
-                                      true, save_gmm1_output);
-    tiling.transW = weightLayout.transW;
-    tiling.transW2 = weightLayout.transW;
-    const auto earlyWeightBuffers = detail::GetBf16EarlyTopkWeightBufferBytes(tiling);
-    const MegaMoeBF16Training::TrainingSavedStateLayout savedStateLayout(
-        m, k, topk, worldSize, expertPerRank, maxRecvTokens, n,
-        MegaMoeBF16Training::SaveGateUpAsMxFp8(tiling.swigluLimit, tiling.savedGateUpMode),
-        tiling.savedGateUpMode != MegaMoeBF16Training::kSaveNone,
-        MegaMoeBF16Training::SaveGateUpClipMasks(tiling.swigluLimit, tiling.savedGateUpMode));
-    const MegaMoeBF16Training::ForwardTransientWorkspaceLayout transientWorkspaceLayout(n, expertPerRank,
-                                                                                        maxRecvTokens);
-    const MegaMoeBF16Training::ForwardDispatchTileReadyLayout dispatchTileReadyLayout(n, expertPerRank, maxRecvTokens);
-    const uint64_t perRankTokenCountStride =
-        MegaMoeBF16Training::AlignUp(worldSize * expertPerRank, MegaMoeBF16Training::kAlignment128);
-    const uint64_t legacyTrainingTailBytes =
-        MegaMoeBF16Training::AlignUp(worldSize * perRankTokenCountStride * MegaMoeBF16Training::kInt32Bytes,
-                                     MegaMoeBF16Training::kAlignment512) +
-        MegaMoeBF16Training::AlignUp(MegaMoeBF16Training::kBackwardProgressElements * MegaMoeBF16Training::kInt32Bytes,
-                                     MegaMoeBF16Training::kAlignment128);
-    TORCH_CHECK(savedStateLayout.legacyBytes + transientWorkspaceLayout.totalBytes ==
-                    hostTiling.workspace_bytes + earlyWeightBuffers.workspace_bytes + legacyTrainingTailBytes,
-                "MegaMoe BF16 split workspace layout does not match the legacy "
-                "forward workspace capacity");
-    const uint64_t peerBytes = hostTiling.peer_bytes + earlyWeightBuffers.peer_bytes;
-    TORCH_CHECK(peerBytes <= symmetricBufferBytes, "MegaMoe BF16 local_mem_size is too small: need ", peerBytes,
-                " bytes, got ", symmetricBufferBytes, ". BF16 dispatch payloads use two bytes per element.");
-
-    // Both unpermute implementations overwrite every output token row once.
-    // ExpertTokenNumCopyOut likewise writes all local-expert entries, so these
-    // returned tensors do not need a device-wide pre-clear.
-    auto y = torch::empty({m, k}, x.options());
-    auto expertTokenNums = torch::empty({expertPerRank}, topkIds.options().dtype(torch::kInt32));
-    auto trainingSavedState = AllocateTrainingSavedState(savedStateLayout, x);
-    auto forwardTransientWorkspace = AllocateForwardTransientWorkspace(dispatchTileReadyLayout, x, tiling);
-    ClearMegaMoeWindowControlRegion(symmetricBuffer, symmetricBufferBytes, worldSize, expertPerRank,
-                                    tiling.compactTokenCountExchange != 0);
-
-    LaunchMegaMoeBF16Kernel(
-        context, x, topkIds, topkWeights, weight1, weight2, y, expertTokenNums, trainingSavedState, torch::Tensor(),
-        forwardTransientWorkspace, tiling,
-        static_cast<uint32_t>(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic()),
-        symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr);
-    return {y, expertTokenNums, trainingSavedState};
-}
-
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> MegaMoeBF16Forward(
-    torch::Tensor context, torch::Tensor x, torch::Tensor topkIds, torch::Tensor topkWeights, torch::Tensor weight1,
-    torch::Tensor weight2, int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes,
-    uint64_t ffts_addr, void* symmetricBuffer, double swigluLimit, const std::string& save_gmm1_output)
+ForwardResult MegaMoeBF16Forward(torch::Tensor context, torch::Tensor x, torch::Tensor topkIds,
+                                 torch::Tensor topkWeights, torch::Tensor weight1, torch::Tensor weight2,
+                                 int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes,
+                                 uint64_t ffts_addr, void* symmetricBuffer, double swigluLimit,
+                                 const std::string& save_gmm1_output)
 {
     CheckNpuContiguous(x, "x");
     CheckNpuContiguous(topkIds, "topk_ids");
@@ -359,14 +275,20 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
         forwardTransientWorkspace, tiling,
         static_cast<uint32_t>(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic()),
         symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr);
-    return {y, expertTokenNums, trainingSavedState, dispatchOutput, forwardTransientWorkspace};
+    const auto stream = c10_npu::getCurrentNPUStream();
+    for (const auto* tensor : {&context, &x, &topkIds, &topkWeights, &weight1, &weight2, &y, &expertTokenNums,
+                               &trainingSavedState, &dispatchOutput, &forwardTransientWorkspace}) {
+        c10_npu::NPUCachingAllocator::recordStream(tensor->storage().data_ptr(), stream);
+    }
+    return {y, expertTokenNums, trainingSavedState, dispatchOutput};
 }
 
-std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor> MegaMoeBF16Backward(
-    torch::Tensor context, torch::Tensor gradY, torch::Tensor topkWeights, torch::Tensor weight1, torch::Tensor weight2,
-    torch::Tensor expertTokenNums, torch::Tensor trainingSavedState, torch::Tensor dispatchOutput,
-    int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes, uint64_t ffts_addr,
-    void* symmetricBuffer, double swigluLimit, const std::string& save_gmm1_output)
+BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, torch::Tensor topkWeights,
+                                   torch::Tensor weight1, torch::Tensor weight2, torch::Tensor expertTokenNums,
+                                   torch::Tensor trainingSavedState, torch::Tensor dispatchOutput,
+                                   int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes,
+                                   uint64_t ffts_addr, void* symmetricBuffer, double swigluLimit,
+                                   const std::string& save_gmm1_output)
 {
     const int64_t m = gradY.size(0);
     const int64_t k = gradY.size(1);
@@ -511,7 +433,91 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Te
         trainingSavedState, dispatchOutput, backwardWorkspace, tiling, splitExperts,
         static_cast<uint32_t>(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic()),
         symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr);
-    return {gradX, gradTopkWeights, gradWeight1, gradWeight2, backwardWorkspace};
+    const auto stream = c10_npu::getCurrentNPUStream();
+    for (const auto* tensor :
+         {&context, &gradY, &topkWeights, &weight1, &weight2, &expertTokenNums, &trainingSavedState, &dispatchOutput,
+          &gradX, &gradTopkWeights, &gradWeight1, &gradWeight2, &backwardWorkspace}) {
+        c10_npu::NPUCachingAllocator::recordStream(tensor->storage().data_ptr(), stream);
+    }
+    return {gradX, gradTopkWeights, gradWeight1, gradWeight2};
 }
 
 }  // namespace deepep::megamoe_train::ops
+
+namespace deepep::megamoe_train {
+
+BF16Executor::BF16Executor(uintptr_t address, int64_t bytes, int rank, int world_size, torch::Tensor like)
+    : address_(address), bytes_(bytes), rank_(rank), world_size_(world_size)
+{
+    TORCH_CHECK(address != 0 && bytes > 0 && bytes % kDeviceLargePageBytes == 0, "invalid borrowed training window");
+    TORCH_CHECK(rank >= 0 && rank < world_size && world_size <= 1024, "invalid training rank/world size");
+    TORCH_CHECK(aclshmem_my_pe() == rank && aclshmem_n_pes() == world_size,
+                "training identity disagrees with the root Session");
+    ffts_addr_ = shmemx_get_ffts_config();
+    (void)Context(like);
+}
+
+void BF16Executor::close()
+{
+    address_ = 0;
+    context_ = torch::Tensor();
+}
+
+ops::ForwardResult BF16Executor::forward(torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights,
+                                         torch::Tensor weight1, torch::Tensor weight2, int64_t max_recv_tokens,
+                                         double swiglu_limit, const std::string& save_gmm1_output)
+{
+    TORCH_CHECK(address_ != 0, "training operator has been closed");
+    return ops::MegaMoeBF16Forward(Context(x), x, topk_ids, topk_weights, weight1, weight2, max_recv_tokens, rank_,
+                                   world_size_, SymmetricBufferBytes(), ffts_addr_, SymmetricBuffer(), swiglu_limit,
+                                   save_gmm1_output);
+}
+
+ops::BackwardResult BF16Executor::backward(torch::Tensor grad_y, torch::Tensor topk_weights, torch::Tensor weight1,
+                                           torch::Tensor weight2, torch::Tensor counts, torch::Tensor saved_state,
+                                           torch::Tensor dispatch_output, int64_t max_recv_tokens, double swiglu_limit,
+                                           const std::string& save_gmm1_output)
+{
+    TORCH_CHECK(address_ != 0, "training operator has been closed");
+    return ops::MegaMoeBF16Backward(Context(grad_y), grad_y, topk_weights, weight1, weight2, counts, saved_state,
+                                    dispatch_output, max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(),
+                                    ffts_addr_, SymmetricBuffer(), swiglu_limit, save_gmm1_output);
+}
+
+torch::Tensor BF16Executor::Context(const torch::Tensor& like)
+{
+    TORCH_CHECK(like.defined(), "MegaMoe BF16 context reference tensor must be defined");
+    TORCH_CHECK(like.device().type() == c10::DeviceType::PrivateUse1,
+                "MegaMoe BF16 context reference tensor must be an NPU tensor");
+    TORCH_CHECK(like.is_contiguous(), "MegaMoe BF16 context reference tensor must be contiguous");
+    TORCH_CHECK(like.scalar_type() == torch::kBFloat16, "MegaMoe BF16 context reference tensor must be bfloat16");
+    const int rank = rank_;
+    const int world_size = world_size_;
+    if (!context_.defined()) {
+        auto new_context = torch::empty({kMegaMoeContextBytes}, like.options().dtype(torch::kUInt8));
+        InitializeMegaMoeBF16Context(new_context, SymmetricBuffer(), rank, world_size);
+        // Publish the persistent state only after initialization succeeds.
+        // A failed first call must remain retryable instead of leaving a
+        // defined but partially initialized context behind.
+        context_ = new_context;
+        context_rank_ = rank;
+        context_world_size_ = world_size;
+    } else {
+        TORCH_CHECK(context_.device() == like.device(), "MegaMoe BF16 context device changed across calls");
+        TORCH_CHECK(context_rank_ == rank && context_world_size_ == world_size,
+                    "MegaMoe BF16 SHMEM rank/world size changed across calls");
+    }
+    return context_;
+}
+
+void* BF16Executor::SymmetricBuffer() const
+{
+    return reinterpret_cast<void*>(address_);
+}
+
+std::size_t BF16Executor::SymmetricBufferBytes() const
+{
+    return static_cast<std::size_t>(bytes_);
+}
+
+}  // namespace deepep::megamoe_train

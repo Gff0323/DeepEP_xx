@@ -26,7 +26,7 @@ using namespace AscendC;
 // instead of materializing the full BF16 dHp*H matrix; P6 performs the small
 // final reduction.  Defined here (host-safe) so the kernel workspace layout
 // (mega_moe_workspace_info.h) and the host-side workspace layout
-// (csrc/bf16/mega_moe_bf16.cpp) agree on the same per-tile stride.
+// (csrc/bf16/training.cpp) agree on the same per-tile stride.
 constexpr uint32_t BACKWARD_DP_PARTIAL_TILE_N = 256U;
 
 // SwiGLU activation clamp limit (dsv4 swiglu_limit): gate = min(gate, L),

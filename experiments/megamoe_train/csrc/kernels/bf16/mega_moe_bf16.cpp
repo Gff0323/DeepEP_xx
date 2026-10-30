@@ -10,7 +10,7 @@
 #include "mega_moe_quant_constants.h"
 #include "mega_moe_tiling.h"
 #include "mega_moe_bf16.h"
-#include "csrc/bf16/kernel_launch.h"
+#include "csrc/bf16/kernel_launch.hpp"
 
 using namespace AscendC;
 using namespace MegaMoeImpl;

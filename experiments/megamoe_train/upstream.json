@@ -5,7 +5,7 @@
   "files": [
     {
       "source": "csrc/common/check.h",
-      "target": "csrc/bf16/check.h",
+      "target": "csrc/check.hpp",
       "source_sha256": "ba64b0785008d850174264d9fceb89d442199efcc1db0b17350c3d2b78a14f41",
       "preserved_token_sha256": "8a3c9b7a412a02ee5a67f397774704d0e8c51019b761ef675581a88d5d60d222"
     },
@@ -17,39 +17,39 @@
     },
     {
       "source": "csrc/launcher.h",
-      "target": "csrc/bf16/launcher.h",
+      "target": "csrc/bf16/launcher.hpp",
       "source_sha256": "feeda2b3e99d0e97001cfe7779447ef3f0bf58a7c7fdedbac00fc08799d80d43",
       "preserved_token_sha256": "5677ee355d485036f3a8d7ff9abd1522c0b261954c45da3cff9c4fa2546bc298"
     },
     {
       "source": "csrc/ops/mega_moe.cpp",
-      "target": "csrc/bf16/mega_moe.cpp",
+      "target": "csrc/bf16/tiling.cpp",
       "source_sha256": "9c624c05c54e19fcd1e1b59edea9b112212f67f68d257106327bcf06e2f18d98",
       "preserved_token_sha256": "69b0712caa73a4375de0dfa50cb058f1658d1841d73d80f5ed9faf707834b214"
     },
     {
       "source": "csrc/ops/mega_moe.h",
-      "target": "csrc/bf16/mega_moe.h",
+      "target": "csrc/bf16/tiling.hpp",
       "source_sha256": "941cb1ea3a5d992c91fa2ed157e5ac73c8c1302a481136b52fde9d5d04d3def0",
       "preserved_token_sha256": "f61a5641b6117c1afad29ad5bde85d33646da108d4ebc287bd74bd5a4b7c3ff6"
     },
     {
       "source": "csrc/ops/mega_moe_bf16.cpp",
-      "target": "csrc/bf16/mega_moe_bf16.cpp",
+      "target": "csrc/bf16/training.cpp",
       "source_sha256": "1329a1c8076dece19e630f0e7999a9db40577ad45abc355397ae340b0be95a2b",
-      "preserved_token_sha256": "7b6958fed98ebc9f8e9c019e3af10b7a5973d4107ded1a332b63dd1a709be3ee"
+      "adaptation": "Unified named training results in training.hpp, removed legacy forward and capture APIs; temporary workspace remains stream-safe and implementation-owned."
     },
     {
       "source": "csrc/ops/mega_moe_bf16.h",
-      "target": "csrc/bf16/mega_moe_bf16.h",
+      "target": "csrc/bf16/training.hpp",
       "source_sha256": "7bea436d5791674d9bb5fe7c85e3db59325cc3074dcf33fa3c2699cb0433343e",
-      "preserved_token_sha256": "915f3f6bf299f381ccaf0d403ac0526d603d6ef19de907c3a31311372932ea45"
+      "adaptation": "Unified named training results in training.hpp, removed legacy forward and capture APIs; temporary workspace remains stream-safe and implementation-owned."
     },
     {
       "source": "csrc/ops/mega_moe_bf16_result.h",
-      "target": "csrc/bf16/mega_moe_bf16_result.h",
+      "target": "csrc/bf16/training.hpp",
       "source_sha256": "110b0359df41e6c88f8a68a97e659e12d948d85452b604ab86840b32e0813889",
-      "preserved_token_sha256": "fbeaa12b4ca3f8b787a1a6899eb59775172ad876917cfa8da169d279c400d8f7"
+      "adaptation": "Unified named training results in training.hpp, removed legacy forward and capture APIs; temporary workspace remains stream-safe and implementation-owned."
     },
     {
       "source": "docs/BF16_BACKWARD_DISPATCH_READY.md",
@@ -77,7 +77,7 @@
     },
     {
       "source": "include/ascend_megamoe/kernels/launch.h",
-      "target": "csrc/bf16/kernel_launch.h",
+      "target": "csrc/bf16/kernel_launch.hpp",
       "source_sha256": "97a30bee7422c01716359536f8cf292e12396ccfd9125e2c1c1310e3274c95d1",
       "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
     },
@@ -433,7 +433,7 @@
       "source": "test/megamoe_bf16_test/test_mega_moe_backward.py",
       "target": "tests/bf16/test_mega_moe_backward.py",
       "source_sha256": "0c8e9df9836f5615951a494d81e12238d8bcada08c62b2ae74a387c3ce1decad",
-      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently"
+      "adaptation": "Final-gradient validation retained; device-buffer decoding removed. Pure NumPy numerical helpers moved to tests/bf16/swiglu_reference.py."
     },
     {
       "source": "test/megamoe_bf16_test/test_physical_launcher.py",
@@ -485,22 +485,25 @@
     },
     {
       "source": "csrc/torch_classes.cpp",
-      "target": "csrc/bindings.cpp",
-      "adaptation": "See NOTICE.md; framework/build/tests/docs adapted independently",
+      "target": "csrc/bf16/training.cpp",
+      "adaptation": "Executor declarations/implementation live in csrc/bf16/training.hpp and csrc/bf16/training.cpp; csrc/bindings.cpp contains only pybind registration.",
       "source_sha256": "95420689f4a9e673efd4a2f8655cb7b08743c8d06a43d620ed20a934c7373fb4"
     }
   ],
   "adapted_required_files": [
     "csrc/bindings.cpp",
     "csrc/bf16/launcher.cpp",
-    "csrc/bf16/kernel_launch.h",
+    "csrc/bf16/kernel_launch.hpp",
     "python/deep_ep_experimental/megamoe_train/bf16.py",
     "python/deep_ep_experimental/megamoe_train/__init__.py",
     "CMakeLists.txt",
     "README.md",
     "NOTICE.md",
     "LICENSE",
-    "scripts/check_source_import.py"
+    "scripts/check_source_import.py",
+    "docs/MIGRATION_PLAN_ZH.md",
+    "docs/VALIDATION.md",
+    "tests/bf16/swiglu_reference.py"
   ],
   "replaced_source_components": {
     "csrc/shmem_instance.*": "Root deep_ep._runtime.Runtime and csrc/runtime/session.*; no second SHMEM init/finalize",

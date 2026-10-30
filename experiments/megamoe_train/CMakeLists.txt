@@ -12,6 +12,7 @@ find_library(TRAIN_TORCH_NPU torch_npu PATHS "${torch_npu_root}/lib" NO_DEFAULT_
 find_library(TRAIN_TORCH_PYTHON torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib" NO_DEFAULT_PATH REQUIRED)
 
 set(train_include "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/bf16/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/bf16/common"
     "${CATLASS_ROOT}/include" "${CATLASS_ROOT}/examples/common"
@@ -56,7 +57,7 @@ add_custom_target(megamoe_train_device DEPENDS "${train_library}")
 add_library(megamoe_train_kernel SHARED IMPORTED)
 set_target_properties(megamoe_train_kernel PROPERTIES IMPORTED_LOCATION "${train_library}")
 pybind11_add_module(megamoe_train_ext csrc/bindings.cpp csrc/bf16/launcher.cpp
-    csrc/bf16/mega_moe.cpp csrc/bf16/mega_moe_bf16.cpp)
+    csrc/bf16/tiling.cpp csrc/bf16/training.cpp)
 set_target_properties(megamoe_train_ext PROPERTIES OUTPUT_NAME _C
     INSTALL_RPATH "$ORIGIN" INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_include_directories(megamoe_train_ext PRIVATE ${train_include} ${TORCH_INCLUDE_DIRS}

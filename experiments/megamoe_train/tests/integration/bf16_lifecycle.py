@@ -59,7 +59,6 @@ def main():
         (y * dy).sum().backward()
         sequential.append(capture(values, y, counts))
     pending = [forward(op, mode, limit) for mode, limit in modes]
-    expect_error(op.close, "pending autograd")
     with torch.npu.stream(torch.npu.Stream()):
         expect_error(lambda: forward(op, "bf16", 0.0), "construction stream")
     for index in reversed(range(len(pending))):

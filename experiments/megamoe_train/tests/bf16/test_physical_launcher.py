@@ -8,8 +8,6 @@ import types
 import unittest
 from unittest.mock import patch
 
-import numpy as np
-
 import mega_moe_bf16_golden as golden
 import test_mega_moe as runner
 from physical_server_support import Coordinator, run_multinode, source_digest, validate_topology
@@ -238,50 +236,13 @@ class PhysicalLauncherTests(unittest.TestCase):
                     patch.object(mp, "spawn", create=True) as spawn,
                     patch("bf16_data_cache.prepare_data"),
                     patch.object(golden, "compare") as compare,
-                    patch.object(runner, "check_saved_packed_weights") as weights,
                 ):
                     runner.run_case(args, case, Path(tmp))
                     self.assertEqual(spawn.call_args.kwargs["nprocs"], 8)
                     config = spawn.call_args.kwargs["args"][1]
                     self.assertEqual(config["rank_start"], node * 8)
                     expected = list(range(node * 8, node * 8 + 8))
-                    self.assertEqual(weights.call_args.args[2], expected)
                     self.assertEqual(compare.call_args.kwargs["ranks"], expected)
-
-    def test_exchange_actual_source_permutations_and_detect_weight_corruption(self):
-        case = {"M": 1, "K": 256, "N": 512, "EP": 4, "TOPK": 4, "expertPerRank": 1, "maxRecvTokenNum": 4}
-        ids = [np.array([2, 0, 3, 1], dtype=np.int32) for _ in range(4)]
-        weights = [np.arange(4, dtype=np.uint16) + 0x3E00 + rank * 8 for rank in range(4)]
-        orders = [np.argsort(item).astype(np.int32) for item in ids]
-        with tempfile.TemporaryDirectory() as tmp:
-            dirs = [Path(tmp) / str(node) for node in (0, 1)]
-            for node, directory in enumerate(dirs):
-                directory.mkdir()
-                for rank in range(4):
-                    ids[rank].tofile(runner.rank_file(directory, rank, "input_expert_ids_bf16", case))
-                    weights[rank].tofile(runner.rank_file(directory, rank, "input_expert_weights_bf16", case))
-                for rank in range(node * 2, node * 2 + 2):
-                    orders[rank].tofile(runner.rank_file(directory, rank, "output_saved_row_idx", case))
-                    runner.packed_weight_reference(ids, weights, orders, rank, 1).tofile(
-                        runner.rank_file(directory, rank, "output_saved_packed_weights_bf16", case)
-                    )
-            store = MemoryStore()
-            both(
-                [
-                    lambda node=node: Coordinator(store, 2, node).exchange_orders(
-                        case, dirs[node], list(range(node * 2, node * 2 + 2))
-                    )
-                    for node in (0, 1)
-                ]
-            )
-            for node in (0, 1):
-                runner.check_saved_packed_weights(case, dirs[node], range(node * 2, node * 2 + 2))
-            path = runner.rank_file(dirs[1], 2, "output_saved_packed_weights_bf16", case)
-            corrupted = np.fromfile(path, dtype=np.uint16)
-            corrupted[0] ^= 1
-            corrupted.tofile(path)
-            with self.assertRaisesRegex(RuntimeError, "rank 2: saved packed weights mismatch"):
-                runner.check_saved_packed_weights(case, dirs[1], [2, 3])
 
     def test_global_performance_includes_both_servers(self):
         store = MemoryStore()

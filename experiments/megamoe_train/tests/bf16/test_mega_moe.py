@@ -252,97 +252,6 @@ def load_numpy(path: Path, dtype, shape):
     return array.reshape(shape).copy()
 
 
-def check_saved_gate_up(
-    rank, case, data_dir, state, counts, gate_offset, up_offset, gate_scale_offset=None, up_scale_offset=None
-):
-    """Sample raw GMM1 outputs after timing, without downloading full planes."""
-    import numpy as np
-    import torch
-    from mega_moe_bf16_golden import bf16_bits_to_float32, bf16_round
-
-    k, n, capacity = case["K"], case["N"], case["maxRecvTokenNum"]
-    f = n // 2
-    compressed = gate_scale_offset is not None
-    blocks = sorted({0, (f // 2) // 32, f // 32 - 1})
-    columns = [group * 32 + i for group in blocks for i in range(32)] if compressed else sorted({0, f // 2, f - 1})
-    weight_columns = columns + [f + column for column in columns]
-    weights = np.memmap(
-        rank_file(data_dir, rank, "weight1_bf16", case), mode="r", dtype=np.uint16, shape=(case["expertPerRank"], n, k)
-    )
-
-    def read_bf16(byte_offset, elements):
-        bits = state.narrow(0, byte_offset, elements * 2).cpu().view(torch.uint16).numpy()
-        return bf16_bits_to_float32(bits)
-
-    row_base = 0
-    checked_rows = 0
-    for expert, count in enumerate(counts.detach().cpu().tolist()):
-        rows = min(int(count), max(0, capacity - row_base))
-        if rows:
-            selected = sorted({0, rows // 2, rows - 1})
-            x = np.stack([read_bf16((row_base + row) * k * 2, k) for row in selected])
-            w = bf16_bits_to_float32(weights[expert, weight_columns, :])
-            expected = bf16_round(x @ w.T)
-            if compressed:
-                from saved_gate_up_reference import compare_mxfp8_blocks
-
-                for plane, (offset, scale_offset) in enumerate(
-                    ((gate_offset, gate_scale_offset), (up_offset, up_scale_offset))
-                ):
-                    raw = np.stack(
-                        [state.narrow(0, offset + (row_base + row) * f, f).cpu().numpy()[columns] for row in selected]
-                    ).reshape(len(selected), len(blocks), 32)
-                    scales = np.stack(
-                        [
-                            state.narrow(0, scale_offset + (row_base + row) * (f // 32), f // 32).cpu().numpy()[blocks]
-                            for row in selected
-                        ]
-                    )
-                    target = expected[:, plane * len(columns) : (plane + 1) * len(columns)].reshape(
-                        len(selected), len(blocks), 32
-                    )
-                    # The reference helper treats the final axis as one complete group.
-                    compare_mxfp8_blocks(
-                        raw,
-                        scales,
-                        target,
-                        context=(
-                            f"rank={rank} expert={expert} plane={'gate' if plane == 0 else 'up'} "
-                            f"packed_rows={[row_base + row for row in selected]} "
-                            f"group_start_columns={[group * 32 for group in blocks]}"
-                        ),
-                    )
-                checked_rows += len(selected)
-                row_base += rows
-                continue
-            actual = np.stack(
-                [
-                    np.concatenate(
-                        [
-                            read_bf16(gate_offset + (row_base + row) * f * 2, f)[columns],
-                            read_bf16(up_offset + (row_base + row) * f * 2, f)[columns],
-                        ]
-                    )
-                    for row in selected
-                ]
-            )
-            if not np.allclose(
-                actual, expected, rtol=DEFAULT_RELATIVE_TOLERANCE, atol=DEFAULT_ABSOLUTE_TOLERANCE, equal_nan=False
-            ):
-                raise RuntimeError(
-                    f"rank {rank} expert {expert}: saved raw gate/up mismatch; "
-                    f"max_abs_error={np.max(np.abs(actual - expected))}"
-                )
-            checked_rows += len(selected)
-        row_base += rows
-    print(
-        f"[SAVED_GATE_UP] rank={rank} sampled_rows={checked_rows} "
-        f"format={'MXFP8_E4M3_E8M0' if compressed else 'BF16'} "
-        f"columns_per_plane={len(columns)} PASS",
-        flush=True,
-    )
-
-
 def load_inputs(rank: int, case: dict, data_dir: Path, device):
     import numpy as np
     import torch
@@ -412,50 +321,6 @@ def create_npu_profiler(torch_npu, loops: int, output_dir: Path):
     )
 
 
-def packed_weight_reference(ids_by_rank, weights_by_rank, order_by_rank, rank: int, experts_per_rank: int):
-    """Use saved source permutations; do not assume a stable device sort."""
-    import numpy as np
-
-    pieces = []
-    for expert in range(rank * experts_per_rank, (rank + 1) * experts_per_rank):
-        for ids, weights, order in zip(ids_by_rank, weights_by_rank, order_by_rank):
-            sorted_ids = ids.reshape(-1)[order]
-            pieces.append(weights.reshape(-1)[order][sorted_ids == expert])
-    return np.concatenate(pieces).astype(np.uint16, copy=False)
-
-
-def check_saved_packed_weights(case: dict, data_dir: Path, ranks=None) -> None:
-    import numpy as np
-
-    ids, weights, orders = [], [], []
-    routes = case["M"] * case["TOPK"]
-    for src in range(case["EP"]):
-        ids.append(load_numpy(rank_file(data_dir, src, "input_expert_ids_bf16", case), np.int32, (routes,)))
-        weights.append(load_numpy(rank_file(data_dir, src, "input_expert_weights_bf16", case), np.uint16, (routes,)))
-        order = load_numpy(rank_file(data_dir, src, "output_saved_row_idx", case), np.int32, (routes,))
-        if not np.array_equal(np.sort(order), np.arange(routes)):
-            raise RuntimeError(f"rank {src}: saved expandedRowIdx is not a permutation")
-        sorted_ids = ids[-1][order]
-        if np.any(sorted_ids[1:] < sorted_ids[:-1]):
-            raise RuntimeError(f"rank {src}: saved expandedRowIdx is not expert-sorted")
-        orders.append(order)
-    for rank in range(case["EP"]) if ranks is None else ranks:
-        expected = packed_weight_reference(ids, weights, orders, rank, case["expertPerRank"])
-        if expected.size > case["maxRecvTokenNum"]:
-            raise RuntimeError(f"rank {rank}: saved-weight reference exceeds receive capacity")
-        actual = load_numpy(
-            rank_file(data_dir, rank, "output_saved_packed_weights_bf16", case), np.uint16, (case["maxRecvTokenNum"],)
-        )[: expected.size]
-        bad = np.flatnonzero(actual != expected)
-        if bad.size:
-            row = int(bad[0])
-            raise RuntimeError(
-                f"rank {rank}: saved packed weights mismatch at row {row}: "
-                f"got bits=0x{int(actual[row]):04x}, expected=0x{int(expected[row]):04x}"
-            )
-        print(f"[SAVED_STATE] rank={rank} packed_topk_weights PASS rows={expected.size}", flush=True)
-
-
 def run_rank(local_rank: int, case: dict, config: dict) -> None:
     rank = config.get("rank_start", 0) + local_rank
     import numpy as np
@@ -463,6 +328,7 @@ def run_rank(local_rank: int, case: dict, config: dict) -> None:
     import torch_npu
 
     from deep_ep_experimental.megamoe_train import MegaMoeBF16Train
+    from device_support import create_ep_group
 
     os.environ["RANK"] = str(rank)
     os.environ["LOCAL_RANK"] = str(local_rank)
@@ -480,20 +346,21 @@ def run_rank(local_rank: int, case: dict, config: dict) -> None:
 
     shmem = None
     op = None
+    ep_group = None
     try:
         os.environ["DEEPEP_SHMEM_ENDPOINT"] = config["shmem_ip_port"]
-        op = MegaMoeBF16Train(None, case["localMemBytes"], rank=rank, world_size=case["EP"])
+        ep_group = create_ep_group(rank, case["EP"], config["shmem_ip_port"])
+        op = MegaMoeBF16Train(ep_group, case["localMemBytes"])
         shmem = op._runtime
         save_mode = config.get("save_gmm1_output", "bf16")
         print(f"[SAVED_GATE_UP] rank={rank} requested_mode={save_mode}", flush=True)
 
         for _ in range(config["warmup"]):
-            op._compute_reference(*inputs, case["maxRecvTokenNum"], save_mode)
+            op(*inputs, case["maxRecvTokenNum"], save_gmm1_output=save_mode)
         torch_npu.npu.synchronize()
 
         y = None
         expert_token_nums = None
-        training_saved_state = None
         for repeat_id in range(config["repeat"]):
             profile_context = None
             if config["enable_profiler"]:
@@ -505,8 +372,8 @@ def run_rank(local_rank: int, case: dict, config: dict) -> None:
                 profile_context.__enter__()
             try:
                 for loop_idx in range(config["loops"]):
-                    result = op._compute_reference(*inputs, case["maxRecvTokenNum"], save_mode)
-                    (y, expert_token_nums, training_saved_state) = result
+                    result = op(*inputs, case["maxRecvTokenNum"], save_gmm1_output=save_mode)
+                    y, expert_token_nums = result
                     if profile_context is not None:
                         # The NPU launch is asynchronous.  Complete the final
                         # launch before leaving the profiler's active window;
@@ -536,68 +403,6 @@ def run_rank(local_rank: int, case: dict, config: dict) -> None:
             copy=False,
         ).tofile(rank_file(data_dir, rank, "output_expert_token_nums_bf16", case))
 
-        def align_up(value, alignment):
-            return (value + alignment - 1) // alignment * alignment
-
-        per_rank_stride = align_up(case["EP"] * case["expertPerRank"], 128)
-        legacy_saved_state_bytes = (
-            align_up(case["maxRecvTokenNum"] * case["K"] * 2, 512)
-            + align_up(case["EP"] * case["expertPerRank"] * 4, 512)
-            + align_up(case["M"], 256) * case["TOPK"] * 4 * 2
-            + align_up(case["EP"] * case["expertPerRank"], 128) * 4
-            + align_up(case["EP"] * per_rank_stride * 4, 512)
-            + align_up(case["maxRecvTokenNum"] * 2, 512)
-            + align_up(256 * 4, 128)
-        )
-        gate_offset = align_up(legacy_saved_state_bytes, 512)
-        # Raw compute() has limit=0, so auto selects MXFP8.
-        compressed = save_mode in ("auto", "mxfp8")
-        plane_bytes = align_up(case["maxRecvTokenNum"] * (case["N"] // 2) * (1 if compressed else 2), 512)
-        up_offset = gate_offset + plane_bytes
-        scale_bytes = align_up(case["maxRecvTokenNum"] * (case["N"] // 64), 512) if compressed else 0
-        gate_scale_offset = up_offset + plane_bytes if compressed else None
-        up_scale_offset = gate_scale_offset + scale_bytes if compressed else None
-        expected_training_saved_state_bytes = (
-            legacy_saved_state_bytes if save_mode == "none" else up_offset + plane_bytes + 2 * scale_bytes
-        )
-        if (
-            training_saved_state.dtype != torch.uint8
-            or training_saved_state.numel() != expected_training_saved_state_bytes
-        ):
-            raise RuntimeError(
-                f"rank {rank}: training_saved_state must be a uint8 "
-                f"tensor with {expected_training_saved_state_bytes} bytes, "
-                f"got dtype={training_saved_state.dtype} "
-                f"bytes={training_saved_state.numel()}"
-            )
-        if config["mode"] != "performance":
-            # Small state segments only; do not copy the full packed-X allocation.
-            weight_offset = legacy_saved_state_bytes - 1024 - align_up(case["maxRecvTokenNum"] * 2, 512)
-            row_idx_offset = align_up(case["maxRecvTokenNum"] * case["K"] * 2, 512) + align_up(
-                case["EP"] * case["expertPerRank"] * 4, 512
-            )
-            training_saved_state.narrow(0, weight_offset, case["maxRecvTokenNum"] * 2).cpu().view(
-                torch.uint16
-            ).numpy().tofile(rank_file(data_dir, rank, "output_saved_packed_weights_bf16", case))
-            training_saved_state.narrow(0, row_idx_offset, case["M"] * case["TOPK"] * 4).cpu().view(
-                torch.int32
-            ).numpy().tofile(rank_file(data_dir, rank, "output_saved_row_idx", case))
-            if save_mode != "none":
-                check_saved_gate_up(
-                    rank,
-                    case,
-                    data_dir,
-                    training_saved_state,
-                    expert_token_nums,
-                    gate_offset,
-                    up_offset,
-                    gate_scale_offset,
-                    up_scale_offset,
-                )
-            else:
-                print(
-                    f"[SAVED_GATE_UP] rank={rank} mode=none saved_bytes={training_saved_state.numel()} SKIP", flush=True
-                )
         with (result_dir / f"rank_{rank}.json").open(
             "w",
             encoding="utf-8",
@@ -613,9 +418,9 @@ def run_rank(local_rank: int, case: dict, config: dict) -> None:
         shmem.barrier()
     finally:
         if op is not None:
-            op.destroy()
-        if shmem is not None:
-            shmem.close()
+            op.close()
+        if ep_group is not None:
+            ep_group.close()
 
 
 def write_performance_summary(case: dict, config: dict, data_dir: Path) -> list[dict]:
@@ -799,14 +604,9 @@ def run_case(args, case: dict, data_dir: Path, coordinator=None) -> None:
         "profile_session": time.strftime("%Y%m%d_%H%M%S"),
     }
     phase("compute", lambda: mp.spawn(run_rank, args=(case, config), nprocs=len(args.devices), join=True))
-    if coordinator is not None and args.mode != "performance":
-        coordinator.exchange_orders(case, data_dir, local_ranks)
 
     def validate_local():
         performance_rows = []
-        if args.mode != "performance":
-            check_saved_packed_weights(case, data_dir, local_ranks)
-
         if performance_enabled:
             performance_rows = write_performance_summary(case, config, data_dir)
         if args.mode != "performance":

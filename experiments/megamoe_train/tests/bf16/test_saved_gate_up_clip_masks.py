@@ -84,21 +84,24 @@ class SavedClipMaskTests(unittest.TestCase):
             np.testing.assert_array_equal(gm[:, : sum(counts)], np.stack(pack_clip_masks(g, u, 1)))
             self.assertTrue(np.all(gm[:, sum(counts) :] == 0xDEADBEEF))
 
-    def test_format_allocation_and_per_call_metadata(self):
+    def test_format_allocation_and_per_call_mode(self):
         args = (4096, 7168, 16, 8, 4, 65536, 8192)
         self.assertEqual(training_saved_state_size(*args, save_mxfp8=True, save_clip_masks=True), 1594497024)
         self.assertEqual(training_saved_state_size(*args, save_clip_masks=True), 2013927424)
         self.assertEqual(training_saved_state_size(*args, save_gate_up=False, save_clip_masks=True), 940185600)
         bridge, op = load_bridge(), Operator()
         contexts = []
-        for mode, limit in (("mxfp8", 1.001), ("mxfp8", 0), ("bf16", 1), ("auto", 1), ("none", 1)):
-            ctx, holder = Context(), {}
-            bridge.forward(ctx, op, *(Tensor() for _ in range(5)), 65536, limit, mode, holder, None)
-            self.assertEqual(holder["saved_gate_up_metadata"], ctx.saved_gate_up_metadata)
+        modes = (("mxfp8", 1.001), ("mxfp8", 0), ("bf16", 1), ("auto", 1), ("none", 1))
+        for mode, limit in modes:
+            ctx = Context()
+            bridge.forward(ctx, op, *(Tensor() for _ in range(5)), 65536, limit, mode)
             contexts.append(ctx)
-        self.assertEqual([x.saved_gate_up_metadata["layout_version"] for x in contexts], [2, 1, 1, 1, 1])
-        self.assertEqual(contexts[0].saved_gate_up_metadata["clip_mask_kind"], "three_bitplanes_v1")
-        self.assertEqual(contexts[0].saved_gate_up_metadata["normalized_limit"], float(np.float32(1.001)))
+        # Mode/limit belong to each autograd call; resolving the saved format
+        # happens in the unchanged Host/kernel layout, not a Python debug mirror.
+        self.assertEqual([(ctx.mode, ctx.limit) for ctx in contexts], list(modes))
+        for ctx in reversed(contexts):
+            bridge.backward(ctx, Tensor())
+        self.assertEqual(op.calls[len(modes) :], [("backward", (limit, mode)) for mode, limit in reversed(modes)])
 
 
 if __name__ == "__main__":

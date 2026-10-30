@@ -1,4 +1,4 @@
-#include "launcher.h"
+#include "launcher.hpp"
 
 #include <acl/acl.h>
 #include <array>
@@ -6,7 +6,7 @@
 #include "shmem.h"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 
-#include "csrc/bf16/kernel_launch.h"
+#include "kernel_launch.hpp"
 #include "csrc/kernels/bf16/common/mega_moe_tiling.h"
 
 namespace {
