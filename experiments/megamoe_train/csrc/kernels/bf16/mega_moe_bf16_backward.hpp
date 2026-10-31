@@ -26,17 +26,17 @@
  * Saved forward context (routing metadata, packed X, count-table snapshot and
  * debug progress) and backward-only scratch are passed as separate buffers.
  */
-#ifndef MEGA_MOE_BF16_BACKWARD_H
-#define MEGA_MOE_BF16_BACKWARD_H
+#ifndef MEGA_MOE_BF16_BACKWARD_HPP
+#define MEGA_MOE_BF16_BACKWARD_HPP
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "op_kernel/mc2_kernel_utils.h"
-#include "mega_moe_base.h"
-#include "mega_moe_workspace_info.h"
-#include "mega_moe_combine_send.h"
-#include "block_epilogue_swiglu_backward_bf16.h"
-#include "mega_moe_bf16_backward_catlass_impl.h"
+#include "layout/mega_moe_context.hpp"
+#include "layout/mega_moe_workspace_view.hpp"
+#include "routing/mega_moe_combine_send.hpp"
+#include "epilogue/block_epilogue_swiglu_backward_bf16.hpp"
+#include "catlass/mega_moe_bf16_backward_catlass_impl.hpp"
 
 using namespace AscendC;
 
@@ -182,7 +182,7 @@ private:
 
     // ---- Static P0 staging layout -------------------------------
     // One BF16 L1 tile is 128*256*2B; the epilogue binds its three tiles at
-    // raw UB offsets 0/1/2 tile bytes (block_epilogue_swiglu_backward_bf16.h)
+    // raw UB offsets 0/1/2 tile bytes (epilogue/block_epilogue_swiglu_backward_bf16.hpp)
     // and P1/P2 fixpipe writes the paired AIV's UB at raw offsets 0/64KB, so
     // [0, 3*tileBytes) is the fixed P1/P2 tile region.  Everything P0 needs
     // on the vector side (gather ping-pong slots, count-table restore tile,
@@ -528,7 +528,7 @@ __aicore__ inline void MegaMoeBF16Backward::RestoreTokenPerExpert()
 
 __aicore__ inline void MegaMoeBF16Backward::ResetTokenPerExpert()
 {
-    // Mirror of MegaMoeBF16::ResetTokenPerExpert().  The forward's count
+    // Mirror of MegaMoeBF16Forward::ResetTokenPerExpert().  The forward's count
     // exchange protocol requires the symmetric-window token table to be
     // all-zero at every kernel entry:
     //   1. moe_init_routing_v3 -> ExpertTokensCountV2 ATOMIC-ADDS the fresh

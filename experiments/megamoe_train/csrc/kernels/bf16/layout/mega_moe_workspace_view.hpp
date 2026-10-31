@@ -9,16 +9,16 @@
  */
 
 /*!
- * \file mega_moe_workspace_info.h
+ * \file mega_moe_workspace_view.hpp
  * \brief
  */
 
-#ifndef MEGA_MOE_WORKSPACE_INFO_H
-#define MEGA_MOE_WORKSPACE_INFO_H
+#ifndef MEGA_MOE_WORKSPACE_VIEW_HPP
+#define MEGA_MOE_WORKSPACE_VIEW_HPP
 
 #include "kernel_operator.h"
-#include "mega_moe_tiling.h"
-#include "mega_moe_training_workspace.h"
+#include "mega_moe_tiling.hpp"
+#include "layout/mega_moe_layout.hpp"
 
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
@@ -62,7 +62,7 @@ constexpr int64_t SIZE_BF_16 = 2U;
 constexpr int64_t SIZE_INT_32 = 4U;
 }  // namespace
 
-struct WorkspaceInfo {
+struct ForwardWorkspaceInfo {
     GM_ADDR gmCtx;
     GM_ADDR ptrA;
     GM_ADDR ptrAScale;
@@ -87,8 +87,8 @@ struct WorkspaceInfo {
     int64_t workspaceSize;
     int64_t savedStateSize;
     int64_t transientWorkspaceSize;
-    __aicore__ inline WorkspaceInfo() = default;
-    __aicore__ inline WorkspaceInfo(GM_ADDR base, const MegaMoeTilingData* tilingData)
+    __aicore__ inline ForwardWorkspaceInfo() = default;
+    __aicore__ inline ForwardWorkspaceInfo(GM_ADDR base, const MegaMoeTilingData* tilingData)
     {
         workspaceSize = 0;
         ptrA = base;
@@ -165,8 +165,8 @@ struct WorkspaceInfo {
     }
 
     // Forward additionally owns temporary GMM2 input and readiness flags.
-    __aicore__ inline WorkspaceInfo(GM_ADDR savedStateBase, GM_ADDR transientWorkspaceBase,
-                                    const MegaMoeTilingData* tilingData)
+    __aicore__ inline ForwardWorkspaceInfo(GM_ADDR savedStateBase, GM_ADDR transientWorkspaceBase,
+                                           const MegaMoeTilingData* tilingData)
     {
         InitSavedState(savedStateBase, tilingData);
         const MegaMoeBF16Training::ForwardTransientWorkspaceLayout transientLayout(
@@ -182,8 +182,8 @@ struct WorkspaceInfo {
     // Ordinary BF16 keeps packed X in an independent tensor. The framework
     // may retain that tensor for the existing backward or release it when a
     // backward implementation performs its own Dispatch.
-    __aicore__ inline WorkspaceInfo(GM_ADDR savedStateBase, GM_ADDR dispatchOutputBase, GM_ADDR transientWorkspaceBase,
-                                    const MegaMoeTilingData* tilingData)
+    __aicore__ inline ForwardWorkspaceInfo(GM_ADDR savedStateBase, GM_ADDR dispatchOutputBase,
+                                           GM_ADDR transientWorkspaceBase, const MegaMoeTilingData* tilingData)
     {
         InitSavedState(savedStateBase, tilingData, false);
         const MegaMoeBF16Training::DispatchOutputLayout dispatchLayout(tilingData->k, tilingData->maxOutputSize);
@@ -203,7 +203,7 @@ struct WorkspaceInfo {
 // The data fields are read-only; only ptrBwProgress is diagnostic output.
 // Forward-only buffers deliberately remain null so backward cannot accidentally
 // depend on transient storage whose lifetime ended when forward returned.
-struct BackwardSavedStateInfo : WorkspaceInfo {
+struct BackwardSavedStateInfo : ForwardWorkspaceInfo {
     __aicore__ inline BackwardSavedStateInfo() = default;
     __aicore__ inline BackwardSavedStateInfo(GM_ADDR savedStateBase, GM_ADDR dispatchOutputBase,
                                              const MegaMoeTilingData* tilingData)
@@ -299,4 +299,42 @@ struct BackwardWorkspaceInfo {
             offset, splitExperts, tilingData->epWorldSize, tilingData->blockNumPerEP, savedMode);
     }
 };
-#endif  // MEGA_MOE_WORKSPACE_INFO_H
+
+struct PeermemInfo {
+    GM_ADDR ptrBase;
+    GM_ADDR ptrCompactTokenCount;
+    GM_ADDR ptrCompactTokenCountBlockSums;
+    GM_ADDR ptrTokenPerExpert;
+    GM_ADDR ptrA0;  // initrouting结果，包括data+scale
+    GM_ADDR ptrRoutedTopkWeights;
+    GM_ADDR ptrD;
+    uint64_t tokenCountsOffset;
+    uint64_t payloadOffset;
+    bool compactTokenCountExchange;
+    __aicore__ inline PeermemInfo() = default;
+    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData* tilingData,
+                                  bool allowCompactTokenCountExchange = false)
+    {
+        ptrBase = base;
+        const bool compactEnabled = allowCompactTokenCountExchange && tilingData->compactTokenCountExchange != 0;
+        const MegaMoeBF16Training::CompactTokenCountExchangeLayout countLayout(
+            tilingData->epWorldSize, tilingData->expertPerRank, compactEnabled);
+        compactTokenCountExchange = countLayout.enabled;
+        ptrCompactTokenCount = countLayout.enabled ? base + countLayout.packetOffset : nullptr;
+        ptrCompactTokenCountBlockSums = countLayout.enabled ? base + countLayout.blockSumsOffset : nullptr;
+        tokenCountsOffset = countLayout.tokenCountsOffset;
+        payloadOffset = countLayout.payloadOffset;
+        int64_t offset = static_cast<int64_t>(tokenCountsOffset);
+        ptrTokenPerExpert = base + offset;
+        offset = static_cast<int64_t>(payloadOffset);
+        ptrA0 = base + offset;
+        offset += static_cast<uint64_t>(tilingData->m) * tilingData->topK * tilingData->k * sizeof(bfloat16_t);
+        ptrRoutedTopkWeights = base + offset;
+        offset += Ops::Base::CeilAlign(
+            static_cast<int64_t>(tilingData->m) * tilingData->topK * static_cast<int64_t>(sizeof(bfloat16_t)),
+            static_cast<int64_t>(ALIGN_512));
+        ptrD = base + offset;
+    }
+};
+
+#endif  // MEGA_MOE_WORKSPACE_VIEW_HPP

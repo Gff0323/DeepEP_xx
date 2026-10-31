@@ -1,5 +1,5 @@
 #pragma once
-#include "backward_dispatch_schedule_math.h"
+#include "schedule/backward_dispatch_schedule_math.hpp"
 namespace MegaMoeBF16BackwardCatlassImpl {
 using PP = ProducerPhaseMath;
 __aicore__ inline uint32_t ProducerPhaseChunkSize(uint32_t s, uint32_t c)

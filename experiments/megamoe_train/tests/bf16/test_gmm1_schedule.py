@@ -89,7 +89,7 @@ class Gmm1ScheduleTest(unittest.TestCase):
             self.assertIn(flag, cmake)
 
     def test_adaptive_auto_falls_back_to_legacy_mapping(self) -> None:
-        impl = (ROOT / "csrc" / "kernels" / "bf16" / "include" / "mega_moe_bf16_catlass_impl.h").read_text(
+        impl = (ROOT / "csrc" / "kernels" / "bf16" / "catlass/mega_moe_bf16_forward_catlass_impl.hpp").read_text(
             encoding="utf-8"
         )
         self.assertIn("const bool useAdaptiveSchedule = useTileReady;", impl)

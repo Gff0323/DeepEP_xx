@@ -13,7 +13,7 @@ find_library(TRAIN_TORCH_PYTHON torch_python PATHS "${TORCH_INSTALL_PREFIX}/lib"
 
 set(train_include "${CMAKE_CURRENT_SOURCE_DIR}"
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/bf16/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/bf16"
     "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/bf16/common"
     "${CATLASS_ROOT}/include" "${CATLASS_ROOT}/examples/common"
     "${SHMEM_ROOT}/include" "${SHMEM_ROOT}/src" "${SHMEM_ROOT}/src/device"
@@ -37,7 +37,7 @@ foreach(path IN LISTS train_include)
 endforeach()
 file(GLOB_RECURSE train_headers CONFIGURE_DEPENDS "csrc/*.h" "csrc/*.hpp")
 set(train_objects)
-foreach(source mega_moe_bf16 mega_moe_bf16_backward)
+foreach(source mega_moe_bf16_forward mega_moe_bf16_backward)
     set(object "${CMAKE_CURRENT_BINARY_DIR}/${source}.o")
     add_custom_command(OUTPUT "${object}"
         COMMAND "${TRAIN_BISHENG}" ${train_device_flags} -c

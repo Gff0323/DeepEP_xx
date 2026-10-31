@@ -106,21 +106,31 @@ experiments/megamoe_train/
 │   ├── bf16/
 │   │   ├── training.hpp / training.cpp 执行器、结果类型及 Host 前后向
 │   │   ├── tiling.hpp / tiling.cpp     tiling 与通信/工作区容量计算
+│   │   ├── tiling_impl.hpp             Host tiling 与容量计算内部实现
 │   │   ├── launcher.hpp / launcher.cpp context 初始化与 Tensor 到原始地址的桥接
 │   │   └── kernel_launch.hpp           Host / Device 共享的 C 入口声明
 │   └── kernels/bf16/
-│       ├── mega_moe_bf16.cpp       前向设备入口
+│       ├── mega_moe_bf16_forward.cpp  前向设备入口
 │       ├── mega_moe_bf16_backward.cpp 反向设备入口
-│       ├── common/                tiling、平台和路由公共定义
-│       └── include/               前后向、epilogue、保存布局与调度实现
+│       ├── mega_moe_bf16_forward.hpp   前向主控类
+│       ├── mega_moe_bf16_backward.hpp  反向主控类
+│       ├── catlass/               前后向 GEMM 适配与 L0C → UB 拷贝扩展
+│       ├── epilogue/              SwiGLU 前后向与 saved-MXFP8
+│       ├── layout/                布局契约、地址视图与 context
+│       ├── schedule/              就绪判断、生产阶段与 tile 调度
+│       ├── routing/               初始化路由、权重收集、combine 与 unpermute
+│       │   └── moe_init_routing_v3/arch35/  引入的路由初始化实现
+│       └── common/                共享 tiling 数据、常量、拷贝与 op_kernel 辅助
 ├── tests/bf16/
-│   ├── test_mega_moe.py           唯一入口：完整前后向精度 / Event 计时
-│   ├── cpu_reference.py          Torch CPU FP64 / autograd 真值
-│   ├── npu_baseline.py           BF16 小算子链与 MXFP8 模式参考
-│   └── precision_metrics.py      混合容差、双标杆与 JSON 报告
+│   ├── test_mega_moe.py           前向精度 / 性能入口
+│   ├── test_mega_moe_backward.py  反向精度入口
+│   ├── mega_moe_bf16_golden.py    NumPy 前向参考
+│   └── 其他辅助与回归            数据、启动、接口、布局及调度检查
+├── tests/integration/
+│   └── bf16_lifecycle.py          多次调用、流和关闭重建检查
 ├── benchmarks/paired.py           历史迁移性能对照工具
 ├── CMakeLists.txt                 可选训练扩展构建
-├── upstream.json                  来源文件映射与固定哈希
+├── upstream.json                  来源文件映射与原始 SHA
 └── docs/                          数值与调度专题说明
 ```
 
@@ -136,6 +146,12 @@ experiments/megamoe_train/
 | [Runtime](../../deep_ep/_runtime.py) / [Session](../../csrc/runtime/session.cpp) | 共享的进程级通信资源管理 |
 
 建议按 `bf16.py → training.hpp → bindings.cpp → training.cpp → launcher.cpp → 设备入口` 阅读；需要理解容量和保存状态时再进入 tiling 与 workspace 定义。
+
+设备实现直接放在 `kernels/bf16/` 下，按职责分组，不再增加私有 `include/` 层。根目录只保留前后向设备入口、主控类和 README；路由、调度、GEMM、epilogue 和布局进入对应子目录。项目维护的 C++ / Ascend C 头文件统一使用 `.hpp`；`common/op_kernel/` 和 `routing/moe_init_routing_v3/arch35/` 中引入的 SDK 头保留原始 `.h` 文件名。Host 专用的 tiling 内部实现放在 `csrc/bf16/tiling_impl.hpp`，Host/Device 共享的 tiling 数据仍放在设备目录的 `common/`。
+
+设备侧 `layout/mega_moe_layout.hpp` 定义 Host/Device 共用的布局公式；`layout/mega_moe_workspace_view.hpp` 将基址和布局映射为设备地址视图，包含 `ForwardWorkspaceInfo`、反向视图及 `PeermemInfo`；`layout/mega_moe_context.hpp` 保留通信 context、地址句柄和共享 Params。Host 侧同名的 `WorkspaceInfo` 是容量计算结果类型，保持原名。
+
+纯前向实现与对应反向实现采用一致的命名格式，包括 `MegaMoeBF16Forward / MegaMoeBF16Backward`、前后向 CATLASS namespace 和 SwiGLU epilogue。共享 Params、`MegaMoeBF16Impl` namespace 和整个训练模块的名称保持不变。现有阶段与调度头保留原粒度，本轮不创建 `stage/`。
 
 ## 4. Python 层如何接入自动求导
 
@@ -347,26 +363,19 @@ Host 在提交前后向后，对实际参与计算的 Tensor 调用 `NPUCachingA
 
 当前训练扩展保留内部 `forward/backward/close`，外层使用 `op(...) / loss.backward() / op.close()`。旧的 `compute`、`compute_train`、`backward_debug`、Diagnostics、定制 `abi_version` 检查及 pending/lease 已从这套训练接口移除；结果结构直接定义在 `bf16/training.hpp`。
 
-## 10. 统一精度/性能入口与来源维护
+## 10. 测试入口与来源维护
 
 | 文件 | 职责 |
 | --- | --- |
-| [test_mega_moe.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe.py) | 唯一入口、输入快照、安装包选择、Gloo 协调、融合算子前后向、Event 计时 |
-| [cpu_reference.py](../../experiments/megamoe_train/tests/bf16/cpu_reference.py) | Torch CPU FP64 前向与 autograd 反向；按专家/行分块，不插入 BF16 舍入 |
-| [npu_baseline.py](../../experiments/megamoe_train/tests/bf16/npu_baseline.py) | 移植源仓 BigOp 专家链：GMM、BF16 SiLU、激活 autograd 反向、MXFP8 和 NPU scatter_add |
-| [precision_metrics.py](../../experiments/megamoe_train/tests/bf16/precision_metrics.py) | 误差指标、混合容差、双标杆判据、结构化报告 |
-| [upstream.json](../../experiments/megamoe_train/upstream.json) / [check_source_import.py](../../experiments/megamoe_train/scripts/check_source_import.py) | 来源映射、固定哈希、精度参考版本与必需文件 |
+| [test_mega_moe.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe.py) | 前向精度和性能，按 CSV 配置 shape，检查输出与专家计数 |
+| [test_mega_moe_backward.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe_backward.py) | 执行公共前后向接口，使用脚本内的 NumPy reference_backward 检查四类梯度和专家计数 |
+| [mega_moe_bf16_golden.py](../../experiments/megamoe_train/tests/bf16/mega_moe_bf16_golden.py) | 前向参考计算及可见 BF16 舍入边界 |
+| [test_training_api.py](../../experiments/megamoe_train/tests/bf16/test_training_api.py) | 对外签名、参数校验和保存模式透传 |
+| [bf16_lifecycle.py](../../experiments/megamoe_train/tests/integration/bf16_lifecycle.py) | 设备上的多次调用、流约束、权重布局和关闭重建 |
+| [upstream.json](../../experiments/megamoe_train/upstream.json) / [check_source_import.py](../../experiments/megamoe_train/scripts/check_source_import.py) | 原始来源 SHA、source/target 映射和必需文件存在性检查 |
 
-默认先跑精度、通过后跑性能。精度同时执行前向和反向，检查 `y、dx、dtopk_weights、dw1、dw2`，专家计数要求完全一致。三路消费同一份 BF16 输入、固定且不重复的专家 ID、路由权重、专家参数和上游梯度。当前算子边界不含 router，CPU 真值不重新执行 router，也不叠加 router 输入梯度。
+当前前向脚本支持 `precision / performance / both`，反向脚本提供梯度精度验证。输入、golden 缓存、启动协调和原仓性能对照保留各自的现有辅助实现；本次结构整理只更新受影响的文件引用，不调整数据生成、误差阈值或运行模式。
 
-精度流程为 `输入快照 → CPU FP64 真值 / NPU 小算子 baseline / 融合算子 → 逐 rank、逐结果验收`。CPU 真值每次重算；当前组件没有 CSV、参考结果缓存、自建多机协调层或独立生命周期测试入口。单次调用已完整执行 forward/backward/close，跨调用生命周期仍受第 5 节的调用方契约约束。
+来源清单保留固定算子源提交、各文件的原始 SHA 和 source/target 映射，局部命名与目录调整记录在 adaptation 中。来源检查只验证来源声明及所需文件是否存在，不比较当前源码与源版本的计算内容，也不代替构建或设备验证。
 
-NPU baseline 选取源仓 BigOp 的实现：使用 npu_grouped_matmul 及 grouped wgrad，BF16 的 F.silu(gate)*up 小算子图，并由 autograd 重放激活反向。原始 y/dx 按专家顺序在 NPU 上执行 BF16 scatter_add；混合容差的 `dx` 按源仓精度钩子使用 FP32 scatter_add 后回写 BF16。Gloo 只搬运路由值，不在 CPU 上合并 TopK 结果。MXFP8 混合容差使用模式一致的参考，双标杆仍相对原始 BF16 baseline 与未压缩 FP64 真值。clipping 使用规范化后的 FP32 limit，并按原始保存值的掩码计算模式参考。
-
-两套判据同时通过才算精度通过：混合容差使用实际输出 dtype，BF16 的 atol/rtol 为 2^-7、匹配率至少 99%，并设最大绝对误差门禁；双标杆相对 CPU FP64 计算 MARE/MERE/RMSE，比值上限分别为 5、1.5、1.5，分母下限为 2^-8。非有限值、缺少梯度或尺寸错误不能通过完整精度验收。
-
-默认在所有 rank 精度通过后测量融合算子的前向和 autograd 反向延迟。`--skip performance` 仅跑精度；`--skip precision` 只进行有限值/计数运行检查及计时，报告明确标记精度未执行。CPU/NPU 参考、日志及 loss 构造不计入 Event 区间。每次运行输出独立的 rank JSON 和汇总 JSON，运行异常与精度失败均返回非零退出码。
-
-当前主来源清单包含 64 个导入映射，另记录 17 份退役测试/辅助文件和 1 份源仓过程文档，原始来源 SHA 均保留。49 份 C++ 文件的固定 token 哈希保持不变。精度设计另参考源仓 `568ac7c07e2e669582f7ce684bf5dd27f503efad`，其路径和原始 SHA 在 `precision_reference` 单独记录，不改变计算内核固定来源。
-
-当前四个测试文件统一使用 Torch Tensor；CPU 真值使用 Torch CPU FP64 前向与 autograd 反向。本轮仅进行语法、引用、来源与格式检查，数值和设备验证留到远端机器执行，不据此声明精度或性能通过。历史设备结果参见 [首轮迁移验收记录](首轮迁移验收.md)，应按其中的源码版本与环境理解。
+本轮执行本地语法、引用、来源、格式检查及受影响的 Python 回归。新的前向内核符号要求 Host/Device 联合重建；设备构建、数值与性能验证留到具备相应环境的机器执行，不据此声明精度或性能通过。历史设备结果参见 [首轮迁移验收记录](首轮迁移验收.md)，应按其中的源码版本与环境理解。

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "kernel_operator.h"
-#include "mega_moe_saved_meta.h"
+#include "layout/mega_moe_saved_meta.hpp"
 
 namespace MegaMoeForwardSave {
 

@@ -6,7 +6,7 @@
  */
 #pragma once
 #include "kernel_operator.h"
-#include "mega_moe_training_workspace.h"
+#include "layout/mega_moe_layout.hpp"
 
 namespace MegaMoeBF16Impl {
 template <uint32_t RawRows = 128>

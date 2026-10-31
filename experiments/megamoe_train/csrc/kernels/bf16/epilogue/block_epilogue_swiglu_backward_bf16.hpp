@@ -4,7 +4,7 @@
  * BF16 SwiGLU backward epilogues for the DeepEP MegaMoe backward pipeline.
  *
  * The vector-side epilogue follows the FP32 intermediate / BF16 output
- * convention of the forward BlockEpilogueSwigluBF16: SiLU, its product with
+ * convention of the forward BlockEpilogueSwigluForwardBF16: SiLU, its product with
  * Up, and the local derivative intermediates stay FP32 until their BF16
  * tensor boundary. Do not insert the standalone F.silu(BF16) rounding.
  *
@@ -20,15 +20,15 @@
  * width + tile column base) in Get<0>(blockCoord).  Row strides are handled
  * by DataCopyPad.
  */
-#ifndef DEEPEP_BLOCK_EPILOGUE_SWIGLU_BACKWARD_BF16_H
-#define DEEPEP_BLOCK_EPILOGUE_SWIGLU_BACKWARD_BF16_H
+#ifndef DEEPEP_BLOCK_EPILOGUE_SWIGLU_BACKWARD_BF16_HPP
+#define DEEPEP_BLOCK_EPILOGUE_SWIGLU_BACKWARD_BF16_HPP
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "catlass/arch/arch.hpp"
 #include "tla/layout.hpp"
-#include "mega_moe_base.h"
-#include "mega_moe_training_workspace.h"
+#include "layout/mega_moe_context.hpp"
+#include "layout/mega_moe_layout.hpp"
 
 namespace MegaMoeBF16Impl {
 
@@ -1102,4 +1102,4 @@ private:
 
 }  // namespace MegaMoeBF16Impl
 
-#endif  // DEEPEP_BLOCK_EPILOGUE_SWIGLU_BACKWARD_BF16_H
+#endif  // DEEPEP_BLOCK_EPILOGUE_SWIGLU_BACKWARD_BF16_HPP

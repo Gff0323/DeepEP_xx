@@ -6,8 +6,8 @@
  * matrix data path is replaced with BF16 x BF16 MMAD.  The A5 MMAD pipeline
  * accumulates in L0C/FP32 and Fixpipe writes BF16 tiles to UB.
  */
-#ifndef DEEPEP_MEGA_MOE_BF16_CATLASS_IMPL_H
-#define DEEPEP_MEGA_MOE_BF16_CATLASS_IMPL_H
+#ifndef DEEPEP_MEGA_MOE_BF16_FORWARD_CATLASS_IMPL_HPP
+#define DEEPEP_MEGA_MOE_BF16_FORWARD_CATLASS_IMPL_HPP
 
 #include <type_traits>
 
@@ -40,14 +40,14 @@
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"
 
-#include "block_epilogue_swiglu_bf16.h"
-#include "copy_l0c_to_ub.hpp"
+#include "epilogue/block_epilogue_swiglu_forward_bf16.hpp"
+#include "catlass/copy_l0c_to_ub.hpp"
 #include "catlass/gemm/tile/copy_l0c_to_gm.hpp"
-#include "mega_moe_base.h"
-#include "mega_moe_combine_send.h"
-#include "forward_prepared_phase.h"
+#include "layout/mega_moe_context.hpp"
+#include "routing/mega_moe_combine_send.hpp"
+#include "schedule/forward_prepared_phase.hpp"
 
-namespace MegaMoeBF16CatlassImpl {
+namespace MegaMoeBF16ForwardCatlassImpl {
 
 using ArchTag = Catlass::Arch::Ascend950;
 using DispatchPolicy = Catlass::Gemm::MmadPingpong<ArchTag, true, false, 1, false, 2, 2, 2, 2>;
@@ -208,7 +208,7 @@ struct ForwardGmTileCopy
 };
 
 template <uint32_t GmmIndex, bool TransW = true, bool GmOutput = false>
-class GroupMatmulParam {
+class ForwardGroupMatmulParam {
 public:
     static_assert(GmmIndex < 2, "GMM1/GMM2 must target AIV0/AIV1");
     using WeightLayout = std::conditional_t<TransW, Catlass::layout::ColumnMajor, Catlass::layout::RowMajor>;
@@ -306,7 +306,7 @@ public:
     using LayoutB = decltype(tla::MakeLayout<bfloat16_t, WeightLayout>(uint32_t{}, uint32_t{}));
     using LayoutC = decltype(tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(uint32_t{}, uint32_t{}));
 
-    __aicore__ inline GroupMatmulParam(uint32_t nValue, uint32_t kValue, uint32_t dispatchBlockNumPerEPValue = 0)
+    __aicore__ inline ForwardGroupMatmulParam(uint32_t nValue, uint32_t kValue, uint32_t dispatchBlockNumPerEPValue = 0)
         : blockMmad(resource),
           blockNum(AscendC::GetBlockNum()),
           subBlockIdx(AscendC::GetSubBlockIdx()),
@@ -340,13 +340,12 @@ public:
 
 template <bool DispatchTileReady = false, bool WaitForFullExpert = false,
           uint32_t SaveMode = MegaMoeBF16Training::kSaveMxFp8, bool TransW = true>
-__aicore__ inline void GroupMatmulSwiglu(GroupMatmulParam<0, TransW>& gmm1Params,
-                                         MegaMoeBF16Impl::BlockEpilogueSwigluBF16<Gmm1L1TileShape, true>& epilogueOp,
-                                         const Params& params,
-                                         const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-                                         const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx,
-                                         int32_t& vecSetSyncCom, uint32_t expertIdx, bool useTileReady,
-                                         uint32_t readyBlocksPerProducerPartition)
+__aicore__ inline void GroupMatmulSwiglu(
+    ForwardGroupMatmulParam<0, TransW>& gmm1Params,
+    MegaMoeBF16Impl::BlockEpilogueSwigluForwardBF16<Gmm1L1TileShape, true>& epilogueOp, const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
+    uint32_t& startBlockIdx, int32_t& vecSetSyncCom, uint32_t expertIdx, bool useTileReady,
+    uint32_t readyBlocksPerProducerPartition)
 {
     using ReadyLayout = MegaMoeBF16Training::ForwardDispatchTileReadyLayout;
     static_assert(ReadyLayout::kReadyRows % GMM1_TILE_M == 0,
@@ -540,13 +539,12 @@ __aicore__ inline void GroupMatmulSwiglu(GroupMatmulParam<0, TransW>& gmm1Params
 
 template <bool DispatchTileReady = false, bool WaitForFullExpert = false,
           uint32_t SaveMode = MegaMoeBF16Training::kSaveMxFp8, bool TransW = true>
-__aicore__ inline void GroupMatmulSwigluGm(GroupMatmulParam<0, TransW, true>& gmm1Params,
-                                           MegaMoeBF16Impl::BlockEpilogueSwigluBF16<Gmm1L1TileShape, true>& epilogueOp,
-                                           const Params& params,
-                                           const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-                                           const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, uint32_t expertIdx,
-                                           bool useTileReady, uint32_t readyBlocksPerProducerPartition,
-                                           uint64_t savedElementOffset)
+__aicore__ inline void GroupMatmulSwigluGm(
+    ForwardGroupMatmulParam<0, TransW, true>& gmm1Params,
+    MegaMoeBF16Impl::BlockEpilogueSwigluForwardBF16<Gmm1L1TileShape, true>& epilogueOp, const Params& params,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
+    uint32_t& startBlockIdx, uint32_t expertIdx, bool useTileReady, uint32_t readyBlocksPerProducerPartition,
+    uint64_t savedElementOffset)
 {
     using ReadyLayout = MegaMoeBF16Training::ForwardDispatchTileReadyLayout;
     static_assert(ReadyLayout::kReadyRows % GMM1_TILE_M == 0,
@@ -771,7 +769,7 @@ __aicore__ inline void GroupMatmulSwigluGm(GroupMatmulParam<0, TransW, true>& gm
 }
 
 template <bool TransW = true>
-__aicore__ inline void GroupMatmul2(GroupMatmulParam<1, TransW>& gmm2Params, const Params& params,
+__aicore__ inline void GroupMatmul2(ForwardGroupMatmulParam<1, TransW>& gmm2Params, const Params& params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
                                     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
                                     uint32_t groupIdx, uint32_t expertRowOffset, uint16_t& pingpongIdx, int32_t rankId)
@@ -862,6 +860,6 @@ __aicore__ inline void GroupMatmul2(GroupMatmulParam<1, TransW>& gmm2Params, con
     startBlockIdx = (startBlockIdx + coreLoops) % gmm2Params.blockNum;
 }
 
-}  // namespace MegaMoeBF16CatlassImpl
+}  // namespace MegaMoeBF16ForwardCatlassImpl
 
-#endif  // DEEPEP_MEGA_MOE_BF16_CATLASS_IMPL_H
+#endif  // DEEPEP_MEGA_MOE_BF16_FORWARD_CATLASS_IMPL_HPP

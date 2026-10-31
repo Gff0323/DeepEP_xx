@@ -4,7 +4,7 @@
  * BF16 grouped GEMM wrappers for the DeepEP MegaMoe backward pipeline.
  *
  * The AIC MMAD / AIV vector split and the per-expert scheduler follow the
- * forward mega_moe_bf16_catlass_impl.h.  The backward needs three data-flow
+ * forward catlass/mega_moe_bf16_forward_catlass_impl.hpp.  The backward needs three data-flow
  * variants of the same BlockMmadTla:
  *
  *   P0-C GMM1 recompute : Z = Xpacked @ W1.logical (A RowMajor; B follows
@@ -23,8 +23,8 @@
  * transpose-A path (GM ColumnMajor -> L1 nZ -> L0A zN, "Transpose A" in
  * copy_l1_to_l0a.hpp).  No AIV transpose materialization is required.
  */
-#ifndef DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_H
-#define DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_H
+#ifndef DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_HPP
+#define DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_HPP
 
 #include <type_traits>
 
@@ -58,12 +58,12 @@
 #include "tla/layout.hpp"
 #include "tla/tensor.hpp"
 
-#include "block_epilogue_swiglu_backward_bf16.h"
-#include "copy_l0c_to_ub.hpp"
-#include "mega_moe_base.h"
-#include "backward_dispatch_ready.h"
-#include "backward_dispatch_schedule.h"
-#include "mega_moe_combine_send.h"
+#include "epilogue/block_epilogue_swiglu_backward_bf16.hpp"
+#include "catlass/copy_l0c_to_ub.hpp"
+#include "layout/mega_moe_context.hpp"
+#include "schedule/backward_dispatch_ready.hpp"
+#include "schedule/backward_dispatch_schedule.hpp"
+#include "routing/mega_moe_combine_send.hpp"
 
 namespace MegaMoeBF16BackwardCatlassImpl {
 
@@ -698,4 +698,4 @@ __aicore__ inline void GMM2DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 1,
 
 }  // namespace MegaMoeBF16BackwardCatlassImpl
 
-#endif  // DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_H
+#endif  // DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_HPP

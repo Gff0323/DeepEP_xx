@@ -1,7 +1,7 @@
 #pragma once
 
 #include "kernel_operator.h"
-#include "mega_moe_topk_weight_gather_layout.h"
+#include "layout/mega_moe_topk_weight_gather_layout.hpp"
 
 namespace MegaMoeBF16Routing {
 

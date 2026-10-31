@@ -1,6 +1,6 @@
 // Backward-only, Host-zeroed progress suffix: one cacheline per producer.
-#ifndef MEGA_MOE_BF16_BACKWARD_DISPATCH_READY_H
-#define MEGA_MOE_BF16_BACKWARD_DISPATCH_READY_H
+#ifndef MEGA_MOE_BF16_BACKWARD_DISPATCH_READY_HPP
+#define MEGA_MOE_BF16_BACKWARD_DISPATCH_READY_HPP
 namespace MegaMoeBF16BackwardCatlassImpl {
 struct BackwardDispatchReadyView {
     __gm__ int32_t* progressBase{nullptr};

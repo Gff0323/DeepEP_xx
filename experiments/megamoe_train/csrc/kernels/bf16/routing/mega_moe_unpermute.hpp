@@ -1,7 +1,7 @@
 #pragma once
 
 #include "kernel_operator.h"
-#include "mega_moe_unpermute_layout.h"
+#include "layout/mega_moe_unpermute_layout.hpp"
 
 namespace MegaMoeBF16Routing {
 

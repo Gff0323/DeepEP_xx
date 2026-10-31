@@ -21,9 +21,9 @@
  *       tiling_host, ffts_addr)
  */
 #include "kernel_operator.h"
-#include "mega_moe_quant_constants.h"
-#include "mega_moe_tiling.h"
-#include "mega_moe_bf16_backward.h"
+#include "mega_moe_quant_constants.hpp"
+#include "mega_moe_tiling.hpp"
+#include "mega_moe_bf16_backward.hpp"
 #include "csrc/bf16/kernel_launch.hpp"
 
 using namespace AscendC;

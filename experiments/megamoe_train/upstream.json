@@ -6,8 +6,7 @@
     {
       "source": "csrc/common/check.h",
       "target": "csrc/check.hpp",
-      "source_sha256": "ba64b0785008d850174264d9fceb89d442199efcc1db0b17350c3d2b78a14f41",
-      "preserved_token_sha256": "8a3c9b7a412a02ee5a67f397774704d0e8c51019b761ef675581a88d5d60d222"
+      "source_sha256": "ba64b0785008d850174264d9fceb89d442199efcc1db0b17350c3d2b78a14f41"
     },
     {
       "source": "csrc/launcher.cpp",
@@ -18,20 +17,17 @@
     {
       "source": "csrc/launcher.h",
       "target": "csrc/bf16/launcher.hpp",
-      "source_sha256": "feeda2b3e99d0e97001cfe7779447ef3f0bf58a7c7fdedbac00fc08799d80d43",
-      "preserved_token_sha256": "5677ee355d485036f3a8d7ff9abd1522c0b261954c45da3cff9c4fa2546bc298"
+      "source_sha256": "feeda2b3e99d0e97001cfe7779447ef3f0bf58a7c7fdedbac00fc08799d80d43"
     },
     {
       "source": "csrc/ops/mega_moe.cpp",
       "target": "csrc/bf16/tiling.cpp",
-      "source_sha256": "9c624c05c54e19fcd1e1b59edea9b112212f67f68d257106327bcf06e2f18d98",
-      "preserved_token_sha256": "69b0712caa73a4375de0dfa50cb058f1658d1841d73d80f5ed9faf707834b214"
+      "source_sha256": "9c624c05c54e19fcd1e1b59edea9b112212f67f68d257106327bcf06e2f18d98"
     },
     {
       "source": "csrc/ops/mega_moe.h",
       "target": "csrc/bf16/tiling.hpp",
-      "source_sha256": "941cb1ea3a5d992c91fa2ed157e5ac73c8c1302a481136b52fde9d5d04d3def0",
-      "preserved_token_sha256": "f61a5641b6117c1afad29ad5bde85d33646da108d4ebc287bd74bd5a4b7c3ff6"
+      "source_sha256": "941cb1ea3a5d992c91fa2ed157e5ac73c8c1302a481136b52fde9d5d04d3def0"
     },
     {
       "source": "csrc/ops/mega_moe_bf16.cpp",
@@ -83,135 +79,131 @@
     },
     {
       "source": "kernels/common/include/copy_l0c_to_ub.hpp",
-      "target": "csrc/kernels/bf16/common/copy_l0c_to_ub.hpp",
+      "target": "csrc/kernels/bf16/catlass/copy_l0c_to_ub.hpp",
       "source_sha256": "63d2d8886dc2ace27e621cb98bea482a5a5df07b306d20e296206d686257fd3c",
-      "preserved_token_sha256": "ef1413b23c827746c5848f4ef308dfc6e0c1d93cdef2bf25e662c4c0ff64cf01"
+      "adaptation": "CATLASS copy extension lives with GEMM adapters."
     },
     {
       "source": "kernels/common/include/mega_moe_quant_constants.h",
-      "target": "csrc/kernels/bf16/common/mega_moe_quant_constants.h",
+      "target": "csrc/kernels/bf16/common/mega_moe_quant_constants.hpp",
       "source_sha256": "62a4a6d15e7568bef8451987bc5eae9cc95c4ca50a3da49bf621c6a5fa680b6d",
-      "preserved_token_sha256": "e8e29892b891fdef687ba67b1f0ad1cf438e9ca965b7aad228688a2c94070a54"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/common/include/mega_moe_tiling.h",
-      "target": "csrc/kernels/bf16/common/mega_moe_tiling.h",
+      "target": "csrc/kernels/bf16/common/mega_moe_tiling.hpp",
       "source_sha256": "d77f4ec2e92995ee4852435078b95f28cfa4a039ff48fdf27b129b15d432cd4d",
-      "preserved_token_sha256": "9a21a9d911e79c0266bf21800dbf7ef4460e53c7a96d285996855a932bec8c9c"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/common/include/mega_moe_tiling_host.h",
-      "target": "csrc/kernels/bf16/common/mega_moe_tiling_host.h",
+      "target": "csrc/bf16/tiling_impl.hpp",
       "source_sha256": "35caf0cf6aa4e6e868e173acfb39d03345421297f6a87e5d98f28b9ce17d9811",
-      "preserved_token_sha256": "6c759d5550eccbb4aec47424f85cc6a3f5a29557609529d3bcef7f62ef0b3ed6"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Host-only tiling helper moved to csrc/bf16."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h",
       "source_sha256": "3988bc5dcb499934b203d9bd6e4d18d734262d0d28b5bcd953bd46a73b57ce20",
-      "preserved_token_sha256": "11c34d7d629d6670885f4100621183c7bdcd0737b462187376bf81eac55c4c1e"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_init_routing_v3_arch35_tiling_def.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_init_routing_v3_arch35_tiling_def.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_arch35_tiling_def.h",
       "source_sha256": "ffd2c63761ce729695c777f9781bcbb35de69e95c449f4fd9189c05d1c41dea9",
-      "preserved_token_sha256": "3b8c904d0551888d36d06538e5813c52bfb4ee548ba4d1fa38917c1267aa01f5"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_common.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_common.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_common.h",
       "source_sha256": "9d9e8f19241eee121e4e4e11eb6b2dc747f64569ba452143eb7b2552c43a86af",
-      "preserved_token_sha256": "962a3686ef86bf62b87dabeb3c46423edc31f27bfd42624f81eaa54fb6e9e253"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_expert_tokens_count.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_expert_tokens_count.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_expert_tokens_count.h",
       "source_sha256": "752b0249fa23cb480c41c521f55b48ccc8d231cbf59ec8cd1585e7315edb7e09",
-      "preserved_token_sha256": "8113937d5a284c0faf7c9142b2466ef25d9c9971a5253874c23cf658297c8360"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_expert_tokens_count_v2.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_expert_tokens_count_v2.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_expert_tokens_count_v2.h",
       "source_sha256": "70fb24f8b8d0dffa9558b16bc19173e96846997e5c12dbbe8fdc102394b59721",
-      "preserved_token_sha256": "eafb3f51c589f3f3379798156d471d2595da04d1c2b6ae0841294cab7d10bfed"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_gather_dynamic_quant.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_gather_dynamic_quant.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_gather_dynamic_quant.h",
       "source_sha256": "f7c62e92b3df0e6108d553a9843857a071ee4458f4546771421047ddd639dead",
-      "preserved_token_sha256": "69ff9c6ea470dca80141e768cd96f084adc42c665bb6a3356b2f59da678691cd"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_gather_mxfp8_quant.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_gather_mxfp8_quant.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_gather_mxfp8_quant.h",
       "source_sha256": "be95a07118abf87477003c4d911418597cc5c7e8af43891672be9bdb10abd9ed",
-      "preserved_token_sha256": "cde52f1b3206f5aad0ea8f351a3ab41e395cadc5b7dfc0a31ac1ae444bfc9be6"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_gather_out.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_gather_out.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_gather_out.h",
       "source_sha256": "da8bfdad2c655bf63d74cfefa82ff4cf47813b679fcccf82920ad18ed1495832",
-      "preserved_token_sha256": "53110f4caadcd9db0166f98d2d4d27a539356358bf2b5572bb7609b402ed4dca"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_mrgsort.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_mrgsort.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_mrgsort.h",
       "source_sha256": "1d9c9ea49e5d11b5a52e0d3e2f5dfbe0800241de5bf9758f9b220a92f8d6ce4c",
-      "preserved_token_sha256": "8db2bfc525fe3a5d627243946c7daa8b97faf5a2ef131cb93fc5a32f2737e1a8"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_mrgsort_out.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_mrgsort_out.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_mrgsort_out.h",
       "source_sha256": "3dc6f8ed4d63aa3a27df7e7267d93a5b5af595a7e202b72f612bdf470dc5885d",
-      "preserved_token_sha256": "ed21a06ddcfd4494d67f2b90800f400751512bb8697ef48ae3833743435ada93"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_row_idx_gather.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_row_idx_gather.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_row_idx_gather.h",
       "source_sha256": "297939b170de612eb0fcc81a5df0c107b88db87551993a0f67fef37e92fa5531",
-      "preserved_token_sha256": "eac91e8dc00480499f39db5dc38b45d44be0fadf008cfdebee7fde87e8f561bf"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_sort_base.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_sort_base.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_sort_base.h",
       "source_sha256": "d498d81baf1bb2f5f0a05ce35555d064a9527863a2e77aeff5010fd851645870",
-      "preserved_token_sha256": "a2877a27b380caeae2bf544f17a6eefdc71aa774b0207f2f1218bf1d756f0ab4"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_sort_multi_core.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_sort_multi_core.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_sort_multi_core.h",
       "source_sha256": "c71271e494098a5360308475dcf22eb4653aa6198f61992dc6f396ebbffe4b37",
-      "preserved_token_sha256": "8af06bdef74f90111596b5f8f14c506b6a41bbd6c0b499946036f593e739f2c3"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/moe_init_routing_v3/arch35/moe_v3_sort_one_core.h",
-      "target": "csrc/kernels/bf16/common/moe_init_routing_v3/arch35/moe_v3_sort_one_core.h",
+      "target": "csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_sort_one_core.h",
       "source_sha256": "565cb9f30175e950799c61571d64badfffc6df3c0975ae773090254ff04e8861",
-      "preserved_token_sha256": "cdbd26c51f3a68ead8da2801754ea8c3369bf571cf8e1e635c99efe023d3af68"
+      "adaptation": "Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/common/include/op_kernel/load_store_utils.h",
       "target": "csrc/kernels/bf16/common/op_kernel/load_store_utils.h",
-      "source_sha256": "c87abce33faec15d8a273cf8feb1f187dede5e973e52d55b4999bc220278ea61",
-      "preserved_token_sha256": "6b036320e5664eb1502286a5d150813696fc20eeacdf35d98e1d82600aa8ff03"
+      "source_sha256": "c87abce33faec15d8a273cf8feb1f187dede5e973e52d55b4999bc220278ea61"
     },
     {
       "source": "kernels/common/include/op_kernel/math_util.h",
       "target": "csrc/kernels/bf16/common/op_kernel/math_util.h",
-      "source_sha256": "cbc2ccb5578142fe5cbbbbcb6f3023e999093a3fcc9fa811fde439f06c9b9d78",
-      "preserved_token_sha256": "c225414b2b6b2adf22e0b9e5f91352dad27edd008d1a1fcd41b09b9e2e13b22a"
+      "source_sha256": "cbc2ccb5578142fe5cbbbbcb6f3023e999093a3fcc9fa811fde439f06c9b9d78"
     },
     {
       "source": "kernels/common/include/op_kernel/mc2_kernel_utils.h",
       "target": "csrc/kernels/bf16/common/op_kernel/mc2_kernel_utils.h",
-      "source_sha256": "b384e52403544dc8bb2d725b028927fcf24fa74cec475c4d0c55939245cd66dd",
-      "preserved_token_sha256": "e631454348d7c14ef745c3015c21ea36aeca37fbf2f0218c1eff8ec0a090c87c"
+      "source_sha256": "b384e52403544dc8bb2d725b028927fcf24fa74cec475c4d0c55939245cd66dd"
     },
     {
       "source": "kernels/common/include/op_kernel/platform_util.h",
       "target": "csrc/kernels/bf16/common/op_kernel/platform_util.h",
-      "source_sha256": "9568480f658b31a8fb3b124a1aaff5e80012c21ede7f02d1c019b19f7e659f8f",
-      "preserved_token_sha256": "1121b2909e01b51fa4c8154f44f2f2fc0c9208b647affe75593222a5b7d38b47"
+      "source_sha256": "9568480f658b31a8fb3b124a1aaff5e80012c21ede7f02d1c019b19f7e659f8f"
     },
     {
       "source": "kernels/mega_moe_bf16/README.md",
@@ -221,141 +213,140 @@
     },
     {
       "source": "kernels/mega_moe_bf16/include/backward_dispatch_ready.h",
-      "target": "csrc/kernels/bf16/include/backward_dispatch_ready.h",
+      "target": "csrc/kernels/bf16/schedule/backward_dispatch_ready.hpp",
       "source_sha256": "5044de4a2f6f497b221aab0ef5b867b5189fc5b5096ee5ad149db6fa3a4f8ae8",
-      "preserved_token_sha256": "063520aa08fac0e50f353a4409c70ffe921f180054304e5aa9bbc21abdec6754"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped scheduling helper under schedule/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/backward_dispatch_schedule.h",
-      "target": "csrc/kernels/bf16/include/backward_dispatch_schedule.h",
+      "target": "csrc/kernels/bf16/schedule/backward_dispatch_schedule.hpp",
       "source_sha256": "d3fc1d57072573904cd7ec32b73c335ebe6b7aca12d983068e546258d87e66e1",
-      "preserved_token_sha256": "3626aa5aea7caf0ef4d0397f5f9e8d07f3fae76191f352bc40269be78ae31c11"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped scheduling helper under schedule/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/backward_dispatch_schedule_math.h",
-      "target": "csrc/kernels/bf16/include/backward_dispatch_schedule_math.h",
+      "target": "csrc/kernels/bf16/schedule/backward_dispatch_schedule_math.hpp",
       "source_sha256": "7f7cc48e1584d9d24f9c057e90a2f8af45b2597ac40d46c1dc72a2f9fa97b9c4",
-      "preserved_token_sha256": "a86374915bad1d63fb31d0c48910f012c4be1c33aff2842ee32d64c80a6f8c08"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped scheduling helper under schedule/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/block_epilogue_swiglu_backward_bf16.h",
-      "target": "csrc/kernels/bf16/include/block_epilogue_swiglu_backward_bf16.h",
+      "target": "csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp",
       "source_sha256": "9f75cb90ff4676bdf120580792f09e49abcc9d2e89ffc80987b71871bdffae74",
-      "preserved_token_sha256": "0767db211d470797a5577374fd509c061e97fb8586c2f3ab27f87628ff75211c"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/block_epilogue_swiglu_bf16.h",
-      "target": "csrc/kernels/bf16/include/block_epilogue_swiglu_bf16.h",
+      "target": "csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp",
       "source_sha256": "a9d7041163789791f414a8edcec085d8bdf2dfe85a446e6b2f305af11b5315c9",
-      "preserved_token_sha256": "c48d3e56f56d055ce0cc967032e978be4d53598597e6217705acb911b7558c3d"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/block_saved_gate_up_mxfp8.h",
-      "target": "csrc/kernels/bf16/include/block_saved_gate_up_mxfp8.h",
+      "target": "csrc/kernels/bf16/epilogue/block_saved_gate_up_mxfp8.hpp",
       "source_sha256": "a9a6b7635c0d9b50cb975ad21a5aec6c3fba58f733f7799ee1a5110251d2047f",
-      "preserved_token_sha256": "91eaa9eabb98923d4e364e8492f5996cad5f376a79c415e2e5ac485201977fc1"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/forward_prepared_phase.h",
-      "target": "csrc/kernels/bf16/include/forward_prepared_phase.h",
+      "target": "csrc/kernels/bf16/schedule/forward_prepared_phase.hpp",
       "source_sha256": "e68937f247e438fbf3d4c89542e5a7ab1ab26cd15d4380ebd5e62f6c201fa95b",
-      "preserved_token_sha256": "654428889b1809478522fa1544c9b3807429155b435673c1f3c117c80bc13a21"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped scheduling helper under schedule/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_base.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_base.h",
+      "target": "csrc/kernels/bf16/layout/mega_moe_context.hpp",
       "source_sha256": "5493cb5c0c041478914e44d5171893e00967a0d0e4ea1cfee4d5623ecc8f09eb",
-      "preserved_token_sha256": "55ce6444349ca7359ed1ade80b3b0f343168c85249bb0b768bbc8d049e6ed8c0"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. PeermemInfo now lives in layout/mega_moe_workspace_view.hpp. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_bf16.h",
+      "target": "csrc/kernels/bf16/mega_moe_bf16_forward.hpp",
       "source_sha256": "39346302d22ec8f49ee6a5b9635f4986d529a90fe69300153f1323f9527877ec",
-      "preserved_token_sha256": "b4c040be692ff6955dda35dc0a70efa50f135c998a22e69448e0c13e03cf39fe"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16_backward.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_bf16_backward.h",
+      "target": "csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
       "source_sha256": "c0c9e73463348abc8b5cc4636a2782326ecff7d85eeaa953191924e60c4f38db",
-      "preserved_token_sha256": "315f159508b0d1d130e67733f4d11881d7fac8dde5dad3b23fc48d11682532b9"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16_backward_catlass_impl.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_bf16_backward_catlass_impl.h",
+      "target": "csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp",
       "source_sha256": "da38b3ed4e1e757c25c447a5ade6a10ed6ae1f3d5d1c0e65930c1f59411076b0",
-      "preserved_token_sha256": "5ac39ed530dbed964921d348633a647b4a4493bdce2da32d5e5ab27887213273"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16_catlass_impl.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_bf16_catlass_impl.h",
+      "target": "csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp",
       "source_sha256": "77344a6fe4e93678a350e358a002ff2d4a0798354fb3acbf5a721101e4a0e283",
-      "preserved_token_sha256": "47f896cde90d54f953c882e0012ca312ff7e50fdafacc7bcb5f0f0f70cbf9a3b"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_combine_send.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_combine_send.h",
+      "target": "csrc/kernels/bf16/routing/mega_moe_combine_send.hpp",
       "source_sha256": "926a42c9cc2222185ca2ed247110a21fd70219bc07b787afd83dd87e7adb3e78",
-      "preserved_token_sha256": "ca2e6a5f6775af46cfcfc31f498394b4d1dae066b4dcbddb7b57bea1f5183e5c"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_forward_save.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_forward_save.h",
+      "target": "csrc/kernels/bf16/common/mega_moe_forward_save.hpp",
       "source_sha256": "307191f604480d4433b6930dd758a097686067b6c3a4ebd8e0dec766b89a39c5",
-      "preserved_token_sha256": "1872e99b1de1318ab572e294e71de3f8ecd821f11a300678c6cbc3a8f689563c"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Shared contiguous-copy helper lives in common/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_saved_meta.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_saved_meta.h",
+      "target": "csrc/kernels/bf16/layout/mega_moe_saved_meta.hpp",
       "source_sha256": "9bbe3c1cf9a8652e3527e065450e2747adc56e6224a5e329b5aa3674dfcd6d67",
-      "preserved_token_sha256": "cce77ae3ce2fb11f89d1484c505bb05317e95382afbff550098516abb350d779"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_topk_weight_gather.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_topk_weight_gather.h",
+      "target": "csrc/kernels/bf16/routing/mega_moe_topk_weight_gather.hpp",
       "source_sha256": "f01e2d2a2fbfb09f0ed55de320e3d0b7b4118fe459d933f9b63ad68f57c45025",
-      "preserved_token_sha256": "f0c9bb7934ec1e9719dd737a90bfbcb4beac27738af058d1236d808991c04cd5"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_topk_weight_gather_layout.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_topk_weight_gather_layout.h",
+      "target": "csrc/kernels/bf16/layout/mega_moe_topk_weight_gather_layout.hpp",
       "source_sha256": "cd37c74c307e05315832b0356a51cfacb868819948cb056aad69076128f1cd92",
-      "preserved_token_sha256": "1b472945bf9e2ef2f6234f270edb14d68d6b268ee80be984fcecfa2d88ac7879"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_training_workspace.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_training_workspace.h",
+      "target": "csrc/kernels/bf16/layout/mega_moe_layout.hpp",
       "source_sha256": "934bd81cc2fe67d901d88a6718d643ad02eb9fee9f5db76f721fbe7b661489a7",
-      "preserved_token_sha256": "37bc8e4db788d42a8195068a6db24fbac29c96e54a7fd67a7d96eeeeeef77d58"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_unpermute.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_unpermute.h",
+      "target": "csrc/kernels/bf16/routing/mega_moe_unpermute.hpp",
       "source_sha256": "845698dd35bc83f5d93e1d09b6d288ce6c6e188108f9b5940944ee12e8fd19ab",
-      "preserved_token_sha256": "fd13f7cfa7665704f58dd2100acfafc583ec346deea5db428f4dafd844d0d342"
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_unpermute_layout.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_unpermute_layout.h",
+      "target": "csrc/kernels/bf16/layout/mega_moe_unpermute_layout.hpp",
       "source_sha256": "391b9fffaada571ac196f249b70c78a3668113ee425a880ec48f3ac3ad8ac4ab",
-      "preserved_token_sha256": "61ccd8114282f8678aca1a14d692f84caac0c831d03872571d41d2691e922843"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_workspace_info.h",
-      "target": "csrc/kernels/bf16/include/mega_moe_workspace_info.h",
+      "target": "csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp",
       "source_sha256": "04321e78399315376989137975166d221c54250599bac94192831b1de6ce19d0",
-      "preserved_token_sha256": "1b407b9b7bdd9ca055e49442d87191f18c180cd139f72b050b379151b92efce1"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
     },
     {
       "source": "kernels/mega_moe_bf16/mega_moe_bf16.cpp",
-      "target": "csrc/kernels/bf16/mega_moe_bf16.cpp",
+      "target": "csrc/kernels/bf16/mega_moe_bf16_forward.cpp",
       "source_sha256": "a08f4e8e5b18cb97063127b1b6546e6079597226a328e0b6380f3a757c08e758",
-      "preserved_token_sha256": "ceb0fd42e8d05a9a809e39771f17a1e1e2db639e7db5d950ee87ad02fa2fec39"
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained."
     },
     {
       "source": "kernels/mega_moe_bf16/mega_moe_bf16_backward.cpp",
       "target": "csrc/kernels/bf16/mega_moe_bf16_backward.cpp",
-      "source_sha256": "659f31f23bea5e33c6dfcc523a9918ec996580c02c6ed7d6b690d5f77ef39d9e",
-      "preserved_token_sha256": "72a96c7550d0c37c6f150ab8bc52dc84e2ea6a69c592ab745b06c39cc0ef736a"
+      "source_sha256": "659f31f23bea5e33c6dfcc523a9918ec996580c02c6ed7d6b690d5f77ef39d9e"
     },
     {
       "source": "test/megamoe_bf16_test/bf16_data_cache.py",
@@ -501,8 +492,6 @@
     "NOTICE.md",
     "LICENSE",
     "scripts/check_source_import.py",
-    "docs/MIGRATION_PLAN_ZH.md",
-    "docs/VALIDATION.md",
     "tests/bf16/swiglu_reference.py"
   ],
   "replaced_source_components": {

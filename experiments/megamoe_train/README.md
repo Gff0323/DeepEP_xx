@@ -6,14 +6,23 @@ weights, `w1` and `w2`. Integer expert IDs and expert counts are not differentia
 It is designed for **Ascend950**. Other Ascend generations are unsupported.
 
 The BF16 source is frozen at **b8cff148**, not a moving `train` branch. See
-[provenance](NOTICE.md), [migration plan (中文)](docs/MIGRATION_PLAN_ZH.md),
-[validation](docs/VALIDATION.md) and [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
+[provenance](NOTICE.md), [migration plan (中文)](../../docs/megamoe_train_migration/实施与分工方案.md),
+[initial migration validation](../../docs/megamoe_train_migration/首轮迁移验收.md) and
+[numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
 The current API, code architecture, autograd bridge and resource lifetime are
-described in the [framework design (中文)](docs/BF16_FRAMEWORK_DESIGN_ZH.md).
+described in the [framework design (中文)](../../docs/megamoe_train_migration/BF16_FRAMEWORK_DESIGN_ZH.md).
 This is a separate training component alongside `experiments/megamoe` (inference).
 BF16 has its own Host directory, Python module, kernels and tests. Future
 quantized training variants belong in this component and can add peer
 implementations when available; this BF16 import does not implement them.
+
+Device headers use `.hpp` and are grouped by responsibility under
+`csrc/kernels/bf16`: `catlass`, `epilogue`, `layout`, `schedule`, `routing` and
+`common`. The root contains the forward/backward entry sources and controller
+headers. Imported routing sources live under `routing/moe_init_routing_v3`;
+SDK headers keep their original `.h` names. Host-only tiling helpers live in
+`csrc/bf16`. Forward-only implementations use names matching their backward
+counterparts; the public training interface remains `MegaMoeBF16Train`.
 
 ## Build and installation
 
@@ -38,6 +47,8 @@ The training option defaults to OFF. It is independent of
 `DEEPEP_BUILD_MEGAMOE` and `DEEPEP_BUILD_EP_GMM_FUSED`. Use a wheel, not an editable
 installation. The root lock file selects CATLASS and SHMEM; training does not
 embed another SHMEM or load the inference kernel SO. No CATCCOS is required.
+Rebuild and reinstall the complete wheel after changing Host or device sources;
+the Host extension and device library must come from the same build.
 Set runtime SDK library paths to the same SHMEM/CANN used for the wheel.
 The installed `deep_ep/_build_info.json` records the actual build inputs.
 Avoid empty entries (including a trailing colon) in `PYTHONPATH`: they add the

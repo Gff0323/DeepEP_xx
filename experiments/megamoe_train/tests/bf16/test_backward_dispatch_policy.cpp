@@ -1,5 +1,5 @@
 // Host-only selection/layout checks. NPU tests cover publication visibility.
-#include "../../csrc/kernels/bf16/include/mega_moe_training_workspace.h"
+#include "../../csrc/kernels/bf16/layout/mega_moe_layout.hpp"
 #include <cassert>
 #include <cstdint>
 #include <iostream>

@@ -30,8 +30,8 @@ inline void AtomicAdd(int32_t* p, int32_t x)
     *p += x;
 }
 }  // namespace AscendC
-#include "backward_dispatch_ready.h"
-#include "backward_dispatch_schedule.h"
+#include "schedule/backward_dispatch_ready.hpp"
+#include "schedule/backward_dispatch_schedule.hpp"
 using namespace MegaMoeBF16BackwardCatlassImpl;
 int main()
 {

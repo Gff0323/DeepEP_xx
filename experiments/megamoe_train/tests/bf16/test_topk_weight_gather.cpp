@@ -1,6 +1,6 @@
 // Host-only planning/coverage tests. This does not emulate Ascend instructions
 // or establish MTE visibility on a device.
-#include "../../csrc/kernels/bf16/include/mega_moe_topk_weight_gather_layout.h"
+#include "../../csrc/kernels/bf16/layout/mega_moe_topk_weight_gather_layout.hpp"
 
 #include <algorithm>
 #include <cassert>

@@ -14,9 +14,9 @@
 
 #include "check.hpp"
 #include "launcher.hpp"
-#include "csrc/kernels/bf16/common/mega_moe_tiling.h"
-#include "csrc/kernels/bf16/include/mega_moe_training_workspace.h"
-#include "csrc/kernels/bf16/include/mega_moe_saved_meta.h"
+#include "csrc/kernels/bf16/common/mega_moe_tiling.hpp"
+#include "csrc/kernels/bf16/layout/mega_moe_layout.hpp"
+#include "csrc/kernels/bf16/layout/mega_moe_saved_meta.hpp"
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 #include "torch_npu/csrc/core/npu/NPUCachingAllocator.h"
 
@@ -270,7 +270,7 @@ ForwardResult MegaMoeBF16Forward(torch::Tensor context, torch::Tensor x, torch::
     ClearMegaMoeWindowControlRegion(symmetricBuffer, symmetricBufferBytes, worldSize, expertPerRank,
                                     tiling.compactTokenCountExchange != 0);
 
-    LaunchMegaMoeBF16Kernel(
+    LaunchMegaMoeBF16ForwardKernel(
         context, x, topkIds, topkWeights, weight1, weight2, y, expertTokenNums, trainingSavedState, dispatchOutput,
         forwardTransientWorkspace, tiling,
         static_cast<uint32_t>(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic()),

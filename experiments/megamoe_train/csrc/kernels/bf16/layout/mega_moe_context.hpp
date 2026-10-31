@@ -9,17 +9,17 @@
  */
 
 /*!
- * \file mega_moe_base.h
+ * \file mega_moe_context.hpp
  * \brief
  */
 
-#ifndef MEGA_MOE_BASE_H
-#define MEGA_MOE_BASE_H
+#ifndef MEGA_MOE_CONTEXT_HPP
+#define MEGA_MOE_CONTEXT_HPP
 
 #include "lib/std/tuple.h"
-#include "mega_moe_tiling.h"
-#include "moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h"
-#include "mega_moe_workspace_info.h"
+#include "mega_moe_tiling.hpp"
+#include "routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h"
+#include "layout/mega_moe_workspace_view.hpp"
 
 using namespace AscendC;
 
@@ -40,43 +40,6 @@ struct GMMAddrInfo {
     __gm__ int32_t* groupFlagList2;
 };
 
-struct PeermemInfo {
-    GM_ADDR ptrBase;
-    GM_ADDR ptrCompactTokenCount;
-    GM_ADDR ptrCompactTokenCountBlockSums;
-    GM_ADDR ptrTokenPerExpert;
-    GM_ADDR ptrA0;  // initrouting结果，包括data+scale
-    GM_ADDR ptrRoutedTopkWeights;
-    GM_ADDR ptrD;
-    uint64_t tokenCountsOffset;
-    uint64_t payloadOffset;
-    bool compactTokenCountExchange;
-    __aicore__ inline PeermemInfo() = default;
-    __aicore__ inline PeermemInfo(GM_ADDR base, const MegaMoeTilingData* tilingData,
-                                  bool allowCompactTokenCountExchange = false)
-    {
-        ptrBase = base;
-        const bool compactEnabled = allowCompactTokenCountExchange && tilingData->compactTokenCountExchange != 0;
-        const MegaMoeBF16Training::CompactTokenCountExchangeLayout countLayout(
-            tilingData->epWorldSize, tilingData->expertPerRank, compactEnabled);
-        compactTokenCountExchange = countLayout.enabled;
-        ptrCompactTokenCount = countLayout.enabled ? base + countLayout.packetOffset : nullptr;
-        ptrCompactTokenCountBlockSums = countLayout.enabled ? base + countLayout.blockSumsOffset : nullptr;
-        tokenCountsOffset = countLayout.tokenCountsOffset;
-        payloadOffset = countLayout.payloadOffset;
-        int64_t offset = static_cast<int64_t>(tokenCountsOffset);
-        ptrTokenPerExpert = base + offset;
-        offset = static_cast<int64_t>(payloadOffset);
-        ptrA0 = base + offset;
-        offset += static_cast<uint64_t>(tilingData->m) * tilingData->topK * tilingData->k * sizeof(bfloat16_t);
-        ptrRoutedTopkWeights = base + offset;
-        offset += Ops::Base::CeilAlign(
-            static_cast<int64_t>(tilingData->m) * tilingData->topK * static_cast<int64_t>(sizeof(bfloat16_t)),
-            static_cast<int64_t>(ALIGN_512));
-        ptrD = base + offset;
-    }
-};
-
 struct Params {
     GM_ADDR aGmAddr;
     GM_ADDR expertIdxGmAddr;
@@ -90,7 +53,7 @@ struct Params {
     GM_ADDR permutedInputOutGmAddr;
     GM_ADDR actualRecvTokensOutGmAddr;
     GM_ADDR savedMetaOutGmAddr;
-    WorkspaceInfo workspaceInfo;
+    ForwardWorkspaceInfo workspaceInfo;
     PeermemInfo peermemInfo;
     MegaMoeTilingData* tilingData;
 };

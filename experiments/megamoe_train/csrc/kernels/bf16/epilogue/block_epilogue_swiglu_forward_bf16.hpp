@@ -6,15 +6,15 @@
  * result as BF16. Variants that apply route weights before GMM2 then multiply
  * each BF16 row by its dispatched BF16 route weight read directly from GM.
  */
-#ifndef DEEPEP_BLOCK_EPILOGUE_SWIGLU_BF16_H
-#define DEEPEP_BLOCK_EPILOGUE_SWIGLU_BF16_H
+#ifndef DEEPEP_BLOCK_EPILOGUE_SWIGLU_FORWARD_BF16_HPP
+#define DEEPEP_BLOCK_EPILOGUE_SWIGLU_FORWARD_BF16_HPP
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "catlass/arch/arch.hpp"
 #include "tla/layout.hpp"
-#include "mega_moe_base.h"
-#include "block_saved_gate_up_mxfp8.h"
+#include "layout/mega_moe_context.hpp"
+#include "epilogue/block_saved_gate_up_mxfp8.hpp"
 
 namespace MegaMoeBF16Impl {
 
@@ -27,7 +27,7 @@ static constexpr AscendC::Reg::CastTrait kCastFP32ToBF16 = {
     AscendC::RoundMode::CAST_RINT};
 
 template <typename L0TileShape_, bool ApplyTopkWeight_>
-class BlockEpilogueSwigluBF16 {
+class BlockEpilogueSwigluForwardBF16 {
 public:
     struct Arguments {
         GM_ADDR yGmAddr{nullptr};
@@ -366,4 +366,4 @@ private:
 
 }  // namespace MegaMoeBF16Impl
 
-#endif  // DEEPEP_BLOCK_EPILOGUE_SWIGLU_BF16_H
+#endif  // DEEPEP_BLOCK_EPILOGUE_SWIGLU_FORWARD_BF16_HPP

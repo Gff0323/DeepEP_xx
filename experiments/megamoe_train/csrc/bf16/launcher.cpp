@@ -7,7 +7,7 @@
 #include "torch_npu/csrc/core/npu/NPUStream.h"
 
 #include "kernel_launch.hpp"
-#include "csrc/kernels/bf16/common/mega_moe_tiling.h"
+#include "csrc/kernels/bf16/common/mega_moe_tiling.hpp"
 
 namespace {
 
@@ -56,12 +56,13 @@ void InitializeMegaMoeBF16Context(torch::Tensor context, void* symmetric_buffer,
                 copy_status);
 }
 
-void LaunchMegaMoeBF16Kernel(torch::Tensor context, torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights,
-                             torch::Tensor weight1, torch::Tensor weight2, torch::Tensor y,
-                             torch::Tensor expert_token_nums, torch::Tensor training_saved_state,
-                             torch::Tensor dispatch_output, torch::Tensor forward_transient_workspace,
-                             const MegaMoeTilingData& tiling, uint32_t block_dim, void* symmetric_buffer,
-                             std::size_t symmetric_buffer_bytes, int rank, int world_size, uint64_t ffts_addr)
+void LaunchMegaMoeBF16ForwardKernel(torch::Tensor context, torch::Tensor x, torch::Tensor topk_ids,
+                                    torch::Tensor topk_weights, torch::Tensor weight1, torch::Tensor weight2,
+                                    torch::Tensor y, torch::Tensor expert_token_nums,
+                                    torch::Tensor training_saved_state, torch::Tensor dispatch_output,
+                                    torch::Tensor forward_transient_workspace, const MegaMoeTilingData& tiling,
+                                    uint32_t block_dim, void* symmetric_buffer, std::size_t symmetric_buffer_bytes,
+                                    int rank, int world_size, uint64_t ffts_addr)
 {
     TORCH_CHECK(symmetric_buffer != nullptr, "symmetric_buffer must not be null");
     TORCH_CHECK(world_size <= 1024, "MegaMoe BF16 supports at most 1024 EP ranks");
@@ -70,7 +71,7 @@ void LaunchMegaMoeBF16Kernel(torch::Tensor context, torch::Tensor x, torch::Tens
 
     aclrtStream stream = GetCurrentAclStream();
 
-    auto kernel = &deepep_train_mega_moe_bf16_kernel_do;
+    auto kernel = &deepep_train_mega_moe_bf16_forward_kernel_do;
     kernel(block_dim, stream, BytePtr(context.data_ptr()), BytePtr(x.data_ptr()), BytePtr(topk_ids.data_ptr()),
            BytePtr(topk_weights.data_ptr()), BytePtr(weight1.data_ptr()), BytePtr(weight2.data_ptr()),
            BytePtr(y.data_ptr()), BytePtr(expert_token_nums.data_ptr()), BytePtr(training_saved_state.data_ptr()),

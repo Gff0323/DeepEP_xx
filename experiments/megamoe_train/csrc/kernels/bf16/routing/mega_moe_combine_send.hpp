@@ -9,15 +9,15 @@
  */
 
 /*!
- * \file mega_moe_combine_send.h
+ * \file mega_moe_combine_send.hpp
  * \brief
  */
 
-#ifndef MEGA_MOE_COMBINE_SEND_H
-#define MEGA_MOE_COMBINE_SEND_H
+#ifndef MEGA_MOE_COMBINE_SEND_HPP
+#define MEGA_MOE_COMBINE_SEND_HPP
 #include "catlass/gemm_coord.hpp"
 #include "kernel_operator.h"
-#include "mega_moe_base.h"
+#include "layout/mega_moe_context.hpp"
 using namespace AscendC;
 
 namespace MegaMoeCombineImpl {

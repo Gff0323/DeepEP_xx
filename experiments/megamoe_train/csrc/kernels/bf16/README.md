@@ -5,6 +5,14 @@ This directory contains the BF16 forward and backward kernels used by
 [module README](../../../README.md) for the supported API, wheel build and tests.
 The implementation uses CATLASS and SHMEM; it does not require CATCCOS.
 
+The root keeps the forward/backward entry sources and controller headers.
+`catlass/` contains GEMM adapters and the L0C-to-UB copy extension; `epilogue/`
+contains SwiGLU and saved-format operations; `layout/` defines memory layouts,
+address views and context; `schedule/` contains readiness and scheduling helpers;
+`routing/` contains routing initialization, weight gathering, combine and
+unpermute. `common/` retains shared tiling data, constants, copy helpers and
+`op_kernel/` utilities. Host-only tiling helpers live in `csrc/bf16/`.
+
 ## Computation and scheduling
 
 ```text
@@ -42,7 +50,7 @@ transient workspace can be released after the forward stream completes.
 The public wrapper retains dispatch input required by backward.
 
 Use `TrainingSavedStateLayout` and the transient layout helpers in
-`include/mega_moe_training_workspace.h` for sizing. Persistent state contains
+`layout/mega_moe_layout.hpp` for sizing. Persistent state contains
 packed X, BF16 routing weights, routing metadata, expert counts and optional
 Gate/Up storage. Transient state contains forward payload and readiness flags;
 control words are initialized for each invocation. The symmetric window belongs

@@ -7,9 +7,9 @@
 
 #include <tiling/platform/platform_ascendc.h>
 
-#include "csrc/kernels/bf16/common/mega_moe_tiling.h"
-#include "csrc/kernels/bf16/common/mega_moe_tiling_host.h"
-#include "csrc/kernels/bf16/include/mega_moe_training_workspace.h"
+#include "csrc/kernels/bf16/common/mega_moe_tiling.hpp"
+#include "tiling_impl.hpp"
+#include "csrc/kernels/bf16/layout/mega_moe_layout.hpp"
 
 namespace {
 

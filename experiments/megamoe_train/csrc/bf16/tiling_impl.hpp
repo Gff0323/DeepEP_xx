@@ -26,7 +26,7 @@
 #include <string>
 #include <type_traits>
 
-#include "mega_moe_quant_constants.h"
+#include "mega_moe_quant_constants.hpp"
 
 template <typename T, typename U>
 constexpr auto HostCeilDiv(T value, U divisor)

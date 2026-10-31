@@ -33,8 +33,8 @@
 
 ## 主要代码
 
-- `mega_moe_training_workspace.h`：单M选择策略、进度区布局。
-- `mega_moe_bf16_backward.h`：非空专家序号、单行搬运、进度发布。
-- `backward_dispatch_ready.h`：实际行依赖查询，跳过空source。
-- `backward_dispatch_schedule.h`及`backward_dispatch_schedule_math.h`：发布阶段映射、3宽N顺序、跨组尾块后置。
-- `mega_moe_bf16_backward_catlass_impl.h`：dHp消费ready、保持完整专家交付。
+- `layout/mega_moe_layout.hpp`：单M选择策略、进度区布局。
+- `mega_moe_bf16_backward.hpp`：非空专家序号、单行搬运、进度发布。
+- `schedule/backward_dispatch_ready.hpp`：实际行依赖查询，跳过空source。
+- `schedule/backward_dispatch_schedule.hpp`及`schedule/backward_dispatch_schedule_math.hpp`：发布阶段映射、3宽N顺序、跨组尾块后置。
+- `catlass/mega_moe_bf16_backward_catlass_impl.hpp`：dHp消费ready、保持完整专家交付。

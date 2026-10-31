@@ -17,3 +17,8 @@ lifetime, optional build/package integration, test launchers and documentation.
 The BF16 computational kernels, ready policy and numerical boundaries are
 preserved. `upstream.json` maps imported files to their original paths and
 records their original hashes. No CATCCOS runtime/template dependency is added.
+
+Local organization follows the workspace-view and directory cleanup in
+`f48577a`, `008b337`, `68e54ba` and `36a517d`; the fixed import revision above
+remains the implementation source. Source checks verify the declared revision
+and required files, while original source hashes remain provenance records.

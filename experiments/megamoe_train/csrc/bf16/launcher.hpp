@@ -7,12 +7,13 @@
 
 struct MegaMoeTilingData;
 
-void LaunchMegaMoeBF16Kernel(torch::Tensor context, torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights,
-                             torch::Tensor weight1, torch::Tensor weight2, torch::Tensor y,
-                             torch::Tensor expert_token_nums, torch::Tensor training_saved_state,
-                             torch::Tensor dispatch_output, torch::Tensor forward_transient_workspace,
-                             const MegaMoeTilingData& tiling, uint32_t block_dim, void* symmetric_buffer,
-                             std::size_t symmetric_buffer_bytes, int rank, int world_size, uint64_t ffts_addr);
+void LaunchMegaMoeBF16ForwardKernel(torch::Tensor context, torch::Tensor x, torch::Tensor topk_ids,
+                                    torch::Tensor topk_weights, torch::Tensor weight1, torch::Tensor weight2,
+                                    torch::Tensor y, torch::Tensor expert_token_nums,
+                                    torch::Tensor training_saved_state, torch::Tensor dispatch_output,
+                                    torch::Tensor forward_transient_workspace, const MegaMoeTilingData& tiling,
+                                    uint32_t block_dim, void* symmetric_buffer, std::size_t symmetric_buffer_bytes,
+                                    int rank, int world_size, uint64_t ffts_addr);
 
 bool MegaMoeBF16SwigluDecoupled(uint64_t hidden, uint32_t saved_mode);
 

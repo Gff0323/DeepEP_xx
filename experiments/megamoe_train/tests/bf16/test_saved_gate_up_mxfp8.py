@@ -21,7 +21,7 @@ def method(source, name):
 class SavedMxFp8Tests(unittest.TestCase):
     def test_w8a8_scalar_types_preserved(self):
         root = Path(__file__).resolve().parents[2]
-        current = (root / "csrc/kernels/bf16/include/block_saved_gate_up_mxfp8.h").read_text(encoding="utf-8")
+        current = (root / "csrc/kernels/bf16/epilogue/block_saved_gate_up_mxfp8.hpp").read_text(encoding="utf-8")
 
         def declaration(text, name):
             pattern = r"^\s*(?:static\s+)?constexpr\s+(\w+)\s+" + name + r"\s*=\s*([^;]+);"
