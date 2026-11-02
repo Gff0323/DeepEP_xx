@@ -43,23 +43,23 @@ constexpr uint16_t FLAG_ID_MAX = 16;
 // 用一个独立的flag槽位(避开combine使用的pingpong 0/1)，值2 => AIV1本地槽8，
 // cube侧WaitForVector(2+FLAG_ID_MAX)路由到AIV1。
 constexpr uint16_t GMM2_UB_READY_FLAG = 2;
-constexpr uint32_t SWIGLU_N_HALF = 2U;
+constexpr uint32_t SWIGLU_N_HALF = MegaMoeBF16Training::kSwigluNHalf;
 constexpr int32_t MXFP_DIVISOR_SIZE = 64;
 constexpr int32_t MXFP_SCALE_GROUP_NUM = 32;
 constexpr int32_t MXFP_MULTI_BASE_SIZE = 2;
 constexpr int64_t SIMT_THREAD_NUM = 2048;
-constexpr int64_t ALIGN_32 = 32LL;
-constexpr int64_t ALIGN_128 = 128LL;
-constexpr int64_t ALIGN_256 = 256LL;
-constexpr int64_t ALIGN_512 = 512LL;
-constexpr int32_t INT_CACHELINE = 16;
+constexpr int64_t ALIGN_32 = static_cast<int64_t>(MegaMoeBF16Training::kAlignment32);
+constexpr int64_t ALIGN_128 = static_cast<int64_t>(MegaMoeBF16Training::kAlignment128);
+constexpr int64_t ALIGN_256 = static_cast<int64_t>(MegaMoeBF16Training::kAlignment256);
+constexpr int64_t ALIGN_512 = static_cast<int64_t>(MegaMoeBF16Training::kAlignment512);
+constexpr int32_t INT_CACHELINE = static_cast<int32_t>(MegaMoeBF16Training::kIntCacheline);
 constexpr int32_t MAX_AICORE_NUM = 36;
 constexpr uint32_t BUFFER_ALIGN = 96U * 1024U * 2U;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UNPERMUTE_LIST_NUM = 3U;
 constexpr int64_t SIZE_INT_8 = 1U;
-constexpr int64_t SIZE_BF_16 = 2U;
-constexpr int64_t SIZE_INT_32 = 4U;
+constexpr int64_t SIZE_BF_16 = static_cast<int64_t>(MegaMoeBF16Training::kBf16Bytes);
+constexpr int64_t SIZE_INT_32 = static_cast<int64_t>(MegaMoeBF16Training::kInt32Bytes);
 }  // namespace
 
 struct ForwardWorkspaceInfo {
@@ -197,7 +197,7 @@ struct ForwardWorkspaceInfo {
     }
 };
 // Persistent view of the state retained by forward for the matching backward.
-// The data fields are read-only; the reserved region preserves plane offsets.
+// The saved data fields are read-only.
 // Forward-only buffers deliberately remain null so backward cannot accidentally
 // depend on transient storage whose lifetime ended when forward returned.
 struct BackwardSavedStateInfo : ForwardWorkspaceInfo {
@@ -270,7 +270,7 @@ struct BackwardWorkspaceInfo {
         offset += Ops::Base::CeilAlign(SIZE_INT_32 * r * dpPartialTiles, ALIGN_512);
         // Saved-mode dX aliases dO after all expert dW2 readers retire.
         // none writes dX through UB and never accesses ptrDX.
-        ptrDX = MegaMoeBF16Training::BackwardUsesGm(savedMode) ? ptrDO : nullptr;
+        ptrDX = MegaMoeBF16Training::UseGmForBackwardDataGrad(savedMode) ? ptrDO : nullptr;
         ptrBwFlagDispatchToGmm2Grad = base + offset;
         offset += Ops::Base::CeilAlign(SIZE_INT_32 * e * INT_CACHELINE, ALIGN_128);
         ptrBwFlagAiv1Ready = base + offset;
@@ -283,13 +283,13 @@ struct BackwardWorkspaceInfo {
         offset += Ops::Base::CeilAlign(SIZE_INT_32 * e * INT_CACHELINE, ALIGN_128);
         ptrBwFlagDXReady = base + offset;
         offset += Ops::Base::CeilAlign(SIZE_INT_32 * e * INT_CACHELINE, ALIGN_128);
-        if (MegaMoeBF16Training::BackwardUsesGm(savedMode)) {
+        if (MegaMoeBF16Training::UseGmForBackwardDataGrad(savedMode)) {
             ptrBwFlagDOReleased = base + offset;
             offset += Ops::Base::CeilAlign(SIZE_INT_32 * e * INT_CACHELINE, ALIGN_128);
         } else {
             ptrBwFlagDOReleased = nullptr;
         }
-        ptrBwDispatchProgress = MegaMoeBF16Training::BackwardUsesGm(savedMode) && splitExperts != 0
+        ptrBwDispatchProgress = MegaMoeBF16Training::UseGmForBackwardDataGrad(savedMode) && splitExperts != 0
                                     ? base + MegaMoeBF16Training::AlignUp(offset, 64)
                                     : nullptr;
         workspaceSize = MegaMoeBF16Training::BackwardDispatchProgressLayout::TotalBytes(

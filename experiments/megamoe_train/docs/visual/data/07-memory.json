@@ -484,7 +484,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp",
-          "anchor": "        ptrDX = MegaMoeBF16Training::BackwardUsesGm(savedMode) ? ptrDO : nullptr;",
+          "anchor": "        ptrDX = MegaMoeBF16Training::UseGmForBackwardDataGrad(savedMode) ? ptrDO : nullptr;",
           "before": 3,
           "after": 3
         },
@@ -556,7 +556,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // ptrD held routed dX until every source rank completed P5.",
+          "anchor": "        // All ranks must finish reading dX before ptrD is reused for dp.",
           "before": 4,
           "after": 8
         }
@@ -623,7 +623,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // Last table reader (ReduceAndRouteTopkGrad) is done and no peer",
+          "anchor": "        // The exit barrier protects the next forward from this rank's count-table reset.",
           "before": 1,
           "after": 17
         }

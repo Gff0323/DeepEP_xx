@@ -33,7 +33,7 @@
       "source": "csrc/ops/mega_moe_bf16.cpp",
       "target": "csrc/bf16/training.cpp",
       "source_sha256": "1329a1c8076dece19e630f0e7999a9db40577ad45abc355397ae340b0be95a2b",
-      "adaptation": "Unified named training results in training.hpp, removed legacy forward and capture APIs; temporary workspace remains stream-safe and implementation-owned."
+      "adaptation": "Unified named training results in training.hpp, removed legacy forward and capture APIs; temporary workspace remains stream-safe and implementation-owned. Removed backward stage-marker initialization and its 1 KiB saved-state allocation."
     },
     {
       "source": "csrc/ops/mega_moe_bf16.h",
@@ -263,25 +263,25 @@
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16.h",
       "target": "csrc/kernels/bf16/mega_moe_bf16_forward.hpp",
       "source_sha256": "39346302d22ec8f49ee6a5b9635f4986d529a90fe69300153f1323f9527877ec",
-      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Removed unused MGroup declarations and redundant workspace-view includes."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16_backward.h",
       "target": "csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
       "source_sha256": "c0c9e73463348abc8b5cc4636a2782326ecff7d85eeaa953191924e60c4f38db",
-      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Removed stale MGroup comments and redundant workspace-view includes. Removed debug stage prints and GM phase markers; dispatch readiness and synchronization remain unchanged."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16_backward_catlass_impl.h",
       "target": "csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp",
       "source_sha256": "da38b3ed4e1e757c25c447a5ade6a10ed6ae1f3d5d1c0e65930c1f59411076b0",
-      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. The SwiGLU split constant aliases the shared layout definition."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_bf16_catlass_impl.h",
       "target": "csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp",
       "source_sha256": "77344a6fe4e93678a350e358a002ff2d4a0798354fb3acbf5a721101e4a0e283",
-      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Removed the inactive MGroup MMAD branch; retained the default CatlassBlockMmad alias and shared the SwiGLU constant."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_combine_send.h",
@@ -305,7 +305,7 @@
       "source": "kernels/mega_moe_bf16/include/mega_moe_topk_weight_gather.h",
       "target": "csrc/kernels/bf16/routing/mega_moe_topk_weight_gather.hpp",
       "source_sha256": "f01e2d2a2fbfb09f0ed55de320e3d0b7b4118fe459d933f9b63ad68f57c45025",
-      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/."
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/. Removed stale MGroup comments; layout planning remains in a separate layout header."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_topk_weight_gather_layout.h",
@@ -317,13 +317,13 @@
       "source": "kernels/mega_moe_bf16/include/mega_moe_training_workspace.h",
       "target": "csrc/kernels/bf16/layout/mega_moe_layout.hpp",
       "source_sha256": "934bd81cc2fe67d901d88a6718d643ad02eb9fee9f5db76f721fbe7b661489a7",
-      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Centralized alignment and SwiGLU constants and removed stale MGroup references. Removed the diagnostic-only backward stage-marker region from the shared saved-state layout."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_unpermute.h",
       "target": "csrc/kernels/bf16/routing/mega_moe_unpermute.hpp",
       "source_sha256": "845698dd35bc83f5d93e1d09b6d288ce6c6e188108f9b5940944ee12e8fd19ab",
-      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/."
+      "adaptation": "Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Grouped routing implementation under routing/. Removed stale MGroup comments; layout planning remains in a separate layout header."
     },
     {
       "source": "kernels/mega_moe_bf16/include/mega_moe_unpermute_layout.h",
@@ -335,7 +335,7 @@
       "source": "kernels/mega_moe_bf16/include/mega_moe_workspace_info.h",
       "target": "csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp",
       "source_sha256": "04321e78399315376989137975166d221c54250599bac94192831b1de6ce19d0",
-      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper."
+      "adaptation": "Local layout/direction naming adapted from f48577a, 008b337, 68e54ba and 36a517d; original source revision and SHA retained. Use repository .hpp headers directly under kernels/bf16 without a private include wrapper. Alignment and byte-count constants alias shared layout definitions with their original types preserved. Removed the diagnostic-only backward stage-marker pointer."
     },
     {
       "source": "kernels/mega_moe_bf16/mega_moe_bf16.cpp",
@@ -477,7 +477,7 @@
     {
       "source": "csrc/torch_classes.cpp",
       "target": "csrc/bf16/training.cpp",
-      "adaptation": "Executor declarations/implementation live in csrc/bf16/training.hpp and csrc/bf16/training.cpp; csrc/bindings.cpp contains only pybind registration.",
+      "adaptation": "Executor declarations/implementation live in csrc/bf16/training.hpp and csrc/bf16/training.cpp; csrc/bindings.cpp contains only pybind registration. Removed backward stage-marker initialization and its 1 KiB saved-state allocation.",
       "source_sha256": "95420689f4a9e673efd4a2f8655cb7b08743c8d06a43d620ed20a934c7373fb4"
     }
   ],

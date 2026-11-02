@@ -86,7 +86,6 @@ def training_saved_state_size(
     size += align_bytes(ep * per_rank_stride * 4)
     if embed_dispatch_output:
         size += align_bytes(max_recv_tokens * BF16_BYTES)
-    size += align_bytes(256 * 4, 128)
     if not save_gate_up:
         return size
     data_bytes = 1 if save_mxfp8 else BF16_BYTES
@@ -319,7 +318,6 @@ def test_split_training_workspace_matches_legacy_total_size() -> None:
                 legacy_workspace += align_bytes(max_recv_tokens * BF16_BYTES)
                 per_rank_stride = align_bytes(ep * experts_per_rank, 128)
                 legacy_workspace += align_bytes(ep * per_rank_stride * 4)
-                legacy_workspace += align_bytes(256 * 4, 128)
 
                 saved = training_saved_state_size(m, k, topk, ep, experts_per_rank, max_recv_tokens, n)
                 transient = forward_transient_workspace_size(n, experts_per_rank, max_recv_tokens)
@@ -382,7 +380,7 @@ def test_training_saved_state_excludes_forward_only_buffers() -> None:
 
 
 def test_saved_weight_layout_default_and_odd_capacity() -> None:
-    assert training_saved_state_size(4096, 7168, 16, 8, 4, 65536, 8192) == 940_185_600 + 1024**3
+    assert training_saved_state_size(4096, 7168, 16, 8, 4, 65536, 8192) == 940_184_576 + 1024**3
     assert forward_transient_workspace_size(8192, 4, 65536) == 536_871_424
     for rows in (1, 15, 16, 17, 255, 256, 257):
         for ep in (1, 2, 8):
@@ -391,7 +389,7 @@ def test_saved_weight_layout_default_and_odd_capacity() -> None:
             legacy, _ = workspace_sizes(33, 256, 512, 4, ep, 3, rows)
             assert saved + transient == legacy + align_bytes(rows * 2) + align_bytes(
                 ep * align_bytes(ep * 3, 128) * 4
-            ) + 1024 + 2 * align_bytes(rows * 256 * 2)
+            ) + 2 * align_bytes(rows * 256 * 2)
 
 
 def test_bf16_gmm_ping_pong_tiles_fit_a5_ub() -> None:

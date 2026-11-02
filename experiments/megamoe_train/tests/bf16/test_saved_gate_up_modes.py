@@ -56,10 +56,10 @@ def load_bridge():
 class SavedModeTests(unittest.TestCase):
     def test_allocation_drops_only_gate_up_extension(self):
         args = (4096, 7168, 16, 8, 4, 65536, 8192)
-        self.assertEqual(training_saved_state_size(*args, save_gate_up=False), 940185600)
-        self.assertEqual(training_saved_state_size(*args, save_mxfp8=False), 2013927424)
-        self.assertEqual(training_saved_state_size(*args, save_mxfp8=True), 1493833728)
-        self.assertEqual(training_saved_state_size(*args, save_mxfp8=False, embed_dispatch_output=False), 1074272256)
+        self.assertEqual(training_saved_state_size(*args, save_gate_up=False), 940184576)
+        self.assertEqual(training_saved_state_size(*args, save_mxfp8=False), 2013926400)
+        self.assertEqual(training_saved_state_size(*args, save_mxfp8=True), 1493832704)
+        self.assertEqual(training_saved_state_size(*args, save_mxfp8=False, embed_dispatch_output=False), 1074271232)
         self.assertEqual(dispatch_output_size(7168, 65536), 939655168)
 
     def test_dispatch_is_retained_until_backward(self):

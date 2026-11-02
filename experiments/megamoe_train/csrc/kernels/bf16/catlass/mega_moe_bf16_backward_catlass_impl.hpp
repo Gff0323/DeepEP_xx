@@ -35,9 +35,7 @@
 #include "catlass/catlass.hpp"
 #include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
-// CATLASS 2b4bd7cb with CANN 9.2 still exposes tuple lookup collisions when
-// the aggregate parses unused HSTU specializations in this BF16 context.
-// Limit the workaround to those unused HSTU specializations.
+// Exclude unused HSTU specializations that collide in tuple lookup with CANN 9.2.
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_QK_SPLIT_ROW_TLA_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_PV_SPLIT_ROW_TLA_HPP
 #include "catlass/gemm/block/block_mmad.hpp"
@@ -73,7 +71,7 @@ constexpr uint32_t L1_TILE_M = 128;
 constexpr uint32_t L1_TILE_N = 256;
 constexpr uint32_t L1_TILE_K = 256;
 static_assert(L1_TILE_M == ProducerPhaseMath::kRows, "Backward Dispatch scheduling must use the GEMM M tile size");
-constexpr uint32_t SWIGLU_N_HALF = 2;
+constexpr uint32_t SWIGLU_N_HALF = MegaMoeBF16Training::kSwigluNHalf;
 constexpr uint32_t MAX_SINGLE_MN = L1_TILE_M * L1_TILE_N;
 constexpr uint32_t DUAL_AIV_TARGET = 2;
 static_assert(2U * MAX_SINGLE_MN * sizeof(bfloat16_t) <= ArchTag::UB_SIZE, "The two BF16 GMM tiles must fit in A5 UB");
@@ -106,8 +104,7 @@ struct CopyL0CToDualAivUBTla {
         const uint32_t logicalRow = static_cast<uint32_t>(tla::get<0>(dstTensor.coord()));
         intriParams.subBlockId = logicalRow >= L1_TILE_M ? 1U : 0U;
 
-        // GetTile preserves the parent tensor coordinate. Remove the logical
-        // target-AIV band so both physical AIV UBs are addressed at offset 0.
+        // Remove the logical AIV selector from the physical UB row offset.
         const auto logicalDstOffset = dstTensor.layout()(dstTensor.coord());
         const auto dstOffset = logicalDstOffset % MAX_SINGLE_MN;
         const auto srcOffset = srcTensor.layout()(srcTensor.coord());
@@ -150,9 +147,6 @@ struct BackwardBF16TileCopy<LayoutA, LayoutB, TargetUBIdx, true>
                                                              Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, false>;
 };
 
-// Backward group GEMM handle: owns the BlockMmadTla and the two UB output
-// tiles.  The per-GEMM A/B/C layouts and tensors are constructed per call so
-// that per-expert contraction widths (dW stages) are supported.
 template <class LayoutA, class LayoutB, uint32_t TargetUBIdx = 0, bool GmOutput = false>
 class BackwardGroupMatmulParam {
 public:
@@ -188,8 +182,6 @@ __aicore__ inline void GroupMatmulRecompute(BackwardGroupMatmulParam<RowMajor, W
                                             const GMMAddrInfo& gmmAddrInfo, GM_ADDR gatePlane, GM_ADDR upPlane,
                                             uint32_t& startBlockIdx, uint32_t expertIdx)
 {
-    if constexpr (g_coreType == AscendC::AIC) {
-    }
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));
     const uint32_t k = static_cast<uint32_t>(Get<K_VALUE>(problemShape));
@@ -243,8 +235,6 @@ __aicore__ inline void GroupMatmulRecompute(BackwardGroupMatmulParam<RowMajor, W
         }
     }
     startBlockIdx = (startBlockIdx + coreLoops) % gmm1Params.blockNum;
-    if constexpr (g_coreType == AscendC::AIC) {
-    }
 }
 
 // The saved-mode GM path uses unique output addresses to decouple the AIC
@@ -265,9 +255,6 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
                                             __gm__ int32_t* dispatchReadyFlag, int32_t dispatchTarget,
                                             const BackwardDispatchReadyView& rowReady, __gm__ int32_t* dHpReadyFlag)
 {
-    if constexpr (g_coreType == AscendC::AIC) {
-    } else {
-    }
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = Get<N_VALUE>(problemShape);
     const uint32_t k = Get<K_VALUE>(problemShape);
@@ -284,7 +271,9 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
         (gmm2Params.blockIdx < startBlockIdx ? gmm2Params.blockIdx + gmm2Params.blockNum : gmm2Params.blockIdx) -
         startBlockIdx;
     ProducerPhaseSchedule producerSchedule;
-    if constexpr (g_coreType == AscendC::AIC) producerSchedule.Init(rowReady, dHpReadyFlag, gmm2Params.blockNum, m, n);
+    if constexpr (g_coreType == AscendC::AIC) {
+        producerSchedule.Init(rowReady, dHpReadyFlag, gmm2Params.blockNum, m, n);
+    }
     if constexpr (g_coreType == AscendC::AIC) {
         if (first < loops && !rowReady.enabled) {
             while (dispatchTarget != AscendC::ReadGmByPassDCache(dispatchReadyFlag)) {
@@ -311,10 +300,11 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
         const uint32_t depth = coord.k() * L1_TILE_K;
         if constexpr (g_coreType == AscendC::AIC) {
             if (rowReady.enabled) {
-                if (producerSchedule.Enabled() && producerTile.known)
+                if (producerSchedule.Enabled() && producerTile.known) {
                     WaitProducerPhaseRows(rowReady, producerTile, row, shape.m());
-                else
+                } else {
                     rowReady.WaitRows(row, shape.m());
+                }
             }
             auto tileA = tla::GetTile(tensorA, tla::MakeCoord(row, depth), tla::MakeShape(shape.m(), shape.k()));
             auto tileB = tla::GetTile(tensorB, tla::MakeCoord(depth, col), tla::MakeShape(shape.k(), shape.n()));
@@ -330,12 +320,9 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
         }
     }
     if constexpr (g_coreType == AscendC::AIC) {
-        // Explicit completion includes PIPE_FIX -> GM before PIPE_S publishes
-        // readiness. Also publish for cores with zero tiles to avoid deadlock.
+        // Retire Fixpipe writes before publishing readiness, including AICs with zero tiles.
         AscendC::PipeBarrier<PIPE_ALL>();
         AtomicAdd(dHpReadyFlag, int32_t(1));
-
-    } else {
     }
     startBlockIdx = (startBlockIdx + loops) % gmm2Params.blockNum;
 }
@@ -353,11 +340,6 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
     uint32_t& startBlockIdx, int32_t& outstandingMask, uint32_t& nextTargetAiv, uint32_t expertIdx,
     int64_t expertRowBase, __gm__ int32_t* dispatchReadyFlag, int32_t dispatchTarget, uint32_t p1Event)
 {
-    if constexpr (g_coreType == AscendC::AIC) {
-    } else {
-        // Both paired AIVs consume alternating save=none P1 tiles. Their
-        // independent UB slots use matching cross-core release events.
-    }
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // F
     const uint32_t k = static_cast<uint32_t>(Get<K_VALUE>(problemShape));  // K
@@ -369,8 +351,6 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
 
     auto layoutA = tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(m, k);
     auto layoutB = tla::MakeLayout<bfloat16_t, WeightLayout>(k, n);
-    // Two logical row bands encode the Fixpipe target; both resolve to UB
-    // offset zero in CopyL0CToDualAivUBTla.
     auto layoutC = tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(2 * L1_TILE_M, L1_TILE_N);
     auto tensorA = tla::MakeTensor(aGlobal, layoutA, Catlass::Arch::PositionGM{});
     auto tensorB = tla::MakeTensor(bGlobal, layoutB, Catlass::Arch::PositionGM{});
@@ -393,9 +373,7 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
         const uint32_t nLoc = blockCoord.n() * L1_TILE_N;
         const uint32_t kLoc = blockCoord.k() * L1_TILE_K;
 
-        // Carry the parity across expert calls. Some shapes assign only one
-        // tile per AIC for each expert; resetting here would send every such
-        // tile to AIV0 and silently collapse back to a single-AIV pipeline.
+        // Keep parity across experts so single-tile experts alternate between both AIVs.
         const uint32_t targetAiv = nextTargetAiv & 1U;
         const int32_t targetBit = 1 << targetAiv;
         const uint16_t targetEvent = static_cast<uint16_t>(p1Event + (targetAiv == 0 ? 0 : FLAG_ID_MAX));
@@ -437,15 +415,9 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
         }
     }
     startBlockIdx = (startBlockIdx + coreLoops) % gmm2Params.blockNum;
-    if constexpr (g_coreType == AscendC::AIC) {
-    } else {
-    }
 }
 
-// GM dX avoids writing AIV0's P1 UB while later experts are
-// still in SwiGLU. AIC runs P2 after its complete P1 producer loop; AIV0
-// enters this consumer loop only after its complete P1 epilogue loop.
-// The caller retires dZ/Hp producers and all dW2 readers before dX overwrites dO.
+// The caller must retire dZ/Hp producers and dW2 readers before dX overwrites dO.
 template <class WeightLayout>
 __aicore__ inline void GMM1GradCombineGM(BackwardGroupMatmulParam<RowMajor, WeightLayout, 0, true>& mm,
                                          const Params& params,
@@ -485,8 +457,7 @@ __aicore__ inline void GMM1GradCombineGM(BackwardGroupMatmulParam<RowMajor, Weig
             auto tileC = tla::GetTile(tensorC, tla::MakeCoord(row, col), tla::MakeShape(shape.m(), shape.n()));
             mm.blockMmad(tileA, tileB, tileC, shape);
         } else if (mm.subBlockIdx == 0) {
-            // P1 has retired before this phase. Protect loop-carried reuse:
-            // MTE3 reads UB -> MTE2 overwrites UB -> MTE3 reads new tile.
+            // Retire MTE3's UB read before MTE2 refills the same tile.
             SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
             AscendC::DataCopyExtParams copy{static_cast<uint16_t>(shape.m()),
                                             static_cast<uint32_t>(shape.n() * sizeof(bfloat16_t)),
@@ -518,11 +489,6 @@ __aicore__ inline void GMM1GradCombine(BackwardGroupMatmulParam<RowMajor, Weight
                                        const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
                                        uint32_t expertIdx, int64_t expertRowBase, uint16_t& pingpongIdx)
 {
-    if constexpr (g_coreType == AscendC::AIC) {
-    } else {
-        if (gmm1Params.subBlockIdx == TargetUBIdx) {
-        }
-    }
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // K
     const uint32_t k = static_cast<uint32_t>(Get<K_VALUE>(problemShape));  // N
@@ -586,16 +552,9 @@ __aicore__ inline void GMM1GradCombine(BackwardGroupMatmulParam<RowMajor, Weight
         pingpongIdx = 1 - pingpongIdx;
     }
     startBlockIdx = (startBlockIdx + coreLoops) % gmm1Params.blockNum;
-    if constexpr (g_coreType == AscendC::AIC) {
-    } else {
-        if (gmm1Params.subBlockIdx == TargetUBIdx) {
-        }
-    }
 }
 
-// P3: GMM1 weight gradient, pure AIC, L0C -> GM. Canonical computes
-// dZ^T @ Xpacked -> [N,K]; legacy computes Xpacked^T @ dZ -> [K,N]. In either
-// case A is a RowMajor expert band viewed as its ColumnMajor transpose.
+// View row-major expert bands as ColumnMajor transposes without moving GM data.
 __aicore__ inline void GMM1DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 0, true>& gmm1Params,
                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
                               const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, uint32_t expertIdx)

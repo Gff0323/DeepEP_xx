@@ -160,7 +160,7 @@ struct MegaMoeBF16BackwardWorkspaceLayout {
         offset += Bf16Align(4 * e * 16, 128);
         offset += Bf16Align(4 * e * 16, 128);  // dZ ready, one arrival per AIV
         offset += Bf16Align(4 * e * 16, 128);  // dX ready, one arrival per AIC
-        if (MegaMoeBF16Training::BackwardUsesGm(savedMode)) {
+        if (MegaMoeBF16Training::UseGmForBackwardDataGrad(savedMode)) {
             offset += Bf16Align(4 * e * 16, 128);  // all AICs retired dO reads
         }
         totalBytes = MegaMoeBF16Training::BackwardDispatchProgressLayout::TotalBytes(
@@ -248,11 +248,8 @@ ForwardResult MegaMoeBF16Forward(torch::Tensor context, torch::Tensor x, torch::
     const MegaMoeBF16Training::ForwardDispatchTileReadyLayout dispatchTileReadyLayout(n, expertPerRank, maxRecvTokens);
     const uint64_t perRankTokenCountStride =
         MegaMoeBF16Training::AlignUp(worldSize * expertPerRank, MegaMoeBF16Training::kAlignment128);
-    const uint64_t legacyTrainingTailBytes =
-        MegaMoeBF16Training::AlignUp(worldSize * perRankTokenCountStride * MegaMoeBF16Training::kInt32Bytes,
-                                     MegaMoeBF16Training::kAlignment512) +
-        MegaMoeBF16Training::AlignUp(MegaMoeBF16Training::kBackwardProgressElements * MegaMoeBF16Training::kInt32Bytes,
-                                     MegaMoeBF16Training::kAlignment128);
+    const uint64_t legacyTrainingTailBytes = MegaMoeBF16Training::AlignUp(
+        worldSize * perRankTokenCountStride * MegaMoeBF16Training::kInt32Bytes, MegaMoeBF16Training::kAlignment512);
     TORCH_CHECK(savedStateLayout.legacyBytes + dispatchOutputLayout.totalBytes + transientWorkspaceLayout.totalBytes ==
                     hostTiling.workspace_bytes + earlyWeightBuffers.workspace_bytes + legacyTrainingTailBytes,
                 "MegaMoe BF16 split workspace layout does not match the legacy "
@@ -409,7 +406,7 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
             splitExperts = static_cast<uint32_t>(value);
         }
     }
-    if (!MegaMoeBF16Training::BackwardUsesGm(tiling.savedGateUpMode)) splitExperts = 0;
+    if (!MegaMoeBF16Training::UseGmForBackwardDataGrad(tiling.savedGateUpMode)) splitExperts = 0;
 #endif
     const MegaMoeBF16BackwardWorkspaceLayout backwardLayout(tiling, splitExperts);
     auto backwardWorkspace = AllocateBackwardWorkspace(backwardLayout, gradY);

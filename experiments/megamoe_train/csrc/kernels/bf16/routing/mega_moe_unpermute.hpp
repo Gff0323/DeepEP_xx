@@ -17,7 +17,7 @@ __aicore__ inline void LoadUnpermuteInput(AscendC::LocalTensor<bfloat16_t> input
 }
 
 // Called only after Combine completion and the existing cross-rank barrier.
-// BF16, MGroup (through BF16) and UDMA share the same local ptrD layout.
+// BF16 and UDMA share the same local ptrD layout.
 // False leaves unsupported shapes to the caller's original three-row path.
 __aicore__ inline bool TryUnpermute(GM_ADDR indicesAddr, GM_ADDR expandedXAddr, GM_ADDR outputAddr, uint32_t hidden,
                                     uint32_t topK, uint32_t tokenBegin, uint32_t tokenCount, uint32_t ubBytes)

@@ -21,7 +21,6 @@
 #include "op_kernel/mc2_kernel_utils.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "layout/mega_moe_context.hpp"
-#include "layout/mega_moe_workspace_view.hpp"
 #include "routing/mega_moe_combine_send.hpp"
 #include "tla/layout.hpp"
 #include "epilogue/block_epilogue_swiglu_forward_bf16.hpp"
@@ -39,8 +38,6 @@ using BlockOffset = AscendC::Shape<int64_t, int64_t, int64_t, int64_t, int64_t, 
 
 constexpr uint32_t TOPK_WEIGHT_COPY_BUFFER_BYTES = MegaMoeBF16Training::ForwardDispatchUbLayout::kTopkWeightBytes;
 constexpr uint32_t TOPK_WEIGHT_COPY_ELEMENTS = TOPK_WEIGHT_COPY_BUFFER_BYTES / sizeof(bfloat16_t);
-
-class MegaMoeBF16MGroup;
 
 class MegaMoeBF16Forward {
 public:
@@ -61,7 +58,6 @@ public:
     __aicore__ inline void EnableDispatchTileReady(GM_ADDR transientWorkspaceGM);
 
 private:
-    friend class MegaMoeBF16MGroup;
     __aicore__ inline void FirstBuffInit(TPipe* tPipe);
     __aicore__ inline void ResetWorkSpaceFlagList();
     __aicore__ inline void GetCumsumForMMAIV();
@@ -445,7 +441,7 @@ __aicore__ inline void MegaMoeBF16Forward::SaveForwardState()
 
     if (useSplitTrainingState_) {
         // Packed X/TopK weights are already in their final storage (embedded
-        // for raw/MGroup, independent dispatch_output for training). Snapshot
+        // for raw BF16, independent dispatch_output for training). Snapshot
         // only the SHMEM token-count table because SHMEM is mutable across
         // subsequent forward calls.
         MegaMoeForwardSave::CopyContiguous(params_.workspaceInfo.ptrSavedTokenPerExpert,
@@ -1133,7 +1129,7 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
         &params_.tilingData->moeInitRoutingTilingData, params_.tilingData->moeInitRoutingTilingData.tilingKey);
 
     // Finish and release the optional gather-only UB phase before Dispatch
-    // buffer allocation. MGroup/UDMA invoke the same helper in their Process.
+    // buffer allocation. UDMA invokes the same helper in its Process.
     bool routedWeightsReady = false;
     if constexpr (g_coreType == AscendC::AIV) {
         routedWeightsReady = MegaMoeBF16Routing::TryGatherTopkWeights(
