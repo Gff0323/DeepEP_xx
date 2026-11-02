@@ -1,10 +1,4 @@
 import unittest
-from pathlib import Path
-
-
-ROOT = Path(__file__).resolve().parents[2]
-M_TILE = 128
-N_TILE = 256
 
 
 def ready_first_m_tile(ordinal: int, m_tiles: int, blocks_per_producer_round: int) -> int:
@@ -77,26 +71,6 @@ class Gmm1ScheduleTest(unittest.TestCase):
                                 for task in range(m_tiles * n_tiles)
                             }
                             self.assertEqual(actual, expected)
-
-    def test_build_interface_defaults_to_adaptive_auto(self) -> None:
-        cmake = (ROOT / "CMakeLists.txt").read_text(encoding="utf-8")
-        for flag in (
-            "DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE=1",
-            "DEEPEP_BF16_GMM1_READY_FIRST=1",
-            "DEEPEP_BF16_GMM1_TILE_READY=1",
-            "DEEPEP_BF16_GMM1_AUTO_SELECT=1",
-        ):
-            self.assertIn(flag, cmake)
-
-    def test_adaptive_auto_falls_back_to_legacy_mapping(self) -> None:
-        impl = (ROOT / "csrc" / "kernels" / "bf16" / "catlass/mega_moe_bf16_forward_catlass_impl.hpp").read_text(
-            encoding="utf-8"
-        )
-        self.assertIn("const bool useAdaptiveSchedule = useTileReady;", impl)
-        self.assertIn(
-            "nStripeWidth > 0 && useAdaptiveSchedule",
-            impl,
-        )
 
 
 if __name__ == "__main__":

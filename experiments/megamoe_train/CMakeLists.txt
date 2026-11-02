@@ -1,4 +1,10 @@
 # BF16 training is an independent optional component; root owns the SDKs.
+option(DEEPEP_BF16_FORCE_EXPERT_READY "Wait for whole-expert Dispatch in training forward and backward" OFF)
+if(DEEPEP_BF16_FORCE_EXPERT_READY)
+    set(train_force_expert_ready 1)
+else()
+    set(train_force_expert_ready 0)
+endif()
 find_program(TRAIN_BISHENG bisheng PATHS "${ASCEND_HOME_PATH}/tools/bisheng_compiler/bin" NO_DEFAULT_PATH REQUIRED)
 execute_process(COMMAND "${Python_EXECUTABLE}" -c
     "import torch,torch_npu; from pathlib import Path; print(torch.utils.cmake_prefix_path); print(Path(torch_npu.__file__).parent)"
@@ -25,12 +31,14 @@ set(train_include "${CMAKE_CURRENT_SOURCE_DIR}"
     "${ASCEND_HOME_PATH}/aarch64-linux/asc/include"
     "${ASCEND_HOME_PATH}/compiler/tikcpp" "${ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw"
     "${ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw/interface" "${ASCEND_HOME_PATH}/compiler/tikcpp/tikcfw/impl")
-# Preserve b8cff148's adaptive-auto / auto defaults and its exact numerical path.
+# Training uses adaptive GMM1 scheduling and automatic SwiGLU handoff by default.
+# Forward SwiGLU only: 0 = force UB handoff, 1 = force GM staging, 2 = auto.
+# Host queries the built device SO for workspace sizing; the shared header's
+# fallback value 0 is not the default of this device build, which uses 2 below.
 set(train_device_flags -O2 -std=c++17 -fPIC -xasc --npu-arch=dav-3510
     --cce-auto-infer-kernel-type=false -Xhost-start -ftrapv -D__ASC_NPU_HOST__ -Xhost-end
-    -DASCEND_MEGAMOE_USE_NEW_ASCENDC_FRONTEND=1 -DCATLASS_ARCH=3510 -DL2_CACHE_HINT
-    -DDEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE=1 -DDEEPEP_BF16_GMM1_READY_FIRST=1
-    -DDEEPEP_BF16_GMM1_TILE_READY=1 -DDEEPEP_BF16_GMM1_AUTO_SELECT=1
+    -DCATLASS_ARCH=3510 -DL2_CACHE_HINT
+    -DDEEPEP_BF16_FORCE_EXPERT_READY=${train_force_expert_ready}
     -DDEEPEP_BF16_SWIGLU_DECOUPLE=2)
 foreach(path IN LISTS train_include)
     list(APPEND train_device_flags "-I${path}")
@@ -64,6 +72,8 @@ target_include_directories(megamoe_train_ext PRIVATE ${train_include} ${TORCH_IN
     "${torch_npu_root}/include" "${torch_npu_root}/..")
 separate_arguments(torch_flags NATIVE_COMMAND "${TORCH_CXX_FLAGS}")
 target_compile_options(megamoe_train_ext PRIVATE ${torch_flags} -O2 -fstack-protector-strong)
+target_compile_definitions(megamoe_train_ext PRIVATE
+    DEEPEP_BF16_FORCE_EXPERT_READY=${train_force_expert_ready})
 target_link_directories(megamoe_train_ext PRIVATE "${ASCEND_HOME_PATH}/lib64")
 target_link_libraries(megamoe_train_ext PRIVATE ${TORCH_LIBRARIES} "${TRAIN_TORCH_PYTHON}"
     "${TRAIN_TORCH_NPU}" megamoe_train_kernel shmem ascendcl ascend_runtime platform tiling_api)

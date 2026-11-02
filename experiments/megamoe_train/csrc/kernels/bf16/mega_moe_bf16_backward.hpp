@@ -23,8 +23,8 @@
  * ownership handover exists between P0 and P1: dispatch of later experts
  * proceeds while the AIC already fixpipes early experts' dHp tiles.
  *
- * Saved forward context (routing metadata, packed X, count-table snapshot and
- * debug progress) and backward-only scratch are passed as separate buffers.
+ * Saved forward context (routing metadata, packed X and count-table snapshot)
+ * and backward-only scratch are passed as separate buffers.
  */
 #ifndef MEGA_MOE_BF16_BACKWARD_HPP
 #define MEGA_MOE_BF16_BACKWARD_HPP
@@ -50,19 +50,6 @@ using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 constexpr uint16_t BW_P1_EVENT = 0;  // P1 AIC <-> AIV0/AIV1 SwiGLU Grad
 constexpr uint32_t BW_TOPK_ROUTE_BATCH_ROWS = 1024;
 constexpr uint32_t BW_TOPK_PARTIAL_UB_BYTES = 128 * 1024;
-// Phase progress markers written to bwProgress_ (indexed by GetBlockIdx()%256)
-// so a hung kernel can be localized from the last written value.
-constexpr int32_t BW_PROG_START = 0;
-constexpr int32_t BW_PROG_P0A = 1;
-constexpr int32_t BW_PROG_P0B = 2;
-constexpr int32_t BW_PROG_P0C = 3;
-constexpr int32_t BW_PROG_P1 = 4;
-constexpr int32_t BW_PROG_P2 = 5;
-constexpr int32_t BW_PROG_P3 = 6;
-constexpr int32_t BW_PROG_P4 = 7;
-constexpr int32_t BW_PROG_P5 = 8;
-constexpr int32_t BW_PROG_P6 = 9;
-constexpr int32_t BW_PROG_SPIN_HDONE = 12;
 
 enum BackwardPhase {
     BW_PHASE_RECOMPUTE = 0,
@@ -102,37 +89,6 @@ private:
     __aicore__ inline void ReduceAndRouteTopkGrad();
     __aicore__ inline void UnpermuteTopkGrad();
     __aicore__ inline void CrossRankSyncInWorldSize();
-
-    __aicore__ inline void WriteBwProgress(int32_t phase)
-    {
-        if (bwProgress_ != nullptr) {
-            WriteGmByPassDCache(bwProgress_ + (GetBlockIdx() % 256), phase);
-        }
-    }
-
-    // Debug build only: print one representative AIC/AIV0/AIV1 per rank.
-    // stage uses BW_PROG_* above; edge=0 means enter and edge=1 means leave.
-    __aicore__ inline void DebugBwStage(int32_t stage, int32_t edge)
-    {
-#if defined(MEGA_MOE_BF16_DEBUG_PRINT) && MEGA_MOE_BF16_DEBUG_PRINT
-        if (blockIdx_ == 0) {
-            if constexpr (g_coreType == AscendC::AIC) {
-                AscendC::PRINTF(
-                    "[MegaMoeBF16BW] rank=%u core=AIC rawBlock=%u logicalBlock=%u "
-                    "stage=%d edge=%d\n",
-                    rankId_, GetBlockIdx(), blockIdx_, stage, edge);
-            } else {
-                AscendC::PRINTF(
-                    "[MegaMoeBF16BW] rank=%u core=AIV rawBlock=%u logicalBlock=%u "
-                    "subBlock=%u stage=%d edge=%d\n",
-                    rankId_, GetBlockIdx(), blockIdx_, subBlockIdx_, stage, edge);
-            }
-        }
-#else
-        (void)stage;
-        (void)edge;
-#endif
-    }
 
     // phase loops (all cores call them; wrappers dispatch on g_coreType)
     template <bool TransW>
@@ -219,7 +175,6 @@ private:
     __gm__ int32_t* bwFlagDispatch_{nullptr};
     __gm__ int32_t* bwFlagAiv1Ready_{nullptr};
     __gm__ int32_t* bwFlagHDone_{nullptr};
-    __gm__ int32_t* bwProgress_{nullptr};
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -280,7 +235,13 @@ __aicore__ inline void MegaMoeBF16Backward::Init(GM_ADDR context, GM_ADDR gradY,
                                                  GM_ADDR dispatchOutput, GM_ADDR backwardWorkspace,
                                                  MegaMoeTilingData* tilingData, uint32_t splitExperts)
 {
+#if DEEPEP_BF16_FORCE_EXPERT_READY
+    // Match the Host allocation and ignore row-ready split overrides.
+    (void)splitExperts;
+    splitExperts_ = 0;
+#else
     splitExperts_ = splitExperts;
+#endif
     m_ = tilingData->m;
     k_ = tilingData->k;
     n_ = tilingData->n;
@@ -316,7 +277,6 @@ __aicore__ inline void MegaMoeBF16Backward::Init(GM_ADDR context, GM_ADDR gradY,
     bwFlagDispatch_ = (__gm__ int32_t*)bwWs_.ptrBwFlagDispatchToGmm2Grad;
     bwFlagAiv1Ready_ = (__gm__ int32_t*)bwWs_.ptrBwFlagAiv1Ready;
     bwFlagHDone_ = (__gm__ int32_t*)bwWs_.ptrBwFlagHDone;
-    bwProgress_ = (__gm__ int32_t*)savedState_.ptrBwProgress;
 
     perRankStridesInTokenPerExpert_ =
         Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
@@ -363,8 +323,8 @@ __aicore__ inline AscendC::LocalTensor<bfloat16_t> MegaMoeBF16Backward::StageUb(
 __aicore__ inline void MegaMoeBF16Backward::InitStageLayout()
 {
     // The two-slot dispatch ring must fit the static staging budget
-    // [BW_STAGE_BASE_BYTES, UB_SIZE).  Tiling's dispatchRows_ was sized for
-    // the old whole-UB firstPipe layout, so clamp the per-ping row count;
+    // [BW_STAGE_BASE_BYTES, UB_SIZE).  Clamp tiling's dispatchRows_ to this
+    // smaller window when choosing the per-ping row count;
     // one row is the floor (K classes that cannot fit a single row twice
     // are outside this layout's contract).  The 32-element alignment of a
     // ping can add up to 64B, hence the margin.
@@ -373,7 +333,7 @@ __aicore__ inline void MegaMoeBF16Backward::InitStageLayout()
     dispatchPingRows_ = static_cast<uint32_t>(dispatchRows_) < maxPingRows ? static_cast<uint32_t>(dispatchRows_)
                                                                            : (maxPingRows > 0 ? maxPingRows : 1);
     if (MegaMoeBF16Training::BackwardUsesGm(savedGateUpMode_))
-        dispatchPingRows_ = 1;  // Preserve the measured saved-mode single-row path, including k=0.
+        dispatchPingRows_ = 1;  // Saved modes use single-row DMA, including splitExperts_=0.
     dispatchCopyElementsPerPing_ = Ops::Base::CeilAlign(dispatchPingRows_ * k_, static_cast<uint32_t>(ALIGN_32));
 }
 
@@ -1317,17 +1277,11 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     CrossRankSyncInWorldSize();
 
     // ---- P0-A: weighted gather grad_y * topk_weights -> ptrA0 (all AIV) ----
-    WriteBwProgress(BW_PROG_P0A);
     if constexpr (g_coreType == AscendC::AIV) {
-        DebugBwStage(BW_PROG_P0A, 0);
-
         GatherRoutes();
 
         SyncAll<true>();
         CrossRankSyncInWorldSize();
-
-        DebugBwStage(BW_PROG_P0A, 1);
-        DebugBwStage(BW_PROG_P0B, 0);
 
         RestoreTokenPerExpert();
         SyncAll<true>();
@@ -1358,16 +1312,12 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         // No pipe teardown and no readiness publish: the staging ring is a
         // fixed static region disjoint from the P1 tile area, and AIV1 has
         // no P0-B work at all.
-        DebugBwStage(BW_PROG_P0B, 1);
     }
 
     // ---- P0-C: optional GMM1 fallback ----
     // BF16/MXFP8 modes consume the matching forward-persistent gate/up in P1.
     // Only save=none recomputes GMM1 into backward scratch. The direct-GM
     // fallback does not touch AIV1 UB, so it can overlap P0-A/P0-B.
-    WriteBwProgress(BW_PROG_P0B);
-    WriteBwProgress(BW_PROG_P0C);
-    DebugBwStage(BW_PROG_P0C, 0);
     if constexpr (g_coreType == AscendC::AIV) {
         // AIVs walk the recompute phase without touching the MMAD; time the
         // bookkeeping walk (param ctor + per-expert count-table GM reads).
@@ -1381,7 +1331,6 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     }
     if constexpr (g_coreType == AscendC::AIV) {
     }
-    DebugBwStage(BW_PROG_P0C, 1);
 
     // ---- P1: GMM2 Grad || dual-AIV SwiGLU Grad ----
     // No whole-stage ownership wait: P0's staging is a static region above
@@ -1392,8 +1341,6 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     // modes skip the GMM1 fallback above entirely, so the AIC reaches
     // DO_WAIT_0 directly and the first-expert transfer is the only P1
     // entry cost; save=none overlaps that transfer with the fallback.
-    WriteBwProgress(BW_PROG_P1);
-    DebugBwStage(BW_PROG_P1, 0);
     const bool gmOutput = MegaMoeBF16Training::BackwardUsesGm(savedGateUpMode_);
     if (gmOutput) {
         if (params_.tilingData->transW) {
@@ -1423,8 +1370,8 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
             // dW1 = dZ^T @ Xpacked reduces across the complete expert token band,
             // so pair-local WaitForVector is insufficient: every paired AIV must have
             // completed P1 before any AIC is allowed to consume dZ in P2/P3.
-            // P1 contributes two blockNum bands, one arrival from every AIV0 and
-            // AIV1 (the old P0 ownership band is gone with the static staging).
+            // P1 contributes two blockNum bands: one arrival from every AIV0
+            // and AIV1 after their writes complete.
             const int32_t p1ReadyTarget = 2 * static_cast<int32_t>(blockNum_);
             while (ReadGmByPassDCache(bwFlagAiv1Ready_) < p1ReadyTarget) {
                 const int64_t start = GetSystemCycle();
@@ -1440,11 +1387,8 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         AtomicAdd((__gm__ int32_t*)bwFlagAiv1Ready_, int32_t(1));
         AtomicAdd((__gm__ int32_t*)bwFlagHDone_, int32_t(1));
     }
-    DebugBwStage(BW_PROG_P1, 1);
 
     // ---- P2: GMM1 Grad || Combine (AIC + AIV0) ----
-    WriteBwProgress(BW_PROG_P2);
-    DebugBwStage(BW_PROG_P2, 0);
     // Saved-mode P2 writes dX into dO; none uses AIV0 UB only
     // after the full P1 barrier. Each AIV enters here after its own P1 loop.
     if (gmOutput) {
@@ -1474,20 +1418,14 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         // GM dX remains live until kernel exit. P3/P4 may overlap combine;
         // the existing drained local + cross-rank P5 barrier protects ptrD.
     }
-    DebugBwStage(BW_PROG_P2, 1);
 
     // ---- P3/P4: weight gradients (AIC) overlapped with P5 (AIV) ----
     if constexpr (g_coreType == AscendC::AIC) {
-        WriteBwProgress(BW_PROG_P3);
-        DebugBwStage(BW_PROG_P3, 0);
         if (params_.tilingData->transW) {
             GMM1DWPhase<true>();
         } else {
             GMM1DWPhase<false>();
         }
-        DebugBwStage(BW_PROG_P3, 1);
-        WriteBwProgress(BW_PROG_SPIN_HDONE);
-        DebugBwStage(BW_PROG_SPIN_HDONE, 0);
 
         while (2 * static_cast<int32_t>(blockNum_) != ReadGmByPassDCache(bwFlagHDone_)) {
             const int64_t start = GetSystemCycle();
@@ -1495,21 +1433,15 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
             }
         }
 
-        DebugBwStage(BW_PROG_SPIN_HDONE, 1);
         if (!gmOutput) {
-            WriteBwProgress(BW_PROG_P4);
-            DebugBwStage(BW_PROG_P4, 0);
             if (params_.tilingData->transW) {
                 GMM2DWPhase<true>();
             } else {
                 GMM2DWPhase<false>();
             }
-            DebugBwStage(BW_PROG_P4, 1);
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
-        WriteBwProgress(BW_PROG_P5);
-        DebugBwStage(BW_PROG_P5, 0);
         // P3/P4 use all AICs for non-empty expert DW.  Use all paired AIVs for
         // the complementary empty-expert zero fill so no single core clears a
         // complete weight plane and the writes overlap the AIC GEMMs.
@@ -1531,16 +1463,12 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         unpermutePipe.Destroy();
         SyncAll<true>();
 
-        DebugBwStage(BW_PROG_P5, 1);
-
         // ptrD held routed dX until every source rank completed P5.  A local
         // barrier alone cannot make that region safe to overwrite: first drain
         // all local readers, then establish the cross-rank happens-before edge.
 
         CrossRankSyncInWorldSize();
 
-        WriteBwProgress(BW_PROG_P6);
-        DebugBwStage(BW_PROG_P6, 0);
         TPipe topkGradPipe;
         TopkGradBuffInit(&topkGradPipe);
 
@@ -1558,7 +1486,6 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
 
-        DebugBwStage(BW_PROG_P6, 1);
         // Last table reader (ReduceAndRouteTopkGrad) is done and no peer
         // writes this rank's table inside the backward kernel. Re-zero the
         // window table, then use the exit device barrier to prevent peers from

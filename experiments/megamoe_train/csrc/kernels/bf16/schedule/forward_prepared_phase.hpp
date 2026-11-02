@@ -65,16 +65,10 @@ struct View {
         s = sources;
         c = cores;
         p = producers;
-#if !defined(FPP_HOST_TEST) && (!defined(DEEPEP_BF16_GMM1_AUTO_SELECT) || !DEEPEP_BF16_GMM1_AUTO_SELECT)
-        return;
-#endif
         if (!f || !z || !mode || cap > 0x7FFFFFFFULL || !e || e > 7U || !s || s > 256U || !p || p > c ||
             (c != 28U && c != 32U && c != 36U) || s * p > 256U)
             return;
         size = Min(s, c / p);
-#if defined(FPP_FORCE_GROUP_TWO)
-        size = Min(size, 2U);
-#endif
         groups = Ceil(s, size);
         if (groups > 10U) return;
         totalProducers = s * p;

@@ -83,7 +83,6 @@ struct ForwardWorkspaceInfo {
     GM_ADDR ptrSavedUpLow{nullptr};
     GM_ADDR ptrSavedUpHigh{nullptr};
     GM_ADDR ptrSavedTokenPerExpert;
-    GM_ADDR ptrBwProgress;
     int64_t workspaceSize;
     int64_t savedStateSize;
     int64_t transientWorkspaceSize;
@@ -118,7 +117,6 @@ struct ForwardWorkspaceInfo {
         ptrDispatchedTopkWeights = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(SIZE_BF_16 * tilingData->maxOutputSize, ALIGN_512);
         ptrSavedTokenPerExpert = nullptr;
-        ptrBwProgress = nullptr;
         savedStateSize = 0;
         transientWorkspaceSize = workspaceSize;
     }
@@ -152,7 +150,6 @@ struct ForwardWorkspaceInfo {
         ptrSavedGateHigh = savedLayout.clipMaskKind ? savedStateBase + savedLayout.gateHighOffset : nullptr;
         ptrSavedUpLow = savedLayout.clipMaskKind ? savedStateBase + savedLayout.upLowOffset : nullptr;
         ptrSavedUpHigh = savedLayout.clipMaskKind ? savedStateBase + savedLayout.upHighOffset : nullptr;
-        ptrBwProgress = savedStateBase + savedLayout.backwardProgressOffset;
 
         ptrA2 = nullptr;
         ptrAScale = nullptr;
@@ -200,7 +197,7 @@ struct ForwardWorkspaceInfo {
     }
 };
 // Persistent view of the state retained by forward for the matching backward.
-// The data fields are read-only; only ptrBwProgress is diagnostic output.
+// The data fields are read-only; the reserved region preserves plane offsets.
 // Forward-only buffers deliberately remain null so backward cannot accidentally
 // depend on transient storage whose lifetime ended when forward returned.
 struct BackwardSavedStateInfo : ForwardWorkspaceInfo {

@@ -29,19 +29,13 @@
 using namespace AscendC;
 using namespace MegaMoeImpl;
 
-#if defined(ASCEND_MEGAMOE_USE_NEW_ASCENDC_FRONTEND)
-__mix__(1, 2)
-#endif
-    __global__ __aicore__
+__mix__(1, 2) __global__ __aicore__
     void mega_moe_bf16_backward(GM_ADDR context, GM_ADDR gradY, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
                                 GM_ADDR gradX, GM_ADDR gradTopkWeights, GM_ADDR gradWeight1, GM_ADDR gradWeight2,
                                 GM_ADDR trainingSavedState, GM_ADDR dispatchOutput, GM_ADDR backwardWorkspace,
                                 MegaMoeTilingData tilingData, uint32_t splitExperts)
 {
     InitSocState();
-#if !defined(ASCEND_MEGAMOE_USE_NEW_ASCENDC_FRONTEND)
-    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-#endif
     MegaMoeBF16Backward op;
     op.Init(context, gradY, topkWeights, weight1, weight2, gradX, gradTopkWeights, gradWeight1, gradWeight2,
             trainingSavedState, dispatchOutput, backwardWorkspace, &tilingData, splitExperts);

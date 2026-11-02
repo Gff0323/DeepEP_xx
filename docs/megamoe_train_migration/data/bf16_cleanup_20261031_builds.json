@@ -1,0 +1,101 @@
+{
+  "base": "599edd45fe15d8c0e2a4044b4cac24cbf477d2a0",
+  "branch": "feat/megamoe-train-bf16-xx",
+  "candidate_patch_sha256": "1d28198820df3a891c346a815ef22fd0eac7f1452d17619e45412dc1cdd3c2d4",
+  "catlass": "2b4bd7cbf7e67ebab23d7d5a99d472c83f90d9a1",
+  "shmem": "4dd80e2129da42bd773982c2bb3758af1ed0bba8",
+  "source_files_normalized_lf_sha256": {
+    "build_support.py": "4b598f5e48bd1023d406296e57e64aa2f276c207319e8430dc3e24e0c7dc8145",
+    "experiments/megamoe_train/CMakeLists.txt": "6ff1d07e8c5bb323f918d25bbb53d28f034ca9aec7fb7e43378218eda38e407f",
+    "experiments/megamoe_train/README.md": "ce68222eea3d3cb03b7870228a0629cef05049b6e3570c72f75ed106f04f299a",
+    "experiments/megamoe_train/csrc/bf16/training.cpp": "356bf75658ac5727df55fccbc78960dbe98789eb5b20bc31c37aca9e428c2920",
+    "experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp": "2c4a5d0819632f35c65656c6a0f3927294f93fef1d0bf3617f8700c7618e07ef",
+    "experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp": "ee0c980a6ee6f8f08711bda39b78e20e69ac2de10badc7e738398af2997fed12",
+    "experiments/megamoe_train/csrc/kernels/bf16/common/op_kernel/math_util.h": "9205ea92379ab1d07ee5af523bf81496490153e75fbc48966864dc08c18a1645",
+    "experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp": "f63840f5db293bb7d7fc90c384c2f04a44a3444c6a3e0336b8a03d103ce51a43",
+    "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp": "d0305c0399232239465486cf48359b571f6360ee845a0505db0f2ce1feac5bac",
+    "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_topk_weight_gather_layout.hpp": "0f4d2bc524446934af546fce5f5a2ad8ed050d8c4d19175ee1c1b238de670fff",
+    "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_unpermute_layout.hpp": "13ea922bf3e682f4d45cd156a9333bec16fdeb3521d4a7e859ae890b55a65f60",
+    "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp": "2b1df35a4011ddd467aea11053a6dea56f1b11bcf73687ecaca77c1c6673a53a",
+    "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp": "c87a5e90ca4da4422ca5d62c12d37cc5fb04ba294b642ba1bd0a08825bf177b0",
+    "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp": "71c4cf77ca7f86bbbb1b7feed8f58ce5cc6d1ccf2fd5887a8b65420df6e44556",
+    "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp": "704df11e6026e5dac28ec4e6b06724c73a59483f220543bb6a5da382577091d9",
+    "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp": "cae2284045f2da94c17b6484677989dbccab3d8f18d3100affd62d13f4c9f248",
+    "experiments/megamoe_train/csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_v3_gather_out.h": "6eda6e94cddd9d355c864de989305bd7ed0d79b089d2664b7e96d739dcd7756b",
+    "experiments/megamoe_train/csrc/kernels/bf16/schedule/forward_prepared_phase.hpp": "b99195332840c9b3d459fded2a4c6812c38ae8084b617a70780fa10e76c4ccee",
+    "experiments/megamoe_train/docs/BF16_BACKWARD_DISPATCH_READY.md": "477446f13b5126e08aba8e96f1ca07a3260c499f3cb0ab4e612655c96d6bf636",
+    "experiments/megamoe_train/docs/BF16_DISPATCH_READY_DEFAULTS.md": "4031aa36df5191bc55d9afdcad3758d3f3d33658f44c9a7b105668b92cf51240",
+    "experiments/megamoe_train/docs/BF16_VECTOR_ROUTING_OPTIMIZATION.md": "5dd9c2ba34c60a045ce291c43b06dc27123e3c14900778f69b7f266a19ccf017",
+    "experiments/megamoe_train/tests/bf16/test_forward_swiglu_policy.cpp": "c50e4ee2855c07b7206dd0d8f6c33f94aab7f33439fee1f4098e82b73c207258",
+    "experiments/megamoe_train/tests/bf16/test_gmm1_schedule.py": "06cf7a17306154ed706ee5ad4e2fd3f34b766ae11bedf33f6bc2cc37ae9ed410",
+    "experiments/megamoe_train/tests/bf16/test_workspace_layout.py": "5b8527b9c5920f0921faf80bd193dcb8a14b9adfe439588bb8abcbe460eb7aa8",
+    "tests/runtime/test_build.py": "58826cf1c36e10a43e75cda4b175acf7f8b91dd0761a1ca4a1e405143485c6d2",
+    "tests/runtime/test_megamoe_train.py": "2f15cb8a1cc60482e754725c9c2d1443c83579374e1c376442a3f39351d1c8c5"
+  },
+  "precision_harness_sha256": "07b88db34079d8b5de62089a0efa948d7e69c859cdc6808652925e0811534478",
+  "cpp_layout_csv_sha256": "42ace0c794ebbdaa432dc5a5081c8aee25972a50b6b2c241127fc21396f4a6dd",
+  "cpu_python_passed": 106,
+  "host_cpp_passed": 4,
+  "builds": {
+    "default": {
+      "force_expert_ready": false,
+      "elapsed_seconds": 408,
+      "exit_code": 0,
+      "cann_version": "9.2.0",
+      "wheel_sha256": "d9160be398419a5aff51752f99cb978a4746a776ad138cc4a4ffde46924e8c3f",
+      "libraries_sha256": {
+        "deep_ep/_C.cpython-312-aarch64-linux-gnu.so": "a96525c63c3fb690b8034494bff405cf7f712b4b8501f5504a7d581af66b1835",
+        "deep_ep/libdeepep_kernels.so": "eca41d1d143145597251ce07c03b9f40f12336bf80c440b98a28b6a74c118c5c",
+        "deep_ep_experimental/megamoe_train/_C.cpython-312-aarch64-linux-gnu.so": "2cc84b132dc7e7f9bc279898b0ec753bb8de322074d07f96e9238710adf7501c",
+        "deep_ep_experimental/megamoe_train/libdeepep_megamoe_train_bf16.so": "e13b5d7d0336eefa2f3c642bd130ba785d5567216d1381d1378646e1891ab012"
+      }
+    },
+    "force": {
+      "force_expert_ready": true,
+      "elapsed_seconds": 318,
+      "exit_code": 0,
+      "cann_version": "9.2.0",
+      "wheel_sha256": "32978112b68aa9917df9d24a7c0c6e542d2e1c4e59f35b6b981cad100404a3a8",
+      "libraries_sha256": {
+        "deep_ep/_C.cpython-312-aarch64-linux-gnu.so": "5a4b0e6d09a0722e1d296e11d707603b025b5081a49a3cdf3e3d9aeea036a217",
+        "deep_ep/libdeepep_kernels.so": "eca41d1d143145597251ce07c03b9f40f12336bf80c440b98a28b6a74c118c5c",
+        "deep_ep_experimental/megamoe_train/_C.cpython-312-aarch64-linux-gnu.so": "ee34ce63376e6cd377fd5113e77f737cd7f4f0a9a013750072d1851c95df3823",
+        "deep_ep_experimental/megamoe_train/libdeepep_megamoe_train_bf16.so": "e157ac931bacc4d4447ec6c451ffaf6dee5b1a94d1632965725c0e0af9d6ef12"
+      }
+    }
+  },
+  "abi": {
+    "default_force_project_c_exports_equal": true,
+    "default_force_soname_equal": true,
+    "head_launch_header_exactly_unchanged": true
+  },
+  "before_cleanup_baseline": {
+    "source_head": "599edd45fe15d8c0e2a4044b4cac24cbf477d2a0",
+    "source_tracked_clean": true,
+    "full_wheel_build_passed": true,
+    "full_build_seconds": 330,
+    "wheel_sha256": "73d0142a4650f34202b8e5d5bca1720016196b0b1c5b0330cf9827c159d9af1c",
+    "libraries_sha256": {
+      "deep_ep/_C.cpython-312-aarch64-linux-gnu.so": "9766581724fada978d00a8d5142ab67ccc01169beb618cab0c1757003aa6b224",
+      "deep_ep/libdeepep_kernels.so": "eca41d1d143145597251ce07c03b9f40f12336bf80c440b98a28b6a74c118c5c",
+      "deep_ep_experimental/megamoe_train/_C.cpython-312-aarch64-linux-gnu.so": "671d9332ce4204fa3d31fb475fe298accd475768dc8abc395a9f1b8ae7c78c10",
+      "deep_ep_experimental/megamoe_train/libdeepep_megamoe_train_bf16.so": "96bd61a84af845792aaefc5860c7419282bf1fdd97b1d25db057c82a4679ad27"
+    },
+    "h3584_device_ab_executed": true,
+    "comparison_result_file": "bf16_cleanup_h3584_ab_20261031.json"
+  },
+  "previously_prepared_before_cleanup_baseline": {
+    "source_head": "599edd45fe15d8c0e2a4044b4cac24cbf477d2a0",
+    "source_tracked_clean": true,
+    "full_wheel_build_passed": true,
+    "full_build_seconds": 337,
+    "wheel_sha256": "efe4aa75605ee0452d89036cf41e39487c89b5fefd5428bf4fb00388c5db0e4d",
+    "device_so": {
+      "deep_ep_experimental/megamoe_train/libdeepep_megamoe_train_bf16.so": "96bd61a84af845792aaefc5860c7419282bf1fdd97b1d25db057c82a4679ad27"
+    },
+    "cann": {
+      "timestamp": "20261015_201912253",
+      "version": "9.2.0"
+    }
+  }
+}

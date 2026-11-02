@@ -92,3 +92,59 @@ def test_training_close_drains_stream_and_is_idempotent():
     close(op)
     close(op)
     assert calls == ["sync", "session-close", "op-close"] and op._closed
+
+
+def test_expert_ready_builds_use_distinct_cache_and_record_actual_policy(monkeypatch, tmp_path):
+    import json
+    import sys
+    from types import ModuleType
+
+    import build_support as build
+    from setuptools import Distribution, Extension
+
+    pybind11 = ModuleType("pybind11")
+    pybind11.get_cmake_dir = lambda: str(tmp_path / "pybind11")
+    monkeypatch.setitem(sys.modules, "pybind11", pybind11)
+    monkeypatch.setenv("DEEPEP_BUILD_EP_GMM_FUSED", "OFF")
+    monkeypatch.setenv("CMAKE_BUILD_PARALLEL_LEVEL", "2")
+    # Exercise the real build command and cache key without invoking SDK tools.
+    configuration = {
+        "megamoe_train": {"enabled": True, "force_expert_ready": False},
+        "source_sha256": "current",
+        "source_version": "1",
+        "cmake_path": "cmake",
+        "compiler_path": "c++",
+        "ASCEND_HOME_PATH": "/sdk/cann",
+        "SHMEM_ROOT": "/sdk/shmem",
+        "CATLASS_ROOT": "/sdk/catlass",
+        "build_type": "Release",
+    }
+    monkeypatch.setattr(build, "build_configuration", lambda: configuration)
+    configure_calls = []
+
+    def run(argv):
+        argv = list(map(str, argv))
+        if "-B" in argv:
+            configure_calls.append(argv)
+            directory = Path(argv[argv.index("-B") + 1])
+            (directory / "compiler-info.json").write_text('{"id":"test"}', encoding="utf-8")
+            (directory / "capabilities.json").write_text('{"capabilities":[]}', encoding="utf-8")
+
+    monkeypatch.setattr(build, "checked_run", run)
+    ext = Extension("deep_ep._C", sources=[])
+    for forced in (False, True):
+        configuration["megamoe_train"]["force_expert_ready"] = forced
+        command = build.CMakeBuild(Distribution({"ext_modules": [ext]}))
+        command.ensure_finalized()
+        command.build_temp = str(tmp_path / "temp")
+        command.build_lib = str(tmp_path / "lib")
+        destination = Path(command.get_ext_fullpath(ext.name)).parent
+        destination.mkdir(parents=True, exist_ok=True)
+        command.build_extension(ext)
+        args = configure_calls[-1]
+        assert f"-DDEEPEP_BF16_FORCE_EXPERT_READY={'ON' if forced else 'OFF'}" in args
+        assert "-DDEEPEP_BUILD_MEGAMOE_TRAIN=ON" in args
+        info = json.loads((destination / "_build_info.json").read_text(encoding="utf-8"))
+        assert info["megamoe_train"]["force_expert_ready"] is forced
+    object_directories = [args[args.index("-B") + 1] for args in configure_calls]
+    assert len(set(object_directories)) == 2

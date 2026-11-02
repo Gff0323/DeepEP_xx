@@ -8,6 +8,26 @@ using namespace MegaMoeBF16Training;
 
 int main()
 {
+    using Ready = ForwardDispatchTileReadyLayout;
+    static_assert(Ready::kComputeRows == 192);
+    static_assert(Ready::kReadyRows == 384);
+    static_assert(Ready::kMinReadyRowsPerExpert == 768);
+    // Fragments are intersections with a target expert's Ready384 block.
+    assert(Ready::FragmentRows(0, 900) == 384);
+    assert(Ready::FragmentRows(300, 500) == 84);
+    assert(Ready::FragmentRows(384, 300) == 300);
+    assert(Ready::FragmentRows(767, 10) == 1);
+    assert(Ready::FragmentRows(768, 0) == 0);
+    for (uint32_t row = 0; row < 3 * Ready::kReadyRows; ++row) {
+        for (uint32_t remaining : {0U, 1U, 83U, 192U, 383U, 384U, 385U, 900U}) {
+            const uint32_t fragment = Ready::FragmentRows(row, remaining);
+            assert(fragment <= remaining);
+            assert(row / Ready::kReadyRows == (row + fragment - (fragment != 0)) / Ready::kReadyRows);
+            if (fragment < remaining) {
+                assert((row + fragment) % Ready::kReadyRows == 0);
+            }
+        }
+    }
     for (uint64_t hidden : {256ULL, 3072ULL, 3583ULL, 3584ULL, 3585ULL, 4096ULL, 5120ULL, 6144ULL, 7168ULL}) {
         for (uint32_t saved : {kSaveNone, kSaveBf16, kSaveMxFp8}) {
             assert(!ForwardUsesGmSwiglu(hidden, saved, 0));

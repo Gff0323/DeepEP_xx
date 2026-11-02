@@ -17,21 +17,14 @@
 #include "catlass/catlass.hpp"
 #include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
-// CATLASS 48f7461 pulls in unused W4A8 VF members rejected by CANN 9.2.
-// BF16 needs neither the W4A8 prologue nor its MMAD specialization.
-// Keep this workaround local to BF16; see the stable-forward integration doc.
-#define CATLASS_GEMM_BLOCK_MX_A8W4_PROLOGUE_HPP
-#define CATLASS_GEMM_BLOCK_MMAD_A8W4_MX_HPP
-// The pinned CATLASS aggregate also parses unused HSTU templates whose
-// unqualified tuple helpers collide with AscendC::Std under CANN 9.2 beta.
-// Exclude only those unused specializations in this BF16 translation unit.
+// CATLASS 2b4 and CANN 9.2 still parse unused HSTU templates whose
+// unqualified tuple helpers collide with AscendC::Std. Exclude only those
+// unused specializations in this BF16 translation unit.
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_QK_SPLIT_ROW_TLA_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_PV_SPLIT_ROW_TLA_HPP
 #include "catlass/gemm/block/block_mmad.hpp"
 #undef CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_PV_SPLIT_ROW_TLA_HPP
 #undef CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_QK_SPLIT_ROW_TLA_HPP
-#undef CATLASS_GEMM_BLOCK_MMAD_A8W4_MX_HPP
-#undef CATLASS_GEMM_BLOCK_MX_A8W4_PROLOGUE_HPP
 #include "catlass/gemm/block/block_swizzle.hpp"
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/gemm_type.hpp"
@@ -67,7 +60,6 @@ constexpr uint32_t SWIGLU_N_HALF = 2;
 constexpr uint32_t MAX_SINGLE_MN = L1_TILE_M * L1_TILE_N;
 constexpr uint32_t GMM1_TILE_M = MegaMoeBF16Training::ForwardDispatchTileReadyLayout::kComputeRows;
 constexpr uint32_t GMM1_TILE_ELEMENTS = GMM1_TILE_M * L1_TILE_N;
-#if defined(DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE) && DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE
 __aicore__ inline void ConsiderGmm1NStripeWidth(uint32_t width, uint32_t lanes, uint32_t mTiles, uint32_t nTiles,
                                                 uint32_t minWaveColumns, uint32_t& bestWidth,
                                                 uint32_t& bestAddressUnits, uint32_t& bestBRun)
@@ -136,7 +128,6 @@ __aicore__ inline Catlass::GemmCoord GetGmm1AdaptiveNStripeCoord(uint32_t taskId
     return Catlass::GemmCoord{taskInStripe / actualWidth, stripeStart + taskInStripe % actualWidth, 0};
 }
 
-#if defined(DEEPEP_BF16_GMM1_READY_FIRST) && DEEPEP_BF16_GMM1_READY_FIRST
 __aicore__ inline uint32_t GetGmm1ReadyFirstMTile(uint32_t mOrdinal, uint32_t mTiles,
                                                   uint32_t readyBlocksPerProducerPartition)
 {
@@ -174,8 +165,6 @@ __aicore__ inline Catlass::GemmCoord GetGmm1AdaptiveReadyFirstCoord(uint32_t tas
     return Catlass::GemmCoord{GetGmm1ReadyFirstMTile(mOrdinal, mTiles, readyBlocksPerProducerPartition),
                               stripeStart + taskInStripe % actualWidth, 0};
 }
-#endif
-#endif
 static_assert(2U * GMM1_TILE_ELEMENTS * sizeof(bfloat16_t) <= ArchTag::UB_SIZE,
               "The two BF16 GMM1 output tiles must fit in A5 UB");
 
@@ -219,90 +208,7 @@ public:
     static constexpr uint32_t kTileRows = GmmIndex == 0 ? GMM1_TILE_M : L1_TILE_M;
     using CatlassBlockMmad = Catlass::Gemm::Block::BlockMmadTla<DispatchPolicy, MmadL1TileShape, MmadL0TileShape,
                                                                 bfloat16_t, bfloat16_t, bfloat16_t, void, TileCopy>;
-#if defined(DEEPEP_MEGA_MOE_BF16_MGROUP_DISTINCT_MMAD_EVENTS)
-    class BlockMmad : public CatlassBlockMmad {
-    public:
-        using Base = CatlassBlockMmad;
-        static constexpr int32_t EVENT_ID_OFFSET = GmmIndex == 0 ? 0 : 4;
-        static_assert(Base::L1A_STAGES + Base::L1B_STAGES + EVENT_ID_OFFSET <= 8,
-                      "MGroup L1 event IDs exceed the hardware range");
-        static_assert(Base::L0A_STAGES + Base::L0B_STAGES + EVENT_ID_OFFSET <= 8,
-                      "MGroup L0 event IDs exceed the hardware range");
-
-        CATLASS_DEVICE explicit BlockMmad(Catlass::Arch::Resource<ArchTag>& resource) : Base(resource)
-        {
-            if ASCEND_IS_AIC {
-                if constexpr (EVENT_ID_OFFSET != 0) {
-                    RemapEvents();
-                }
-            }
-        }
-
-        // Both persistent MMAD objects share the same physical L1/L0 space.
-        // Drain the current owner's pipeline before the other object starts,
-        // then re-arm its private event set for the next wave.
-        CATLASS_DEVICE void HandoffSharedLocalMemory()
-        {
-            if ASCEND_IS_AIC {
-                WaitEvents();
-                SetEvents();
-            }
-        }
-
-    private:
-        CATLASS_DEVICE void RemapEvents()
-        {
-            WaitEvents();
-            for (uint32_t i = 0; i < Base::L1A_STAGES; ++i) {
-                this->l1AEventList[i] += EVENT_ID_OFFSET;
-            }
-            for (uint32_t i = 0; i < Base::L1B_STAGES; ++i) {
-                this->l1BEventList[i] += EVENT_ID_OFFSET;
-            }
-            for (uint32_t i = 0; i < Base::L0A_STAGES; ++i) {
-                this->l0AEventList[i] += EVENT_ID_OFFSET;
-            }
-            for (uint32_t i = 0; i < Base::L0B_STAGES; ++i) {
-                this->l0BEventList[i] += EVENT_ID_OFFSET;
-            }
-            SetEvents();
-        }
-
-        CATLASS_DEVICE void WaitEvents()
-        {
-            for (uint32_t i = 0; i < Base::L1A_STAGES; ++i) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(this->l1AEventList[i]);
-            }
-            for (uint32_t i = 0; i < Base::L1B_STAGES; ++i) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(this->l1BEventList[i]);
-            }
-            for (uint32_t i = 0; i < Base::L0A_STAGES; ++i) {
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(this->l0AEventList[i]);
-            }
-            for (uint32_t i = 0; i < Base::L0B_STAGES; ++i) {
-                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(this->l0BEventList[i]);
-            }
-        }
-
-        CATLASS_DEVICE void SetEvents()
-        {
-            for (uint32_t i = 0; i < Base::L1A_STAGES; ++i) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(this->l1AEventList[i]);
-            }
-            for (uint32_t i = 0; i < Base::L1B_STAGES; ++i) {
-                AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(this->l1BEventList[i]);
-            }
-            for (uint32_t i = 0; i < Base::L0A_STAGES; ++i) {
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(this->l0AEventList[i]);
-            }
-            for (uint32_t i = 0; i < Base::L0B_STAGES; ++i) {
-                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(this->l0BEventList[i]);
-            }
-        }
-    };
-#else
     using BlockMmad = CatlassBlockMmad;
-#endif
     using LayoutB = decltype(tla::MakeLayout<bfloat16_t, WeightLayout>(uint32_t{}, uint32_t{}));
     using LayoutC = decltype(tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(uint32_t{}, uint32_t{}));
 
@@ -379,23 +285,9 @@ __aicore__ inline void GroupMatmulSwiglu(
     const uint32_t startLoopIdx =
         (gmm1Params.blockIdx < startBlockIdx ? gmm1Params.blockIdx + gmm1Params.blockNum : gmm1Params.blockIdx) -
         startBlockIdx;
-#if defined(DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE) && DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE
     const uint32_t nStripeWidth = SelectGmm1NStripeWidth(m, gmm1Params.outputN, gmm1Params.blockNum);
-#if defined(DEEPEP_BF16_GMM1_AUTO_SELECT) && DEEPEP_BF16_GMM1_AUTO_SELECT
-    // Ordinary M192 uses the same adaptive N stripes for every expert.
-    // The isolated legacy path keeps its existing schedule selection.
-#if defined(DEEPEP_BF16_M192_FORWARD)
-    constexpr bool useAdaptiveSchedule = true;
-#else
-    const bool useAdaptiveSchedule = useTileReady;
-#endif
-#else
-    constexpr bool useAdaptiveSchedule = true;
-#endif
-#endif
 
     MegaMoeBF16ForwardSchedule::Schedule phaseSchedule;
-#if defined(DEEPEP_BF16_GMM1_AUTO_SELECT) && DEEPEP_BF16_GMM1_AUTO_SELECT
     MegaMoeBF16ForwardSchedule::View phaseView;
     phaseView.Init(gmmAddrInfo.groupFlagList2 - expertIdx,
                    reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.ptrcumsumMM),
@@ -404,7 +296,6 @@ __aicore__ inline void GroupMatmulSwiglu(
                    gmm1Params.blockNum, gmm1Params.dispatchBlockNumPerEP, params.tilingData->k);
     const bool active = g_coreType == AscendC::AIC || gmm1Params.subBlockIdx == 0;
     phaseSchedule.Init(phaseView, expertIdx, 0, m, gmm1Params.outputN, nStripeWidth, useTileReady && active);
-#endif
     bool dispatchExpertReady = false;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += gmm1Params.blockNum) {
         Catlass::GemmCoord blockCoord{0, 0, 0};
@@ -412,19 +303,12 @@ __aicore__ inline void GroupMatmulSwiglu(
             const auto xy = phaseSchedule.Get(loopIdx);
             blockCoord = Catlass::GemmCoord{xy.m, xy.n, 0};
         } else {
-#if defined(DEEPEP_BF16_GMM1_READY_FIRST) && DEEPEP_BF16_GMM1_READY_FIRST
             blockCoord =
-                nStripeWidth > 0 && useAdaptiveSchedule
+                nStripeWidth > 0
                     ? (useTileReady ? GetGmm1AdaptiveReadyFirstCoord(loopIdx, m, gmm1Params.outputN, nStripeWidth,
                                                                      readyBlocksPerProducerPartition)
                                     : GetGmm1AdaptiveNStripeCoord(loopIdx, m, gmm1Params.outputN, nStripeWidth))
                     : scheduler.GetBlockCoord(loopIdx);
-#elif defined(DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE) && DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE
-            blockCoord = nStripeWidth > 0 ? GetGmm1AdaptiveNStripeCoord(loopIdx, m, gmm1Params.outputN, nStripeWidth)
-                                          : scheduler.GetBlockCoord(loopIdx);
-#else
-            blockCoord = scheduler.GetBlockCoord(loopIdx);
-#endif
         }
         Catlass::GemmCoord actualShape = scheduler.GetActualBlockShape(blockCoord);
         const uint32_t mLoc = blockCoord.m() * GMM1_TILE_M;
@@ -434,13 +318,13 @@ __aicore__ inline void GroupMatmulSwiglu(
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
             }
-            // Streaming mode checks each task's input because static swizzling
-            // can visit non-adjacent M tiles. The default expert mode waits
-            // for the whole expert and removes all later input polling.
+            // Automatic readiness checks each task's input when tile-ready is
+            // selected, since static swizzling can visit non-adjacent M tiles.
+            // FORCE_EXPERT_READY waits once for this expert's complete input.
             if constexpr (DispatchTileReady && WaitForFullExpert) {
-                // Expert mode publishes only partition completion. The row
-                // counter layout is still reserved for the opt-in streaming
-                // mode; wait on the separate expert-completion counter once.
+                // Forced expert mode publishes partition completion only.
+                // The row-counter storage remains allocated; this path waits
+                // once on the separate expert-completion counter.
                 if (loopIdx == startLoopIdx) {
                     __gm__ int32_t* expertFlag =
                         reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.ptrFlagDispatchToGmm1) +
@@ -576,20 +460,7 @@ __aicore__ inline void GroupMatmulSwigluGm(
     const uint32_t startLoopIdx =
         (gmm1Params.blockIdx < startBlockIdx ? gmm1Params.blockIdx + gmm1Params.blockNum : gmm1Params.blockIdx) -
         startBlockIdx;
-#if defined(DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE) && DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE
     const uint32_t nStripeWidth = SelectGmm1NStripeWidth(m, gmm1Params.outputN, gmm1Params.blockNum);
-#if defined(DEEPEP_BF16_GMM1_AUTO_SELECT) && DEEPEP_BF16_GMM1_AUTO_SELECT
-    // Ordinary M192 uses the same adaptive N stripes for every expert.
-    // The isolated legacy path keeps its existing schedule selection.
-#if defined(DEEPEP_BF16_M192_FORWARD)
-    constexpr bool useAdaptiveSchedule = true;
-#else
-    const bool useAdaptiveSchedule = useTileReady;
-#endif
-#else
-    constexpr bool useAdaptiveSchedule = true;
-#endif
-#endif
 
     // Word 1 publishes raw Gate/Up readiness; ResetWorkSpaceFlagList clears this
     // entire cache line before Dispatch. Word 0 remains the Hp task counter.
@@ -626,7 +497,6 @@ __aicore__ inline void GroupMatmulSwigluGm(
     auto gmUp = tla::MakeTensor(savedUp, gmLayout, Catlass::Arch::PositionGM{});
 
     MegaMoeBF16ForwardSchedule::Schedule phaseSchedule;
-#if defined(DEEPEP_BF16_GMM1_AUTO_SELECT) && DEEPEP_BF16_GMM1_AUTO_SELECT
     MegaMoeBF16ForwardSchedule::View phaseView;
     phaseView.Init(gmmAddrInfo.groupFlagList2 - expertIdx,
                    reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.ptrcumsumMM),
@@ -635,7 +505,6 @@ __aicore__ inline void GroupMatmulSwigluGm(
                    gmm1Params.blockNum, gmm1Params.dispatchBlockNumPerEP, params.tilingData->k);
     const bool active = g_coreType == AscendC::AIC || gmm1Params.subBlockIdx == 0;
     phaseSchedule.Init(phaseView, expertIdx, 0, m, gmm1Params.outputN, nStripeWidth, useTileReady && active);
-#endif
     bool dispatchExpertReady = false;
     for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += gmm1Params.blockNum) {
         Catlass::GemmCoord blockCoord{0, 0, 0};
@@ -643,19 +512,12 @@ __aicore__ inline void GroupMatmulSwigluGm(
             const auto xy = phaseSchedule.Get(loopIdx);
             blockCoord = Catlass::GemmCoord{xy.m, xy.n, 0};
         } else {
-#if defined(DEEPEP_BF16_GMM1_READY_FIRST) && DEEPEP_BF16_GMM1_READY_FIRST
             blockCoord =
-                nStripeWidth > 0 && useAdaptiveSchedule
+                nStripeWidth > 0
                     ? (useTileReady ? GetGmm1AdaptiveReadyFirstCoord(loopIdx, m, gmm1Params.outputN, nStripeWidth,
                                                                      readyBlocksPerProducerPartition)
                                     : GetGmm1AdaptiveNStripeCoord(loopIdx, m, gmm1Params.outputN, nStripeWidth))
                     : scheduler.GetBlockCoord(loopIdx);
-#elif defined(DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE) && DEEPEP_BF16_GMM1_ADAPTIVE_NSTRIPE
-            blockCoord = nStripeWidth > 0 ? GetGmm1AdaptiveNStripeCoord(loopIdx, m, gmm1Params.outputN, nStripeWidth)
-                                          : scheduler.GetBlockCoord(loopIdx);
-#else
-            blockCoord = scheduler.GetBlockCoord(loopIdx);
-#endif
         }
         Catlass::GemmCoord actualShape = scheduler.GetActualBlockShape(blockCoord);
         const uint32_t mLoc = blockCoord.m() * GMM1_TILE_M;
@@ -665,13 +527,13 @@ __aicore__ inline void GroupMatmulSwigluGm(
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
             }
-            // Streaming mode checks each task's input because static swizzling
-            // can visit non-adjacent M tiles. The default expert mode waits
-            // for the whole expert and removes all later input polling.
+            // Automatic readiness checks each task's input when tile-ready is
+            // selected, since static swizzling can visit non-adjacent M tiles.
+            // FORCE_EXPERT_READY waits once for this expert's complete input.
             if constexpr (DispatchTileReady && WaitForFullExpert) {
-                // Expert mode publishes only partition completion. The row
-                // counter layout is still reserved for the opt-in streaming
-                // mode; wait on the separate expert-completion counter once.
+                // Forced expert mode publishes partition completion only.
+                // The row-counter storage remains allocated; this path waits
+                // once on the separate expert-completion counter.
                 if (loopIdx == startLoopIdx) {
                     __gm__ int32_t* expertFlag =
                         reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.ptrFlagDispatchToGmm1) +

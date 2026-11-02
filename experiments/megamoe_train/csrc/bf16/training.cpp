@@ -390,6 +390,10 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
     TORCH_CHECK(static_cast<std::size_t>(trainingSavedState.numel()) * trainingSavedState.element_size() >=
                     savedStateLayout.totalBytes,
                 "MegaMoe BF16 training_saved_state is too small: need ", savedStateLayout.totalBytes, " bytes");
+#if DEEPEP_BF16_FORCE_EXPERT_READY
+    // This build policy takes precedence over the diagnostic split override.
+    const uint32_t splitExperts = 0;
+#else
     uint32_t splitExperts = MegaMoeBF16Training::DefaultBackwardDispatchSplitExperts(
         tiling.savedGateUpMode, static_cast<uint32_t>(expertPerRank));
     // Explicit k is a diagnostic override; none still forces k=0 below.
@@ -406,16 +410,9 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
         }
     }
     if (!MegaMoeBF16Training::BackwardUsesGm(tiling.savedGateUpMode)) splitExperts = 0;
+#endif
     const MegaMoeBF16BackwardWorkspaceLayout backwardLayout(tiling, splitExperts);
     auto backwardWorkspace = AllocateBackwardWorkspace(backwardLayout, gradY);
-    // Re-zero the 1 KiB backward progress region (indexed by blockIdx%256)
-    // so a hung kernel can be localized from the last phase marker.
-    trainingSavedState
-        .narrow(0, static_cast<int64_t>(savedStateLayout.backwardProgressOffset),
-                static_cast<int64_t>(MegaMoeBF16Training::AlignUp(
-                    MegaMoeBF16Training::kBackwardProgressElements * MegaMoeBF16Training::kInt32Bytes,
-                    MegaMoeBF16Training::kAlignment128)))
-        .zero_();
 
     // P2 writes every gradX token row and P6 writes every TopK route exactly
     // once.  The backward kernel likewise overwrites every non-empty expert's

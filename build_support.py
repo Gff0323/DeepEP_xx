@@ -198,6 +198,9 @@ def build_configuration(environment=None):
     if env.get("DEEPEP_NPU_ARCH") != "Ascend950":
         raise RuntimeError("DEEPEP_NPU_ARCH must be Ascend950; other targets are unqualified")
     train = enabled("DEEPEP_BUILD_MEGAMOE_TRAIN", env)
+    force_expert_ready = enabled("DEEPEP_BF16_FORCE_EXPERT_READY", env)
+    if force_expert_ready and not train:
+        raise RuntimeError("DEEPEP_BF16_FORCE_EXPERT_READY requires DEEPEP_BUILD_MEGAMOE_TRAIN=ON")
     beta = env.get("DEEPEP_BUILD_MEGAMOE", "OFF")
     timer = env.get("DEEPEP_MEGAMOE_TIMER", "OFF")
     if beta not in {"ON", "OFF"} or timer not in {"ON", "OFF"}:
@@ -283,8 +286,9 @@ def build_configuration(environment=None):
     result["compiler_path"] = compiler
     result["megamoe_train"] = {
         "enabled": train,
+        "force_expert_ready": force_expert_ready,
         "source_commit": "b8cff14854d12aef77b6ae54b5890123759b4d28",
-        "gmm1_schedule": "adaptive-auto",
+        "gmm1_schedule": "expert-ready" if force_expert_ready else "adaptive-auto",
         "swiglu_decouple": "auto",
     }
     result["megamoe"] = {"enabled": beta == "ON", "timer": timer == "ON"}
@@ -373,6 +377,8 @@ class VariantBuild(ConfiguredBuild):
         variant = "megamoe-timer" if beta and timer else ("megamoe" if beta else "core")
         if enabled("DEEPEP_BUILD_MEGAMOE_TRAIN"):
             variant += "-megamoe-train"
+            if enabled("DEEPEP_BF16_FORCE_EXPERT_READY"):
+                variant += "-expert-ready"
         self.build_base = str(Path(self.build_base) / variant)
         super().finalize_options()
 
@@ -419,6 +425,7 @@ class CMakeBuild(build_ext):
             f"-DDEEPEP_MEGAMOE_TIMER={'ON' if megamoe.get('timer', False) else 'OFF'}",
             f"-DCATLASS_ROOT={configuration.get('CATLASS_ROOT', '')}",
             f"-DDEEPEP_BUILD_MEGAMOE_TRAIN={'ON' if configuration.get('megamoe_train', {}).get('enabled', False) else 'OFF'}",
+            f"-DDEEPEP_BF16_FORCE_EXPERT_READY={'ON' if configuration.get('megamoe_train', {}).get('force_expert_ready', False) else 'OFF'}",
             f"-DDEEPEP_BUILD_EP_GMM_FUSED={'ON' if ep_gmm_fused else 'OFF'}",
             f"-DCMAKE_INSTALL_PREFIX={destination}",
         ]

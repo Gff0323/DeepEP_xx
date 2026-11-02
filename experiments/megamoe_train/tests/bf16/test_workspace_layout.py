@@ -394,21 +394,6 @@ def test_saved_weight_layout_default_and_odd_capacity() -> None:
             ) + 1024 + 2 * align_bytes(rows * 256 * 2)
 
 
-def test_saved_weight_reference_uses_source_permutations_and_empty_experts() -> None:
-    import numpy as np
-    from test_mega_moe import packed_weight_reference
-
-    ids = [np.array([2, 0, 2, 0]), np.array([0, 2, 0, 2])]
-    weights = [
-        np.array([0x3F00, 0x3F01, 0x3F02, 0x3F03], dtype=np.uint16),
-        np.array([0x3E00, 0x3E01, 0x3E02, 0x3E03], dtype=np.uint16),
-    ]
-    # Equal-expert sort order is intentionally different on the two sources.
-    orders = [np.array([3, 1, 2, 0]), np.array([0, 2, 1, 3])]
-    assert packed_weight_reference(ids, weights, orders, 0, 2).tolist() == [0x3F03, 0x3F01, 0x3E00, 0x3E02]
-    assert packed_weight_reference(ids, weights, orders, 1, 2).tolist() == [0x3F02, 0x3F00, 0x3E01, 0x3E03]
-
-
 def test_bf16_gmm_ping_pong_tiles_fit_a5_ub() -> None:
     one_tile_bytes = BF16_TILE_M * BF16_TILE_N * BF16_BYTES
     assert one_tile_bytes == 64 * 1024

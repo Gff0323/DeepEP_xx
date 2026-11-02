@@ -106,14 +106,7 @@ public:
         if constexpr (SaveMode != MegaMoeBF16Training::kSaveNone) {
             SaveGateUp<SaveMode>(singleM, singleN, Get<0>(blockCoord));
         }
-#if defined(DEEPEP_BF16_M192_FORWARD)
         ComputeSwigluDirect(singleM, singleN, tileRow);
-#else
-        ComputeSwiglu(singleM, singleN);
-        if constexpr (ApplyTopkWeight_) {
-            ApplyTopkWeight(singleM, singleN, tileRow);
-        }
-#endif
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
@@ -165,7 +158,7 @@ private:
         // BF16 mode retains the validated serial save path with or without clipping.
         // WaitForCube in the caller has completed both Fixpipe input tiles.
         // Save raw BF16 gate/up before clipping, activation, or route weighting.
-        // DataCopyPad uses the same aligned UB row stride as ComputeSwiglu.
+        // DataCopyPad uses the same aligned UB row stride as ComputeSwigluDirect.
         AscendC::SyncFunc<AscendC::HardEvent::V_MTE3>();
         AscendC::DataCopyExtParams copyParams{mSize, static_cast<uint32_t>(nSize * sizeof(bfloat16_t)), 0,
                                               static_cast<uint32_t>((outputN_ - nSize) * sizeof(bfloat16_t)), 0};
@@ -246,103 +239,6 @@ private:
                         gate + row * stride + col, output, mask);
                 }
             }
-        }
-    }
-
-    __aicore__ inline void ComputeSwiglu(uint16_t mSize, uint16_t nSize)
-    {
-        constexpr uint16_t kElementsPerRepeat = 256U / sizeof(bfloat16_t);
-        const uint16_t repeatsPerRow = static_cast<uint16_t>(
-            Ops::Base::CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(kElementsPerRepeat)));
-        const uint32_t rowStride = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(bfloat16_t)));
-        constexpr float kOne = 1.0F;
-        const float limit = params_.swigluLimit;
-        // The disabled limit (FLT_MAX) makes the clamps numerical no-ops;
-        // skip them entirely so the unlimited path pays nothing extra.
-        const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
-        __ubuf__ bfloat16_t* first = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
-        __ubuf__ bfloat16_t* second = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
-
-        __VEC_SCOPE__
-        {
-            for (uint16_t row = 0; row < mSize; ++row) {
-                uint32_t remaining = nSize;
-                for (uint16_t repeat = 0; repeat < repeatsPerRow; ++repeat) {
-                    AscendC::Reg::MaskReg mask = AscendC::Reg::UpdateMask<bfloat16_t>(remaining);
-                    AscendC::Reg::RegTensor<float> oneReg, limitReg, negLimitReg;
-                    if (limitEnabled) {
-                        AscendC::Reg::Duplicate(oneReg, kOne, mask);
-                        AscendC::Reg::Muls(limitReg, oneReg, limit, mask);
-                        AscendC::Reg::Muls(negLimitReg, oneReg, -limit, mask);
-                    }
-                    AscendC::Reg::RegTensor<bfloat16_t> gate0, gate1, up0, up1;
-                    AscendC::Reg::RegTensor<float> gateFp0, gateFp1, upFp0, upFp1;
-                    const uint32_t offset = row * rowStride + repeat * kElementsPerRepeat;
-                    AscendC::Reg::DataCopy(gate0, first + offset);
-                    AscendC::Reg::DataCopy(up0, second + offset);
-                    AscendC::Reg::Interleave(gate0, gate1, gate0, gate1);
-                    AscendC::Reg::Interleave(up0, up1, up0, up1);
-                    AscendC::Reg::Cast<float, bfloat16_t, kCastBF16ToFP32>(gateFp0, gate0, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kCastBF16ToFP32>(gateFp1, gate1, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kCastBF16ToFP32>(upFp0, up0, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kCastBF16ToFP32>(upFp1, up1, mask);
-
-                    constexpr uint16_t kParts = sizeof(float) / sizeof(bfloat16_t);
-                    constexpr uint16_t kPartSize = kElementsPerRepeat / kParts;
-                    for (uint16_t part = 0; part < kParts; ++part) {
-                        auto gateFp = part == 0 ? gateFp0 : gateFp1;
-                        auto upFp = part == 0 ? upFp0 : upFp1;
-                        AscendC::Reg::RegTensor<float> neg, exp, denom, silu, swigluFp;
-                        AscendC::Reg::RegTensor<bfloat16_t> output;
-                        // dsv4 swiglu_limit clamp (matches the eager path):
-                        // gate = min(gate, L); up = clamp(up, -L, L).
-                        // Skipped entirely when the limit is disabled.
-                        if (limitEnabled) {
-                            AscendC::Reg::Min(gateFp, gateFp, limitReg, mask);
-                            AscendC::Reg::Max(upFp, upFp, negLimitReg, mask);
-                            AscendC::Reg::Min(upFp, upFp, limitReg, mask);
-                        }
-                        AscendC::Reg::Muls(neg, gateFp, -kOne, mask);
-                        AscendC::Reg::Exp(exp, neg, mask);
-                        AscendC::Reg::Adds(denom, exp, kOne, mask);
-                        AscendC::Reg::Div<float, &kDivMode>(silu, gateFp, denom, mask);
-                        AscendC::Reg::Mul(swigluFp, silu, upFp, mask);
-                        AscendC::Reg::Cast<bfloat16_t, float, kCastFP32ToBF16>(output, swigluFp, mask);
-                        AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                            first + offset + part * kPartSize, output, mask);
-                    }
-                }
-            }
-        }
-    }
-
-    __aicore__ inline void ApplyTopkWeight(uint16_t mSize, uint16_t nSize, uint32_t tileRow)
-    {
-        const uint32_t rowStride = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(nSize), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(bfloat16_t)));
-
-        // Preserve the validated numerical order:
-        // BF16(SwiGLU_FP32) * BF16(route_weight) -> BF16.
-        AscendC::SyncFunc<AscendC::HardEvent::V_S>();
-        for (uint16_t row = 0; row < mSize; ++row) {
-#if defined(DEEPEP_BF16_M192_FORWARD)
-            // Dispatch can update a cache line previously read for another expert.
-            union {
-                uint16_t bits;
-                bfloat16_t value;
-            } freshWeight;
-            freshWeight.bits =
-                AscendC::ReadGmByPassDCache(const_cast<__gm__ uint16_t*>(reinterpret_cast<const __gm__ uint16_t*>(
-                                                routedTopkWeightGlobal_.GetPhyAddr())) +
-                                            tileRow + row);
-            const bfloat16_t rowWeight = freshWeight.value;
-#else
-            const bfloat16_t rowWeight = routedTopkWeightGlobal_.GetValue(tileRow + row);
-#endif
-            AscendC::SyncFunc<AscendC::HardEvent::S_V>();
-            AscendC::Muls(l0cOutUbFirst_[static_cast<uint32_t>(row) * rowStride],
-                          l0cOutUbFirst_[static_cast<uint32_t>(row) * rowStride], rowWeight, nSize);
         }
     }
 

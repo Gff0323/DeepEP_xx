@@ -5,16 +5,14 @@ GMM1, SwiGLU, GMM2 and combine, with an autograd backward for `x`, routing
 weights, `w1` and `w2`. Integer expert IDs and expert counts are not differentiable.
 It is designed for **Ascend950**. Other Ascend generations are unsupported.
 
-The BF16 source is frozen at **b8cff148**, not a moving `train` branch. See
-[provenance](NOTICE.md), [migration plan (中文)](../../docs/megamoe_train_migration/实施与分工方案.md),
-[initial migration validation](../../docs/megamoe_train_migration/首轮迁移验收.md) and
-[numerical semantics](docs/BF16_SWIGLU_NUMERICS.md).
-The current API, code architecture, autograd bridge and resource lifetime are
-described in the [framework design (中文)](../../docs/megamoe_train_migration/BF16_FRAMEWORK_DESIGN_ZH.md).
+The initial BF16 implementation derives from **b8cff148**. See
+[provenance](NOTICE.md) for attribution and
+[numerical semantics](docs/BF16_SWIGLU_NUMERICS.md) for the computation contract.
+The API, code architecture, autograd bridge and resource lifetime are described
+in the [framework design (中文)](docs/BF16_FRAMEWORK_DESIGN_ZH.md).
 This is a separate training component alongside `experiments/megamoe` (inference).
-BF16 has its own Host directory, Python module, kernels and tests. Future
-quantized training variants belong in this component and can add peer
-implementations when available; this BF16 import does not implement them.
+BF16 has its own Host directory, Python module, kernels and tests. Quantized
+training implementations are not provided by this component.
 
 Device headers use `.hpp` and are grouped by responsibility under
 `csrc/kernels/bf16`: `catlass`, `epilogue`, `layout`, `schedule`, `routing` and
@@ -22,7 +20,7 @@ Device headers use `.hpp` and are grouped by responsibility under
 headers. Imported routing sources live under `routing/moe_init_routing_v3`;
 SDK headers keep their original `.h` names. Host-only tiling helpers live in
 `csrc/bf16`. Forward-only implementations use names matching their backward
-counterparts; the public training interface remains `MegaMoeBF16Train`.
+counterparts; the public training interface is `MegaMoeBF16Train`.
 
 ## Build and installation
 
@@ -47,8 +45,25 @@ The training option defaults to OFF. It is independent of
 `DEEPEP_BUILD_MEGAMOE` and `DEEPEP_BUILD_EP_GMM_FUSED`. Use a wheel, not an editable
 installation. The root lock file selects CATLASS and SHMEM; training does not
 embed another SHMEM or load the inference kernel SO. No CATCCOS is required.
+
+`DEEPEP_BF16_FORCE_EXPERT_READY` is the single forward/backward dispatch fallback
+build option. It accepts `ON` or `OFF` as an environment variable in the wheel
+build, or as a CMake option (`-DDEEPEP_BF16_FORCE_EXPERT_READY=ON`). The default is
+`OFF`, using M192/Ready384 forward dispatch and the saved-mode backward
+row-ready policy. `ON` makes both directions wait for complete-expert dispatch:
+forward disables tile-ready metadata and backward uses `splitExperts=0`.
+The build supplies the same C++ value (`0` or `1`) to Host and Device.
+The forced build takes precedence over the runtime
+`MEGAMOE_BF16_BWD_DISPATCH_SPLIT_EXPERTS` override; changing that variable cannot
+re-enable backward splitting. SwiGLU selection and saved formats are independent
+of this option. For example, set `export DEEPEP_BF16_FORCE_EXPERT_READY=ON` before
+the wheel build above to build the fallback.
+
 Rebuild and reinstall the complete wheel after changing Host or device sources;
 the Host extension and device library must come from the same build.
+All EP ranks must use the same build and readiness option. Both readiness modes
+use `MegaMoeBF16Train`, the `_C` Host extension and
+`libdeepep_megamoe_train_bf16.so`.
 Set runtime SDK library paths to the same SHMEM/CANN used for the wheel.
 The installed `deep_ep/_build_info.json` records the actual build inputs.
 Avoid empty entries (including a trailing colon) in `PYTHONPATH`: they add the
@@ -76,18 +91,18 @@ op.close()  # collective, before destroying ep_group
 ```
 
 Pass an existing ProcessGroup or a `deep_ep` StoreGroup as `ep_group`; the
-caller owns that group. The source `ShmemInstance` is replaced by the root
-Session owner; do not construct a second DeepEP buffer or inference runtime
+caller owns that group. The training Runtime owns a root Session and selects
+the MTE backend. Do not construct a second DeepEP buffer or inference runtime
 concurrently in the same process.
-The new Session selects MTE; the source test launcher selected UDMA at SHMEM
-initialization. Current device qualification is single-node. Multi-node
-transport, EP subgroups and larger EP sizes need separate qualification before
-deployment; the API's upper rank bound is not a tested topology guarantee.
+Device qualification is single-node. ProcessGroup-based training integration,
+multi-node transport, EP subgroups and larger EP sizes need separate
+qualification before deployment; StoreGroup test coverage and the API's upper
+rank bound are not guarantees for those integration paths or topologies.
 
 - `x`: `[M,H]`, `topk_ids`: `[M,T]` int32, `topk_weights`: `[M,T]` BF16.
   Tensor inputs are contiguous and reside on the construction NPU.
-- Canonical `w1=[E,2F,H]`, `w2=[E,H,F]`; source legacy layouts
-  `w1=[E,H,2F]`, `w2=[E,F,H]` remain supported. Gradients use the input layouts.
+- Canonical `w1=[E,2F,H]`, `w2=[E,H,F]`; alternative layouts
+  `w1=[E,H,2F]`, `w2=[E,F,H]` are also supported. Gradients use the input layouts.
 - `max_recv_tokens` bounds received routed rows on each rank. The conservative
   bound is `EP*M*min(E,T)` for distinct IDs within each token; use actual route
   demand only when guaranteed. Duplicate IDs are not part of the supported
@@ -117,17 +132,24 @@ deployment; the API's upper rank bound is not a tested topology guarantee.
 | `mxfp8` | Saved MXFP8, plus three clip-mask bitplanes when clipping is enabled |
 | `auto` | MXFP8 without clipping, BF16 with clipping |
 
-`swiglu_limit<=0` disables clipping; positive finite limits preserve the source
-semantics. MXFP8 here describes saved activations; matrix computation remains
-BF16. Default GMM1 scheduling is adaptive-auto, SwiGLU decoupling is auto, and
-backward dispatch splitting follows the source's local-expert cutoff (<=7).
+`swiglu_limit<=0` disables clipping; positive finite limits enable the Gate/Up
+clipping defined by the numerical contract. MXFP8 describes saved activations;
+matrix computation uses BF16. Default GMM1 scheduling is adaptive-auto,
+SwiGLU decoupling is auto, and
+backward dispatch splitting is enabled for eligible saved-mode experts when
+each rank owns at most seven experts.
 See [dispatch policy](docs/BF16_DISPATCH_READY_DEFAULTS.md).
 
-**Known issue retained:** the EP2/M65/H7168/F4096/E2/TopK4 BF16 intermediate
-`ptrDX` check has a small number of original-threshold failures, reproduced on
-the source and older versions. Do not loosen thresholds or count that case as
-an all-precision pass. Final-gradient acceptance is separate from intermediate
-acceptance. Actual model loss convergence is not established by an operator
+The saved-state layout contains a reserved 1 KiB region that fixes subsequent
+Gate/Up, scale and clipping-mask offsets. Its contents have no diagnostic or
+readiness meaning. Algorithmic backward dispatch row-ready counters are
+allocated and initialized separately.
+
+**Known numerical limitation:** the EP2/M65/H7168/F4096/E2/TopK4 BF16 intermediate
+`ptrDX` comparison can exceed its elementwise diagnostic tolerances.
+Intermediate and final-gradient acceptance are separate; final-gradient
+acceptance does not establish that every intermediate meets its tolerances.
+Actual model loss convergence is not established by an operator
 test using `(y * grad_y).sum()`; framework short-training review remains required.
 
 ## Tests
@@ -142,6 +164,6 @@ python experiments/megamoe_train/tests/bf16/test_mega_moe_backward.py 0,1 \
 ```
 
 Repeat with `none`, `mxfp8`, `auto` and `--swiglu-limit 0.05` as appropriate.
-The precision runner retains source thresholds and reports each rank. CPU
+The precision runner applies its acceptance thresholds and reports each rank. CPU
 layout/reference tests do not qualify NPU functionality. Record the exact device
 cases, dependency versions and build artifacts before qualifying a deployment.

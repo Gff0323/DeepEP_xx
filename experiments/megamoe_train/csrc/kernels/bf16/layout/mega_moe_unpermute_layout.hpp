@@ -2,12 +2,9 @@
 
 #include <cstdint>
 
-#if defined(ASCEND_MEGAMOE_USE_NEW_ASCENDC_FRONTEND)
+#if defined(__NPU_DEVICE__) || defined(__ASC_NPU_HOST__)
 #include <kernel_operator.h>
 #define MEGA_MOE_BF16_UNPERMUTE_HOST_DEVICE __host_aicore__
-#elif defined(__CCE__)
-#include <kernel_operator.h>
-#define MEGA_MOE_BF16_UNPERMUTE_HOST_DEVICE __host__ __aicore__
 #else
 #define MEGA_MOE_BF16_UNPERMUTE_HOST_DEVICE
 #endif

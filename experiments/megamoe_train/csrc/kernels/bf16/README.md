@@ -37,17 +37,18 @@ for the whole expert. Backward BF16/MXFP8 saved modes use the existing M128 /
 [dispatch policy](../../../docs/BF16_DISPATCH_READY_DEFAULTS.md) and
 [backward protocol](../../../docs/BF16_BACKWARD_DISPATCH_READY.md).
 
-The supported wheel fixes the source build defaults in the module CMake file.
-Legacy source-repository shell build commands are not installed here. Kernel
-Timer interfaces are excluded; reproducible performance checks use NPU Events.
+The module CMake file defines the supported device configuration. Build and
+install a complete wheel using the root workflow. Device performance checks
+use NPU Events; the operator API has no Timer parameters.
 
 ## State and memory ownership
 
-The Python training wrapper returns `(y, expert_token_nums)`. Native
-`compute_train` also returns saved metadata, packed dispatch input and a forward
-transient workspace. Each outstanding forward owns its own saved state. The
-transient workspace can be released after the forward stream completes.
-The public wrapper retains dispatch input required by backward.
+The Python training wrapper returns `(y, counts)`. Native `_C.BF16.forward`
+returns a `ForwardResult` containing `y`, `counts`, `saved_state` and
+`dispatch_output`. Each outstanding forward owns its saved state and packed
+dispatch input, retained by autograd for backward. Transient workspace is
+managed inside the Host call and is not part of either result; stream recording
+protects its asynchronous lifetime.
 
 Use `TrainingSavedStateLayout` and the transient layout helpers in
 `layout/mega_moe_layout.hpp` for sizing. Persistent state contains
@@ -62,9 +63,9 @@ input/output tensors, parameters, saved tensors and runtime memory are additiona
 to the symmetric window. Buffer formulas alone do not establish device support
 for arbitrary EP sizes, subgroups or multiple nodes.
 
-Canonical weights are `W1 [E, 2F, H]`, `W2 [E, H, F]`; supported legacy weights
-are `W1 [E, H, 2F]`, `W2 [E, F, H]`. The Host selects the matching CATLASS layout
-without imposing a full transpose-and-copy on the legacy training path.
+Canonical weights are `W1 [E, 2F, H]`, `W2 [E, H, F]`; supported alternative
+layouts are `W1 [E, H, 2F]`, `W2 [E, F, H]`. The Host selects the matching
+CATLASS layout from the tensor shape.
 
 Only BF16 training is delivered here. W8A8, MGroup and UDMA-specific kernel
 variants are not exposed by this module.

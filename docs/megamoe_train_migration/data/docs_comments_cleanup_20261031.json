@@ -1,0 +1,76 @@
+{
+  "base": "9a2a378f033524e135d68ca47688229e2a73f7ed",
+  "scope": "agreed six code/build files; comments only",
+  "all_tokens_identical": true,
+  "files": [
+    {
+      "file": "experiments/megamoe_train/CMakeLists.txt",
+      "tokens": 358,
+      "before_sha256": "fdc27b70e5176e14c7fe98793f1fb4feacb08903566f97ad6ea2714014261b04",
+      "after_sha256": "fdc27b70e5176e14c7fe98793f1fb4feacb08903566f97ad6ea2714014261b04",
+      "match": true,
+      "line_count_before": 84,
+      "line_count_after": 84,
+      "original_crlf_preserved": false
+    },
+    {
+      "file": "experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp",
+      "tokens": 6560,
+      "before_sha256": "ca7853a3a444567ce44ec03a4dc4a85e23e15299056897ecfbff7cbbdf7fc0b9",
+      "after_sha256": "ca7853a3a444567ce44ec03a4dc4a85e23e15299056897ecfbff7cbbdf7fc0b9",
+      "match": true,
+      "line_count_before": 727,
+      "line_count_after": 727,
+      "original_crlf_preserved": false
+    },
+    {
+      "file": "experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp",
+      "tokens": 6692,
+      "before_sha256": "5f87d4405dbda94f7083bab094af6e4eba4a9122450b3bcba51861ab977719ae",
+      "after_sha256": "5f87d4405dbda94f7083bab094af6e4eba4a9122450b3bcba51861ab977719ae",
+      "match": true,
+      "line_count_before": 695,
+      "line_count_after": 695,
+      "original_crlf_preserved": false
+    },
+    {
+      "file": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
+      "tokens": 10191,
+      "before_sha256": "8431e8ec3fe8806d614e48ea85ce04501e9314359d9efda0152a4c05a42a3bee",
+      "after_sha256": "8431e8ec3fe8806d614e48ea85ce04501e9314359d9efda0152a4c05a42a3bee",
+      "match": true,
+      "line_count_before": 1503,
+      "line_count_after": 1503,
+      "original_crlf_preserved": true
+    },
+    {
+      "file": "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp",
+      "tokens": 2518,
+      "before_sha256": "ceb074b2bb59cc7c351a492089b7141dd4028cc2522b853fcbf3ce6618374a4f",
+      "after_sha256": "ceb074b2bb59cc7c351a492089b7141dd4028cc2522b853fcbf3ce6618374a4f",
+      "match": true,
+      "line_count_before": 491,
+      "line_count_after": 493,
+      "original_crlf_preserved": false
+    },
+    {
+      "file": "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp",
+      "tokens": 2185,
+      "before_sha256": "6f5d69474c414d35193e0f655bfd2664fbda6cc1f355714422e5b6bf0d5b8401",
+      "after_sha256": "6f5d69474c414d35193e0f655bfd2664fbda6cc1f355714422e5b6bf0d5b8401",
+      "match": true,
+      "line_count_before": 337,
+      "line_count_after": 337,
+      "original_crlf_preserved": false
+    }
+  ],
+  "documentation_checks": {
+    "markdown_files": 12,
+    "valid_relative_links": 105,
+    "formal_links_independent_of_migration": true,
+    "code_fences": "PASS",
+    "source_import": "PASS: 81 imports and required adapters",
+    "git_diff_check": "PASS",
+    "npu_rerun": false
+  }
+}

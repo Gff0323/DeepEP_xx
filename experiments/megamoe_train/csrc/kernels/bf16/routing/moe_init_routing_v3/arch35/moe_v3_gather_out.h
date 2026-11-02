@@ -34,10 +34,8 @@ public:
     __aicore__ inline void CopyExpertIn(int64_t curExpertLoopOffset, int64_t curLoopElements);
     __aicore__ inline void CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols);
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols);
-#if defined(DEEPEP_BF16_M192_FORWARD)
     __aicore__ inline void CopyBatchIn(LocalTensor<int32_t> indices, int64_t first, int64_t rows);
     __aicore__ inline void CopyBatchOut(int64_t first, int64_t rows);
-#endif
     __aicore__ inline void CopyScaleIn(int64_t scaleSrcOffset);
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset);
 
@@ -78,9 +76,7 @@ private:
     int64_t actualExpertNum_;
     int64_t expertTotalCount_;
 
-#if defined(DEEPEP_BF16_M192_FORWARD)
     int64_t batchRows_ = 1;
-#endif
     int64_t rowIdxType_ = 0;
     int64_t isInputScale_ = 0;
 };
@@ -137,7 +133,6 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
                       AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
-#if defined(DEEPEP_BF16_M192_FORWARD)
     const int64_t rowBytes = AlignBytes(perLoopCols_, sizeof(T));
     // Conservative ordinary-BF16 budget, below A5 UB capacity. Existing metadata
     // buffers are included; retain the original path when either bound fails.
@@ -151,9 +146,6 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
         }
     }
     pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_BUFFER_NUM, batchRows_ * rowBytes);
-#else
-    pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
-#endif
     pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(1, sizeof(float)));
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t*)workspace + blockIdx_ * perCoreIndicesElements_,
@@ -198,7 +190,6 @@ __aicore__ inline void MoeGatherOut<T>::CopyXOut(int64_t xDstOffset, int64_t sca
     xCopyInQueue_.FreeTensor(xLocal);
 }
 
-#if defined(DEEPEP_BF16_M192_FORWARD)
 template <typename T>
 __aicore__ inline void MoeGatherOut<T>::CopyBatchIn(LocalTensor<int32_t> indices, int64_t first, int64_t rows)
 {
@@ -227,7 +218,6 @@ __aicore__ inline void MoeGatherOut<T>::CopyBatchOut(int64_t first, int64_t rows
     DataCopyPad(expandedXGm_[first * cols_], xLocal, cp);
     xCopyInQueue_.FreeTensor(xLocal);
 }
-#endif
 
 template <typename T>
 __aicore__ inline void MoeGatherOut<T>::CopyScaleIn(int64_t scaleSrcOffset)
@@ -263,7 +253,6 @@ __aicore__ inline void MoeGatherOut<T>::Process()
 
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-#if defined(DEEPEP_BF16_M192_FORWARD)
             if (batchRows_ > 1) {
                 const int64_t batches = Ceil(curLoopElements, batchRows_);
                 const int64_t primed = Min(batches, GATHER_OUT_BUFFER_NUM);
@@ -283,7 +272,6 @@ __aicore__ inline void MoeGatherOut<T>::Process()
                 expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
                 continue;
             }
-#endif
             for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
                 int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
                 int64_t xSrcOffset = rowIdx / k_ * cols_;

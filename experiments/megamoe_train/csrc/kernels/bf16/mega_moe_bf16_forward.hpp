@@ -201,7 +201,7 @@ __aicore__ inline void MegaMoeBF16Forward::Init(GM_ADDR context, GM_ADDR x, GM_A
     worldSize_ = tilingData->epWorldSize;
     expertPerRank_ = tilingData->expertPerRank;
     dispatchBlockNumPerEP_ = tilingData->blockNumPerEP;
-    dispatchRows_ = MegaMoeBF16Training::ForwardDispatchUbLayout::CopyRowsForForward(tilingData->dispatchRows);
+    dispatchRows_ = 1;
     groupListType_ = tilingData->groupListType;
     maxOutputSize_ = tilingData->maxOutputSize;
     Get<N_VALUE>(problemShape_) = tilingData->n;
@@ -263,6 +263,10 @@ __aicore__ inline void MegaMoeBF16Forward::EnableDispatchTileReady(GM_ADDR trans
     dispatchTileSlotsPerExpert_ = layout.flagSlotsPerExpert;
     params_.workspaceInfo.transientWorkspaceSize = layout.totalBytes;
     params_.workspaceInfo.workspaceSize += layout.bytes;
+    if constexpr (DEEPEP_BF16_FORCE_EXPERT_READY != 0) {
+        preparedPhaseEnabled_ = false;
+        return;
+    }
     MegaMoeBF16ForwardSchedule::View view;
     view.Init(reinterpret_cast<__gm__ int32_t*>(dispatchTileReadyBase_),
               reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.ptrcumsumMM),
@@ -1102,15 +1106,11 @@ __aicore__ inline void MegaMoeBF16Forward::Process()
 template <uint32_t SaveMode, bool TransW>
 __aicore__ inline void MegaMoeBF16Forward::ProcessSelected()
 {
-#if defined(DEEPEP_BF16_M192_FORWARD)
     if (MegaMoeBF16Training::ForwardUsesGmSwiglu(k_, SaveMode)) {
         ProcessWithSaveMode<SaveMode, TransW, true>();
     } else {
         ProcessWithSaveMode<SaveMode, TransW, false>();
     }
-#else
-    ProcessWithSaveMode<SaveMode, TransW, false>();
-#endif
 }
 
 template <uint32_t SaveMode, bool TransW, bool GmSwiglu>
@@ -1180,17 +1180,10 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
     // 4. for循环按照本卡专家id进行Dispatch，内部gmm1SwigluQuant按照基本块进行流水
     GMMAddrInfo gmmAddrInfo{};
     {
-#if defined(DEEPEP_BF16_GMM1_TILE_READY) && DEEPEP_BF16_GMM1_TILE_READY
-        constexpr bool waitForFullExpert = false;
-#else
-        constexpr bool waitForFullExpert = true;
-#endif
-#if defined(DEEPEP_BF16_GMM1_AUTO_SELECT) && DEEPEP_BF16_GMM1_AUTO_SELECT
+        constexpr bool waitForFullExpert = DEEPEP_BF16_FORCE_EXPERT_READY != 0;
         const bool shapeTileReadyCandidate =
+            !waitForFullExpert &&
             MegaMoeBF16Training::ForwardDispatchTileReadyLayout::UseTileReadyForShape(m_, topK_, expertPerRank_);
-#else
-        constexpr bool shapeTileReadyCandidate = !waitForFullExpert;
-#endif
         const uint32_t readyBlocksPerProducerPartition =
             MegaMoeBF16Training::ForwardDispatchTileReadyLayout::ReadyBlocksPerProducerPartition(
                 m_, topK_, expertPerRank_, worldSize_, dispatchBlockNumPerEP_);

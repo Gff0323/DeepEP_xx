@@ -35,20 +35,14 @@
 #include "catlass/catlass.hpp"
 #include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
-// BF16-only workaround for CATLASS 48f7461 W4A8 VF members under CANN 9.2.
-// Keep in sync with the forward include; W4A8 itself is not repaired here.
-#define CATLASS_GEMM_BLOCK_MX_A8W4_PROLOGUE_HPP
-#define CATLASS_GEMM_BLOCK_MMAD_A8W4_MX_HPP
-// The pinned CATLASS aggregate also parses unused HSTU templates whose
-// unqualified tuple helpers collide with AscendC::Std under CANN 9.2 beta.
-// Exclude only those unused specializations in this BF16 translation unit.
+// CATLASS 2b4bd7cb with CANN 9.2 still exposes tuple lookup collisions when
+// the aggregate parses unused HSTU specializations in this BF16 context.
+// Limit the workaround to those unused HSTU specializations.
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_QK_SPLIT_ROW_TLA_HPP
 #define CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_PV_SPLIT_ROW_TLA_HPP
 #include "catlass/gemm/block/block_mmad.hpp"
 #undef CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_PV_SPLIT_ROW_TLA_HPP
 #undef CATLASS_GEMM_BLOCK_BLOCK_MMAD_HSTU_QK_SPLIT_ROW_TLA_HPP
-#undef CATLASS_GEMM_BLOCK_MMAD_A8W4_MX_HPP
-#undef CATLASS_GEMM_BLOCK_MX_A8W4_PROLOGUE_HPP
 #include "catlass/gemm/block/block_swizzle.hpp"
 #include "catlass/gemm/dispatch_policy.hpp"
 #include "catlass/gemm/gemm_type.hpp"
@@ -253,9 +247,9 @@ __aicore__ inline void GroupMatmulRecompute(BackwardGroupMatmulParam<RowMajor, W
     }
 }
 
-// GM experiment: unique output addresses decouple the AIC producer from
-// AIV UB reuse. Publish one arrival per AIC after the whole expert's Fixpipe
-// writes retire; AIVs retain the original scheduler and alternating ownership.
+// The saved-mode GM path uses unique output addresses to decouple the AIC
+// producer from AIV UB reuse. Publish one arrival per AIC after the whole
+// expert's Fixpipe writes retire; AIVs use alternating tile ownership.
 // There are no per-tile cross-core events here, so an AIC may run ahead without
 // exhausting event credits or waiting for a consumer acknowledgement.
 // dHpBase aliases this expert's Hp plane: each tile has one AIV owner, which

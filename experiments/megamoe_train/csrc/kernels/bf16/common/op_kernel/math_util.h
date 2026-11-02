@@ -17,10 +17,10 @@
 
 namespace Ops {
 namespace Base {
-#if defined(ASCEND_MEGAMOE_USE_NEW_ASCENDC_FRONTEND)
+#if defined(__NPU_DEVICE__) || defined(__ASC_NPU_HOST__)
 #define MEGA_MOE_HOST_AICORE __host_aicore__
 #else
-#define MEGA_MOE_HOST_AICORE __host__ __aicore__
+#define MEGA_MOE_HOST_AICORE
 #endif
 template <typename T>
 MEGA_MOE_HOST_AICORE inline T CeilDiv(T a, T b)

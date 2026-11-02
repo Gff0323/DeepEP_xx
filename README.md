@@ -313,4 +313,4 @@ Lu Lu 持有权利的项目内容采用 [BSD 2-Clause 许可证](LICENSE)。其�
 
 ### MegaMoE BF16 训练实验模块
 
-Ascend950 专用的完整前向/autograd 反向位于 [experiments/megamoe_train](experiments/megamoe_train/README.md)，与推理模块并列。通过 `DEEPEP_BUILD_MEGAMOE_TRAIN=ON` 可选构建（默认关闭）；源固定为 b8cff148，保留 bf16/none/mxfp8/auto 保存模式和 SwiGLU clipping。配套验证范围、H7168 ptrDX 已知问题及框架短训练待验收项见模块文档。
+Ascend950 专用的完整前向/autograd 反向位于 [experiments/megamoe_train](experiments/megamoe_train/README.md)，与推理模块并列。通过 `DEEPEP_BUILD_MEGAMOE_TRAIN=ON` 可选构建（默认关闭）；初始实现来源为 b8cff148，支持 bf16/none/mxfp8/auto 保存模式和 SwiGLU clipping。接口、资源生命周期和支持边界见[框架设计](experiments/megamoe_train/docs/BF16_FRAMEWORK_DESIGN_ZH.md)；精度验收口径、H7168 ptrDX 已知问题及框架短训练待验收项见模块文档。
