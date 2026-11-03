@@ -39,6 +39,9 @@ try {
   }, diagram);
   await syntaxPage.close();
   assert.equal(await page.locator('[data-view]').count(), 8);
+  assert.equal(await page.locator('.source-location').first().inputValue(), await page.evaluate(() => {
+    const source = window.__reader.selected().sources[0]; return `${source.path}:${source.line}`;
+  }));
   for (const id of ids) {
     await page.locator(`[data-view="${id}"]`).click();
     assert.equal(await page.evaluate(() => window.__reader.graph().id), id);
@@ -118,9 +121,18 @@ try {
     .map(file => new URL(`../../../../${file}`, location.href).href));
   for (const source of localSources) assert(fs.existsSync(fileURLToPath(source)), `Local source file: ${source}`);
   await local.locator('[data-view="06-backward-kernel"]').click();
-  assert(await local.locator('.source-links a[href^="file:"]').count() > 0, 'Local source link');
-  const sourceLink = await local.locator('.source-links a[href^="file:"]').first().getAttribute('href');
-  assert(fs.existsSync(fileURLToPath(sourceLink)), 'Local source file exists');
+  assert.equal(await local.locator('.source-links a[href^="file:"]').count(), 0, 'No misleading raw file link');
+  const source = await local.evaluate(() => window.__reader.selected().sources[0]);
+  const sourcePath = path.resolve(visual, '../../../..', source.path);
+  const location = await local.locator('.source-location').first().inputValue();
+  assert.equal(location.toLowerCase(), `${sourcePath.replaceAll('\\', '/')}:${source.line}`.toLowerCase());
+  const editor = new URL(await local.locator('.source-links a[href^="vscode:"]').first().getAttribute('href'));
+  assert.equal(editor.host, 'file');
+  assert.equal(editor.hash + editor.search, '', 'Editor path must not become a query or fragment');
+  assert.equal(decodeURIComponent(editor.pathname).replace(/^\/([A-Za-z]:\/)/, '$1').toLowerCase(), `${location}:1`.toLowerCase());
+  await local.locator('[data-copy-location]').first().click();
+  const copyStatus = await local.locator('.copy-status').first().innerText();
+  assert(copyStatus.startsWith('已复制') || copyStatus.startsWith('路径已选中'), 'Copy or explicit keyboard fallback');
   const hash = await local.evaluate(() => location.hash);
   await local.reload();
   assert.equal(await local.evaluate(() => location.hash), hash);

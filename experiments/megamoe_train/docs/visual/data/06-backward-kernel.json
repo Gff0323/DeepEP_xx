@@ -98,9 +98,9 @@
         },
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // backward dispatches raw dY; p belongs on dH=p*dHp in P1.",
-          "before": 3,
-          "after": 10
+          "anchor": "                DataCopy(slot[i * k_], gradY[source[i]], k_);",
+          "before": 8,
+          "after": 6
         }
       ]
     },
@@ -164,9 +164,9 @@
         },
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "            // AIV0: dispatch dO -> ptrDO for all experts.  Every band",
-          "before": 1,
-          "after": 13
+          "anchor": "                DispatchTokensBackward(bwWs_.ptrDO + expertRowBase * k_ * sizeof(bfloat16_t), expertIdx,",
+          "before": 8,
+          "after": 5
         }
       ]
     },

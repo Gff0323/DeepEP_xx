@@ -142,6 +142,7 @@ let markdown = `# MegaMoE BF16 训练源码图解\n\n按项目结构、调用链
 markdown += `源码快照：[${sourceCommit.slice(0, 7)}](${repoUrl}/tree/${sourceCommit})。\n\n[离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)\n\n`;
 if (siteUrl) markdown += `[在线交互导览](${siteUrl})\n\n`;
 markdown += '本地用浏览器打开 index.html，即可点击节点查看读写、等待和带行号源码。仓库网页可以直接阅读下方图文，通过调用点表跳转源码。\n\n';
+markdown += '在 VS Code 内置浏览器中学习时，点击节点内的 **复制定位路径**，按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。\n\n';
 for (const graph of graphs) {
   markdown += `## ${graph.layer} · ${graph.title}\n\n${graph.summary}\n\n![${graph.title}](diagrams/${graph.id}.png)\n\n[查看矢量图](diagrams/${graph.id}.svg) · [查看图源](diagrams/${graph.id}.mmd) · [本节调用点](CALLPOINTS.md#${graph.id})\n\n`;
 }

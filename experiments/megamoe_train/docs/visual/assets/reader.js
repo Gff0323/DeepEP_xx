@@ -28,13 +28,19 @@
     const local = localFile(source);
     if (!local) return '';
     const file = new URL(local);
-    const fullPath = decodeURIComponent(file.pathname).replace(/^\/([A-Za-z]:\/)/, '$1');
-    return `vscode://file/${fullPath}:${source.line}`;
+    const editor = new URL('vscode://file/');
+    editor.pathname = `${file.pathname.replace(/^\/([A-Za-z])%3A\//i, '/$1:/')}:${source.line}:1`;
+    return editor.href;
+  }
+  function sourceLocation(source) {
+    const local = localFile(source);
+    const file = local ? decodeURIComponent(new URL(local).pathname).replace(/^\/([A-Za-z]:\/)/, '$1') : source.path;
+    return `${file}:${source.line}`;
   }
   function details(node) {
     const lane = graph.lanes.find(l => l.id === node.lane);
     const list = [['读', node.reads], ['写', node.writes], ['等', node.waits]];
-    const sourceBlocks = node.sources.map((source, index) => `<details class="source-block" ${index === 0 ? 'open' : ''}><summary>${esc(source.path.split('/').at(-1))}:${source.line}</summary><div class="source-links"><a target="_blank" rel="noopener" href="${esc(source.url)}">在线源码 ↗</a>${localFile(source) ? `<a href="${esc(localFile(source))}" target="_blank" rel="noopener">本地文件</a><a href="${esc(editorFile(source))}">编辑器定位</a>` : ''}</div><div class="source-path">${esc(source.path)}</div><div class="code-lines">${source.excerpt.map(row => `<div class="code-line ${row.line === source.line ? 'anchor-line' : ''}"><span class="ln">${row.line}</span><code>${esc(row.text)}</code></div>`).join('')}</div></details>`).join('');
+    const sourceBlocks = node.sources.map((source, index) => `<details class="source-block" ${index === 0 ? 'open' : ''}><summary>${esc(source.path.split('/').at(-1))}:${source.line}</summary><div class="source-links"><button type="button" data-copy-location>复制定位路径</button><a target="_blank" rel="noopener" href="${esc(source.url)}">在线源码 ↗</a>${localFile(source) ? `<a href="${esc(editorFile(source))}" title="在 Edge、Chrome 等外部浏览器中使用；VS Code 内置浏览器请复制定位路径">用 VS Code 打开</a>` : ''}</div><div class="source-locator"><input class="source-location" aria-label="源码定位路径" readonly value="${esc(sourceLocation(source))}"><span class="copy-status" role="status">复制后，在 VS Code 按 Ctrl+P 粘贴并回车。</span></div><div class="source-path">${esc(source.path)}</div><div class="code-lines">${source.excerpt.map(row => `<div class="code-line ${row.line === source.line ? 'anchor-line' : ''}"><span class="ln">${row.line}</span><code>${esc(row.text)}</code></div>`).join('')}</div></details>`).join('');
     return `<div class="detail-kicker"><span class="pill">${esc(lane.label)}</span><span>${node.ordinal} / ${graph.nodes.length}</span></div><h3>${esc(node.title)}</h3>${node.symbol ? `<code class="function-name">${esc(node.symbol)}</code>` : ''}${(node.description || []).map(p => `<p>${esc(p)}</p>`).join('')}<dl class="detail-list">${list.filter(([, values]) => values?.length).map(([title, values]) => `<div><dt>${title}</dt><dd>${values.map(esc).join('<br>')}</dd></div>`).join('')}</dl>${node.formula ? `<pre class="formula">${esc(node.formula)}</pre>` : ''}${node.drilldown ? `<button type="button" class="drilldown" data-drill-view="${esc(node.drilldown.view)}" data-drill-node="${esc(node.drilldown.node || '')}">继续深入 → ${esc(data.graphs.find(g => g.id === node.drilldown.view).title)}</button>` : ''}<div class="detail-nav"><button type="button" id="previous" ${node.ordinal === 1 ? 'disabled' : ''}>← 上一步</button><button type="button" id="next" ${node.ordinal === graph.nodes.length ? 'disabled' : ''}>下一步 →</button></div><div class="sources-title">对应源码</div>${sourceBlocks}`;
   }
   function select(id, scroll = false) {
@@ -46,6 +52,14 @@
       edge.classList.toggle('dimmed', !related);
     }
     $('inspector').innerHTML = details(selected);
+    for (const button of $('inspector').querySelectorAll('[data-copy-location]')) button.onclick = () => {
+      const block = button.closest('.source-block'), field = block.querySelector('.source-location');
+      field.focus(); field.select();
+      let copied = false;
+      try { copied = document.execCommand('copy'); } catch { /* Keep the selected path available for Ctrl+C. */ }
+      block.querySelector('.copy-status').textContent = copied ? '已复制。按 Ctrl+P 粘贴并回车。' : '路径已选中。按 Ctrl+C 复制，再按 Ctrl+P 粘贴。';
+      if (copied) button.focus();
+    };
     $('previous').onclick = () => select(graph.nodes[selected.ordinal - 2]?.id, true);
     $('next').onclick = () => select(graph.nodes[selected.ordinal]?.id, true);
     $('inspector').querySelector('[data-drill-view]')?.addEventListener('click', event => {

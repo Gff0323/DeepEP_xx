@@ -386,9 +386,9 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp",
-          "anchor": "        // BF16 mode retains the validated serial save path with or without clipping.",
-          "before": 0,
-          "after": 11
+          "anchor": "        AscendC::DataCopyPad(savedGateGlobal_[offset], l0cOutUbFirst_, copyParams);",
+          "before": 7,
+          "after": 4
         }
       ]
     },
