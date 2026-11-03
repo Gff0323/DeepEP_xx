@@ -53,12 +53,29 @@ def compare_with_atk(actual, baseline, truth, directory, ratios):
     directory.mkdir(parents=True, exist_ok=False)
     os.environ["ATK_TASK_OUTPUT_PATH"] = str(directory)
     comparator_type, identity = require_atk()
+    from atk.common.connection import RemoteManager
+    from atk.configs.base_config import TaskType
     from atk.configs.case_config import CaseConfig
+    from atk.configs.nodes_config import Node, NodesConfig
+    from atk.configs.results_config import TaskResult
+    from atk.tasks.executors.compare_excutor import CompareExecutor
 
     thresholds = dict(zip(("max_re_ratio", "avg_re_ratio", "root_mean_squared_ratio"), ratios, strict=True))
     thresholds["number_count_radio"] = 2
     case = CaseConfig(id=0, name="megamoe_bf16_train", inputs=[], standard={"acc": {STANDARD: thresholds}})
-    comparator = comparator_type(case, **thresholds)
+    main_node = Node(backend="npu", name="actual", task=[TaskType.ACCURACY])
+    baseline_node = Node(backend="npu", name="bigop", task=[TaskType.ACCURACY])
+    task = TaskResult(
+        case_config=case,
+        nodes=NodesConfig(nodes=[main_node, baseline_node]),
+        task_type=[TaskType.ACCURACY],
+        backend="npu",
+        benchmark_device="cpu",
+    )
+    executor = CompareExecutor(task)
+    comparator = executor.compare
+    if not isinstance(comparator, comparator_type):
+        raise RuntimeError("ATK CompareExecutor did not select the registered private CV comparator")
     # Check that constructor kwargs reached the actual plugin configuration.
     for key, value in thresholds.items():
         if getattr(comparator.benchmark_standard, key) != value:
@@ -66,6 +83,10 @@ def compare_with_atk(actual, baseline, truth, directory, ratios):
     golden_dir = directory / "golden"
     golden_dir.mkdir()
     comparator.bm_path = str(golden_dir)
+    # Inputs are already sharded by rank and copied to CPU. ATK's golden loader
+    # still needs its normal local-node context, without a distributed rank_0
+    # directory rewrite or an HTTP connection to another executor.
+    comparator.remote_manager = RemoteManager(case, main_node, baseline_node)
     report = {**identity, "thresholds": thresholds, "passed": True, "outputs": {}}
     for index, name in enumerate(OUTPUTS):
         a, b, g = (group[name].detach().cpu().contiguous() for group in (actual, baseline, truth))
@@ -76,7 +97,7 @@ def compare_with_atk(actual, baseline, truth, directory, ratios):
         if all(bool(torch.isfinite(value).all()) for value in (a, b, g)):
             torch.save(g.reshape(-1), golden_file)
             result = comparator.compute_accuracy_result(a.reshape(-1), b.reshape(-1), data_file)
-            detail = result.model_dump(mode="json")
+            detail = result.model_dump()
             if type(detail.get("result")) is not bool:
                 raise RuntimeError(f"ATK returned no boolean decision for {name}: {detail}")
             passed = detail["result"]
