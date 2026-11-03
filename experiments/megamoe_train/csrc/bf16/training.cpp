@@ -82,7 +82,7 @@ torch::Tensor AllocateTrainingSavedState(const MegaMoeBF16Training::TrainingSave
                                          const torch::Tensor& like)
 {
     // The compact ordinary-BF16 layout begins at cumsumOffset=0. Embedded
-    // embedded layouts still skip their ptrA payload here. Keep only
+    // layouts still skip their ptrA payload here. Keep only
     // the metadata/control portion zero-initialized; gate/up planes are written
     // by every valid forward tile.
     const uint64_t initOffset = savedStateLayout.cumsumOffset;
@@ -414,8 +414,8 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
     const MegaMoeBF16BackwardWorkspaceLayout backwardLayout(tiling, splitExperts);
     auto backwardWorkspace = AllocateBackwardWorkspace(backwardLayout, gradY);
 
-    // P2 writes every gradX token row and P6 writes every TopK route exactly
-    // once.  The backward kernel likewise overwrites every non-empty expert's
+    // P5 unpermutes and sums packed dX into every gradX token row; P6 writes
+    // every TopK route once. The kernel overwrites every non-empty expert's
     // weight-gradient plane and clears only the experts whose effective row
     // count is zero, so none of these outputs needs a full pre-clear here.
     auto gradX = torch::empty({m, k}, gradY.options());

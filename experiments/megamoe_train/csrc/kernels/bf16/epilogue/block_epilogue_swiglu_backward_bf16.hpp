@@ -3,17 +3,18 @@
  *
  * BF16 SwiGLU backward epilogues for the DeepEP MegaMoe backward pipeline.
  *
- * The vector-side epilogue follows the FP32 intermediate / BF16 output
- * convention of the forward BlockEpilogueSwigluForwardBF16: SiLU, its product with
- * Up, and the local derivative intermediates stay FP32 until their BF16
- * tensor boundary. Do not insert the standalone F.silu(BF16) rounding.
+ * For clamped Gate/Up, h=BF16(SiLU_FP32(gate)*up) uses FP32 SiLU and Mul.
+ * Hp = BF16(h*p) and dh = BF16(p*dHp) have separate BF16 boundaries;
+ * derivative intermediates remain FP32 until dZ is cast to BF16.
+ * Do not insert a standalone F.silu(BF16) rounding.
  *
- *   SwiGLUGrad         : dHp tile (GMM2 Grad output, in UB) + packed p +
- *                       recomputed H -> Hp, dHp*H and dZ.  The route weight
- *                       is applied before the SwiGLU derivative: dH=p*dHp.
+ * SwiGLUGrad enters with dHp in the first UB tile: saved GM callers load
+ * it with LoadDHpFromGM; save=none callers wait for the AIC Fixpipe tile.
+ * Gate/Up and p produce Hp, FP32 row partials of BF16(dHp*h), and dZ.
  *
- * The register instruction organisation (Exp / Div / Mul / Cast in
- * __VEC_SCOPE__) mirrors ComputeSwiglu() of the forward epilogue.
+ * FP32 activation arithmetic and explicit BF16 casts preserve the forward
+ * rounding and derivative boundaries. Saved MXFP8 reconstructs h from
+ * decoded Gate/Up and need not reproduce the original forward h.
  *
  * Tile addressing convention (matches the forward GMM1 epilogue): the caller
  * passes a single flattened block offset `mLoc * F + nLoc` (rows * plane
@@ -97,9 +98,9 @@ public:
         }
     }
 
-    // baseRows: cumulative expert row offset (M_OFFSET equivalent). All four
-    // planes are addressed from this single row base: gate/up/H planes have
-    // row width F, gradZ has row width N.
+    // baseRows: cumulative packed expert row offset for all GM planes.
+    // Gate/Up/Hp use row width F, gradZ uses N, and dP partials use
+    // dpPartialTiles_; each plane applies this same row base.
     __aicore__ inline void UpdateGlobalAddr(int64_t baseRows)
     {
         if constexpr (g_coreType == AscendC::AIV) {
@@ -116,8 +117,8 @@ public:
             Ops::Base::CeilDiv(static_cast<uint64_t>(outputF_), static_cast<uint64_t>(BACKWARD_DP_PARTIAL_TILE_N));
     }
 
-    // Saved-mode GM output: each AIV loads its assigned dHp tile into its
-    // private first work tile, then reuses the unchanged SwiGLU epilogue.
+    // Saved-mode GM path: each AIV loads its assigned dHp tile into its
+    // private first UB work tile before calling the shared SwiGLU epilogue.
     __aicore__ inline void LoadDHpFromGM(GM_ADDR src, uint32_t rows, uint32_t columns, uint32_t globalStride)
     {
         if constexpr (g_coreType != AscendC::AIV) {
@@ -137,10 +138,10 @@ public:
         SyncFunc<AscendC::HardEvent::MTE2_V>();
     }
 
-    // ---- P1: early-topk backward epilogue. dHp is the GMM2 Grad fixpipe
-    // output at UB offset 0.  First produce Hp and dHp*H, store both, reload
-    // gate/up, then apply dH=p*dHp and produce dZ.  Reloading is intentional:
-    // three A5 UB tiles cannot simultaneously retain dHp/gate/up/Hp/dp. ----
+    // ---- P1: dHp is already in the first work tile (UB offset 0).
+    // Full 128x256 tiles fuse Hp, dP partials and dZ after one Gate/Up load.
+    // Tail tiles store Hp/partials, reload Gate/Up, then compute dZ because
+    // their staged operations reuse the same three UB work tiles. ----
     __aicore__ inline void SwiGLUGrad(const BlockShape& blockShape, const BlockCoord& blockCoord)
     {
         if constexpr (g_coreType != AscendC::AIV) {
@@ -157,35 +158,35 @@ public:
         const uint32_t rowStrideInPlane = Ops::Base::CeilAlign(
             static_cast<uint32_t>(singleN), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(bfloat16_t)));
 
-        // One contiguous BF16 load, reused by the two separately rounded
-        // products Hp=p*H and dH=p*dHp. No GM payload/layout change.
+        // One contiguous BF16 p load feeds the separately rounded products
+        // Hp=BF16(h*p) and dh=BF16(p*dHp).
         LoadPackedWeights(singleM, mLoc);
 
-        // The caller's WaitForCube runs on PIPE_V and protects the P1 dHp
-        // Fixpipe tile. Bridge PIPE_V to MTE2 before loading gate/up into the
-        // other two work tiles. In save=none they come from current-backward
-        // recompute GM; saved modes read forward-persistent GM instead.
+        // In save=none, the caller's PIPE_V WaitForCube protects Fixpipe dHp;
+        // saved modes already loaded dHp with LoadDHpFromGM. Bridge V to MTE2
+        // before reusing the other two work tiles for Gate/Up: none reads
+        // recompute GM, while saved modes read forward-persistent GM.
         SyncFunc<AscendC::HardEvent::V_MTE2>();
-        // Load gate/up while dHp remains in the Fixpipe-produced first tile.
+        // Load Gate/Up while dHp remains in the first UB work tile.
         LoadGateUpTiles(rowBase_ + mLoc, nLoc, singleM, singleN, l0cOutUbSecond_, extraA_);
 
-        // No partial-tile layout changes. Gate/up is already loaded exactly once.
+        // Full 128x256 tiles consume this Gate/Up load without a second GM read.
         if (singleM == kTileRows && singleN == kTileColumns && rowStrideInPlane == singleN) {
             RunFusedFullTile(singleM, singleN, mLoc, nLoc);
             return;
         }
         ComputeForwardAux(singleM, singleN, rowStrideInPlane);
         AscendC::PipeBarrier<PIPE_V>();
-        // dp uses the actual BF16 H consumed by the forward multiply, not the
-        // pre-cast FP32 register value. Form the BF16 product in-place, then
-        // reduce each row to one FP32 partial while the tile is still in UB.
+        // dP uses reconstructed BF16 h at the forward rounding boundary,
+        // not the pre-cast FP32 value. Saved MXFP8 h may differ from forward.
+        // Form BF16(dHp*h), then reduce each row to one FP32 partial in UB.
         for (uint32_t row = 0; row < singleM; ++row) {
             AscendC::Mul(l0cOutUbSecond_[row * rowStrideInPlane], l0cOutUbFirst_[row * rowStrideInPlane],
                          extraA_[row * rowStrideInPlane], singleN);
         }
         ComputeDpPartials(singleM, singleN, rowStrideInPlane);
-        // Convert H to Hp with the prefetched per-row weights, retaining
-        // the separate BF16 product before dHp is multiplied by the same p.
+        // Form Hp=BF16(h*p) with the prefetched per-row weights, separately
+        // from the later dh=BF16(p*dHp) input to the derivative.
         ApplyPackedWeight(extraA_, singleM, singleN, rowStrideInPlane, mLoc);
 
         // The FP32 partials reuse the start of each row in tile1; tile2 holds
@@ -212,7 +213,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         LoadGateUpTiles(rowBase_ + mLoc, nLoc, singleM, singleN, l0cOutUbSecond_, extraA_);
 
-        // dHp -> dH before the SwiGLU derivative.
+        // Form dh=BF16(p*dHp) before the SwiGLU derivative.
         ApplyPackedWeight(l0cOutUbFirst_, singleM, singleN, rowStrideInPlane, mLoc);
         AscendC::PipeBarrier<PIPE_V>();
         ComputeSwigluGrad(singleM, singleN, rowStrideInPlane);
@@ -241,8 +242,8 @@ public:
         // overwrite dUp while MTE3 is still reading it.
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
-        // dZ must be visible to the AIC's P2 GMM1 Grad before NotifyCube,
-        // which is issued by PIPE_V in the caller.
+        // Retire dZ MTE3 writes before returning. The save=none caller then
+        // issues PIPE_V NotifyCube; saved callers publish GM completion.
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     }
@@ -287,8 +288,8 @@ private:
 
     __aicore__ inline void LoadPackedWeights(uint32_t rows, uint32_t mLoc)
     {
-        // On this AIV P0 staging has retired before SwiGLUGrad is called;
-        // paired AIC Fixpipe uses only the first tile, below this region.
+        // This AIV has finished its P0 staging before loading weights. In
+        // save=none, paired AIC Fixpipe targets only the first work tile.
         SyncFunc<AscendC::HardEvent::V_MTE2>();
         SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
         AscendC::DataCopyExtParams p{1U, static_cast<uint32_t>(rows * sizeof(bfloat16_t)), 0U, 0U, 0U};
@@ -516,7 +517,7 @@ private:
         }
     }
 
-    // Reduce one BF16 dHp*H tile to one FP32 partial per row.  The product
+    // Reduce one BF16(dHp*h) tile to one FP32 partial per row. The product
     // tile is dead afterwards, so its first FP32 slot in every row stores the
     // result without increasing the three-tile UB footprint.
     __aicore__ inline void ComputeDpPartials(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
@@ -567,8 +568,8 @@ private:
         }
     }
 
-    // Produce BF16 H.  The caller forms dHp*H and then scales H in-place to
-    // Hp.  The product matrix is reduced in a later, single-owner phase.
+    // Produce BF16 h. The caller reduces BF16(dHp*h) to FP32 row partials
+    // in UB, then overwrites h with the separately rounded Hp=BF16(h*p).
     __aicore__ inline void ComputeForwardAux(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
         constexpr uint16_t kElementsPerRepeat = 128U;
@@ -615,7 +616,7 @@ private:
                         AscendC::Reg::RegTensor<float> h;
                         AscendC::Reg::RegTensor<bfloat16_t> hOut;
                         // dsv4 swiglu_limit clamp, mirroring the forward
-                        // epilogue so the recomputed H matches forward.
+                        // epilogue so reconstructed h follows forward's BF16 boundary.
                         // Skipped entirely when the limit is disabled.
                         if (limitEnabled) {
                             AscendC::Reg::Min(gf, gf, limitReg, mask);
@@ -637,13 +638,13 @@ private:
         }
     }
 
-    // Per-row / per-repeat computation of:
-    //   s     = sigmoid(gate)
-    //   dUp   = dH * gate * s
-    //   dGate = dH * up * s * (1 + gate * (1 - s))
-    // dGate accumulates into l0cOutUbFirst_ (overwriting dH), dUp into
-    // l0cOutUbSecond_ (overwriting gate). gate/up row-chunks are read before
-    // the same offset is overwritten.
+    // Tail derivative: dh=BF16(p*dHp); local variable dH holds this tile.
+    // With s=sigmoid(clamped gate), before applying clipping masks:
+    //   dUp   = dh * SiLU_FP32(gate)
+    //   dGate = dh * up * s * (1 + gate * (1 - s))
+    // dGate overwrites the first UB dh tile; dUp overwrites the Gate tile.
+    // Gate/Up chunks are read before the same offsets are overwritten.
+    // Forward clipping decisions zero the corresponding gradient lanes.
     __aicore__ inline void ComputeSwigluGrad(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
         if (params_.savedGateUpMode == MegaMoeBF16Training::kSaveMxFp8 && params_.gateHighGmAddr != nullptr) {
@@ -674,7 +675,7 @@ private:
         __ubuf__ bfloat16_t* dH = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
         __ubuf__ bfloat16_t* gate = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
         __ubuf__ bfloat16_t* up = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
-        __ubuf__ bfloat16_t* dGate = dH;  // reuse dH tile
+        __ubuf__ bfloat16_t* dGate = dH;  // reuse dh tile (local dH)
         __ubuf__ bfloat16_t* dUp = gate;  // reuse gate tile
 
         __VEC_SCOPE__
@@ -762,8 +763,8 @@ private:
                         if (limitEnabled) {
                             AscendC::Reg::Mul(dUpFp, dUpFp, upInd, mask);
                         }
-                        // The fused derivative keeps dS=dH*up in FP32, just
-                        // as the forward SiLU/Up product stays in FP32.
+                        // The derivative keeps dS=dh*up in FP32; no BF16 dS
+                        // is materialized before the gate derivative.
                         AscendC::Reg::Mul(gradSwish, dHFp, upC, mask);
                         // dGate = dS * sig * (1 + gateC * (1 - sig)),
                         // zeroed where gate was clamped.
@@ -879,13 +880,13 @@ private:
                     AscendC::Reg::Muls(neg, gateC, -kOne, mask);
                     AscendC::Reg::Exp(exp, neg, mask);
                     AscendC::Reg::Adds(denom, exp, kOne, mask);
-                    // H reconstruction uses gate/den, while the derivative
+                    // h reconstruction uses gate/den, while the derivative
                     // retains (1/den)*gate. These are separate accurate Divs.
                     AscendC::Reg::RegTensor<float> auxSilu, hFp, hRounded;
                     AscendC::Reg::RegTensor<float> hpFp, productFp, productRounded, rowSum, dhFp;
                     AscendC::Reg::RegTensor<bfloat16_t> hBf, hpBf, productBf, dhBf;
                     AscendC::Reg::Div<float, &kBackwardDivMode>(auxSilu, gateC, denom, mask);
-                    // Same H as forward, with no intermediate BF16 SiLU.
+                    // Reconstruct BF16 h without an intermediate BF16 SiLU.
                     AscendC::Reg::Mul(hFp, auxSilu, upC, mask);
                     AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hBf, hFp, mask);
                     AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(hRounded, hBf, mask);
@@ -901,7 +902,7 @@ private:
                     AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(dHFp, dhBf, mask);
 
                     AscendC::Reg::Div<float, &kBackwardDivMode>(sig, oneFp, denom, mask);
-                    // Reuse the FP32 SiLU used to reconstruct forward H.
+                    // Reuse the FP32 SiLU used to reconstruct forward h.
                     AscendC::Reg::Mul(dUpFp, dHFp, auxSilu, mask);
                     if (limitEnabled) {
                         AscendC::Reg::Mul(dUpFp, dUpFp, upInd, mask);
@@ -928,7 +929,7 @@ private:
                                                                                                mask);
                     AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(hp + offset, hpBf, mask);
                 }
-                // Exactly the old row's four 64-element reductions, in order.
+                // Reduce each row's four 64-element chunks in column order.
                 AscendC::Reg::DataCopy(partials + row * 8U, accumulated, oneLane);
             }
         }
@@ -996,7 +997,7 @@ private:
         }
     }
 
-    // H = SiLU(gate) * up, written to extraA_ (UB offset 2*kTileBytes).
+    // h = BF16(SiLU_FP32(gate)*up), stored in extraA_ at UB offset 2*kTileBytes.
     __aicore__ inline void ComputeSwigluRecompute(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
         constexpr uint16_t kElementsPerRepeat = 256U / sizeof(bfloat16_t);
@@ -1042,9 +1043,9 @@ private:
                         auto upFp = part == 0 ? upFp0 : upFp1;
                         AscendC::Reg::RegTensor<float> neg, exp, denom, silu, result;
                         AscendC::Reg::RegTensor<bfloat16_t> output;
-                        // H = SiLU(gate) * up; SiLU(gate) = gate * sigma(gate).
-                        // Apply the dsv4 swiglu_limit clamp first so the
-                        // recomputed H matches the forward epilogue.
+                        // Reconstruct h with FP32 SiLU and Up, then cast to BF16.
+                        // Apply the dsv4 swiglu_limit clamp before SiLU and Mul
+                        // to preserve the forward activation boundary.
                         // Skipped entirely when the limit is disabled.
                         if (limitEnabled) {
                             AscendC::Reg::Min(gateFp, gateFp, limitReg, mask);

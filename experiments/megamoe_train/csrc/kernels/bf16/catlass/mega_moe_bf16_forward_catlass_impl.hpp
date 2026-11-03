@@ -1,10 +1,11 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  *
- * DeepEP-native BF16 grouped GEMM stages for MegaMoe.  This keeps the
- * existing MegaMoe expert scheduler and communication protocol; only the
- * matrix data path is replaced with BF16 x BF16 MMAD.  The A5 MMAD pipeline
- * accumulates in L0C/FP32 and Fixpipe writes BF16 tiles to UB.
+ * DeepEP-native BF16 grouped GEMM stages for MegaMoe. BF16 x BF16 MMAD
+ * accumulates in L0C/FP32. GMM1 delivers BF16 Gate/Up either through paired
+ * UB tiles with a per-tile handshake or through raw GM planes. On the GM
+ * path, AIV waits for all AIC writes for the expert, then loads its tiles
+ * before SwiGLU. GMM2 delivers BF16 output tiles through UB for combine.
  */
 #ifndef DEEPEP_MEGA_MOE_BF16_FORWARD_CATLASS_IMPL_HPP
 #define DEEPEP_MEGA_MOE_BF16_FORWARD_CATLASS_IMPL_HPP

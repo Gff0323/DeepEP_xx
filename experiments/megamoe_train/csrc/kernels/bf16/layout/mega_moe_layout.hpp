@@ -241,9 +241,8 @@ struct ForwardDispatchUbLayout {
 };
 
 // Ordinary BF16 Dispatch output. Packed tokens and their packed TopK weights
-// always share one lifetime because every row uses the same routing order.
-// Keeping them in an independent allocation lets the framework retain both
-// for the existing backward or release both for a redispatching backward.
+// share the same row order and allocation lifetime. The framework retains
+// both for the matching backward, independently of forward transient scratch.
 struct DispatchOutputLayout {
     uint64_t tokensOffset;
     uint64_t tokensBytes;
@@ -440,8 +439,9 @@ struct ForwardDispatchTileReadyLayout {
         return remainingRows < kReadyRows ? remainingRows : static_cast<uint32_t>(kReadyRows);
     }
 
-    // Invocation-wide candidate selection. A rank still checks the actual row
-    // count of its first non-empty expert before enabling tile readiness locally.
+    // Invocation-wide candidate selection. Prepared metadata permits an actual
+    // row-count check for each non-empty expert; without it, only the first
+    // non-empty expert is a candidate. Both paths apply the same minimum rows.
     MEGA_MOE_BF16_HOST_DEVICE static constexpr bool UseTileReadyForShape(uint64_t m, uint64_t topK,
                                                                          uint64_t expertPerRank)
     {

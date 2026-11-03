@@ -1,10 +1,13 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  *
- * BF16 SwiGLU epilogue for the DeepEP MegaMoe pipeline. GMM1 writes two
- * BF16 tiles to UB. The vector side evaluates SwiGLU in FP32 and stores the
- * result as BF16. Variants that apply route weights before GMM2 then multiply
- * each BF16 row by its dispatched BF16 route weight read directly from GM.
+ * BF16 SwiGLU epilogue for the DeepEP MegaMoe pipeline. At entry, BF16
+ * Gate/Up occupy two UB tiles: the UB handoff path waits for GMM1 Fixpipe,
+ * while the GM staging path first fills them through LoadRawTile().
+ * With R denoting BF16 rounding and Gate/Up clipped as configured,
+ * h = R(SiLU(gate) * up); the weighted variant produces
+ * Hp = R(FP32(h) * p) before GMM2. Internal arithmetic stays FP32,
+ * and dispatched BF16 route weights are prefetched from GM.
  */
 #ifndef DEEPEP_BLOCK_EPILOGUE_SWIGLU_FORWARD_BF16_HPP
 #define DEEPEP_BLOCK_EPILOGUE_SWIGLU_FORWARD_BF16_HPP
@@ -155,8 +158,8 @@ private:
                             outputN_, savedBaseOffset_ + offset);
             return;
         }
-        // BF16 mode retains the validated serial save path with or without clipping.
-        // WaitForCube in the caller has completed both Fixpipe input tiles.
+        // This BF16 save runs on the UB handoff path, with or without clipping.
+        // The caller's WaitForCube has completed both Fixpipe input tiles.
         // Save raw BF16 gate/up before clipping, activation, or route weighting.
         // DataCopyPad uses the same aligned UB row stride as ComputeSwigluDirect.
         AscendC::SyncFunc<AscendC::HardEvent::V_MTE3>();
@@ -229,8 +232,8 @@ private:
                     AscendC::Reg::Mul(value, silu, uf, mask);
                     AscendC::Reg::Cast<bfloat16_t, float, kCastFP32ToBF16>(output, value, mask);
                     if constexpr (ApplyTopkWeight_) {
-                        // Keep BF16(SwiGLU) * BF16(weight) -> BF16, including
-                        // the intermediate rounding absent in the reference.
+                        // Preserve two BF16 boundaries: h = R(SiLU(gate) * up),
+                        // then Hp = R(FP32(h) * p); do not fuse away the first R.
                         AscendC::Reg::Cast<float, bfloat16_t, kCastBF16ToFP32>(value, output, mask);
                         AscendC::Reg::Mul(value, value, weightFp, mask);
                         AscendC::Reg::Cast<bfloat16_t, float, kCastFP32ToBF16>(output, value, mask);

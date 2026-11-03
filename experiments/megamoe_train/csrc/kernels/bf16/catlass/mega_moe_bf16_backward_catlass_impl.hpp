@@ -3,25 +3,25 @@
  *
  * BF16 grouped GEMM wrappers for the DeepEP MegaMoe backward pipeline.
  *
- * The AIC MMAD / AIV vector split and the per-expert scheduler follow the
- * forward catlass/mega_moe_bf16_forward_catlass_impl.hpp.  The backward needs three data-flow
- * variants of the same BlockMmadTla:
+ * Expert-local stages use N=2F and hidden width K. Canonical weights are
+ * W1 [N,K] and W2 [K,F]; legacy uses their transposed physical layouts.
  *
- *   P0-C GMM1 recompute : Z = Xpacked @ W1.logical (A RowMajor; B follows
- *                         the input weight layout; Fixpipe writes gate/up GM).
- *   P1    GMM2 Grad     : dH = dO @ W2.logical.T (A RowMajor; B uses the
- *                         layout opposite to the forward path).
- *   P2    GMM1 Grad     : dX = dZ @ W1.logical.T (same B convention as P1).
- *   P3    GMM1 dW       : canonical dZ^T @ Xpacked -> [N,K], or legacy
- *                         Xpacked^T @ dZ -> [K,N].
- *   P4    GMM2 dW       : canonical dO^T @ H -> [K,F], or legacy
- *                         H^T @ dO -> [F,K].
- *
- * Layout note: the data-gradient stages use RowMajor A and select B's layout
- * from transW. The weight-gradient stages use ColumnMajor A, which catlass on
- * A5 maps to the native
- * transpose-A path (GM ColumnMajor -> L1 nZ -> L0A zN, "Transpose A" in
- * copy_l1_to_l0a.hpp).  No AIV transpose materialization is required.
+ *   P0-C GMM1 recompute : canonical Xpacked @ W1.T -> Gate/Up in GM;
+ *                         legacy Xpacked @ W1. Only save=none recomputes.
+ *   P1    GMM2 Grad     : canonical dHp = dO @ W2; legacy dO @ W2.T.
+ *                         BF16 dHp goes to saved-mode GM or save=none UB.
+ *   P2    GMM1 Grad     : canonical dX = dZ @ W1; legacy dZ @ W1.T.
+ *   P3    GMM1 dW       : canonical dZ.T @ Xpacked -> [N,K], or legacy
+ *                         Xpacked.T @ dZ -> [K,N].
+ *   P4    GMM2 dW       : canonical dO.T @ Hp -> [K,F], or legacy
+ *                         Hp.T @ dO -> [F,K].
+ * h=BF16(SiLU_FP32(gate)*up), Hp=BF16(h*p), dh=BF16(p*dHp). The P1
+ * epilogue derives dZ from dh and reduces BF16(dHp*h) into row partials.
+ * Saved modes run each expert's dW2 before P2 reuses dO as dX; none
+ * retains dO until P4. Stage labels describe dependencies, not a barrier.
+ * Weight gradients use ColumnMajor A and A5's native transpose-A path:
+ * GM ColumnMajor -> L1 nZ -> L0A zN (copy_l1_to_l0a.hpp). No AIV
+ * transpose materialization is required; operand layouts follow transW.
  */
 #ifndef DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_HPP
 #define DEEPEP_MEGA_MOE_BF16_BACKWARD_CATLASS_IMPL_HPP
@@ -78,7 +78,7 @@ constexpr uint32_t MAX_SINGLE_MN = L1_TILE_M * L1_TILE_N;
 constexpr uint32_t DUAL_AIV_TARGET = 2;
 static_assert(2U * MAX_SINGLE_MN * sizeof(bfloat16_t) <= ArchTag::UB_SIZE, "The two BF16 GMM tiles must fit in A5 UB");
 
-// P1 uses one BlockMmad instance (and therefore one CATLASS L1/L0 pipeline),
+// Save=none P1 uses one BlockMmad instance (one CATLASS L1/L0 pipeline),
 // but Fixpipe must be able to select either paired AIV at runtime. Encode the
 // target AIV in the destination tensor's row coordinate: row 0 means AIV0,
 // row L1_TILE_M means AIV1. The physical UB offset remains zero on the chosen
@@ -116,11 +116,11 @@ struct CopyL0CToDualAivUBTla {
     }
 };
 
-// Backward TileCopy, parameterized on the A/B operand layouts so that the
-// P1/P2 data-gradient stages (RowMajor B) and the P3/P4 weight-gradient
-// stages (ColumnMajor A, RowMajor B) select the matching catlass
-// specialization.  GmOutput selects L0C -> GM (pure AIC dW stages) vs
-// L0C -> the AIV<TargetUBIdx> UB (recompute / data-gradient stages).
+// Backward TileCopy selects A/B layouts for transW and the GEMM phase.
+// Data gradients use RowMajor A; weight gradients use ColumnMajor A.
+// GmOutput selects L0C -> GM for recompute, saved-mode data gradients
+// and weight gradients; otherwise Fixpipe targets the paired AIV UB
+// for save=none data gradients.
 template <class LayoutA, class LayoutB, uint32_t TargetUBIdx, bool GmOutput>
 struct BackwardBF16TileCopy : Catlass::Gemm::Tile::PackedTileCopyTla<ArchTag, bfloat16_t, LayoutA, bfloat16_t, LayoutB,
                                                                      bfloat16_t, RowMajor, void> {
@@ -136,7 +136,7 @@ struct BackwardBF16TileCopy : Catlass::Gemm::Tile::PackedTileCopyTla<ArchTag, bf
                                Catlass::Gemm::Tile::ScaleGranularity::NO_QUANT, TargetUBIdx, false>>;
 };
 
-// L0C -> GM specialization (pure AIC weight-gradient stages).
+// L0C -> GM specialization for recompute, saved data gradients and dW.
 template <class LayoutA, class LayoutB, uint32_t TargetUBIdx>
 struct BackwardBF16TileCopy<LayoutA, LayoutB, TargetUBIdx, true>
     : Catlass::Gemm::Tile::PackedTileCopyTla<ArchTag, bfloat16_t, LayoutA, bfloat16_t, LayoutB, bfloat16_t, RowMajor,
@@ -178,10 +178,10 @@ public:
     uint32_t blockIdx;
 };
 
-// P0-C: GMM1 recompute. Z = Xpacked @ W1.T. The two weight halves are
-// independent [M,F] GEMMs and Fixpipe writes them directly to the stable
-// gate/up GM planes. This removes the AIV1 UB handoff so recompute can overlap
-// P0 gather/dispatch on the vector cores.
+// Save=none P0-C: canonical Z=Xpacked@W1.T; legacy Z=Xpacked@W1.
+// The two weight halves are independent [M,F] GEMMs whose Fixpipe output
+// goes directly to the Gate/Up GM planes. No AIV UB handoff is needed,
+// so recompute can overlap P0 gather/dispatch on the vector cores.
 template <class WeightLayout>
 __aicore__ inline void GroupMatmulRecompute(BackwardGroupMatmulParam<RowMajor, WeightLayout, 0, true>& gmm1Params,
                                             const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
@@ -212,10 +212,10 @@ __aicore__ inline void GroupMatmulRecompute(BackwardGroupMatmulParam<RowMajor, W
     auto tensorGate = tla::MakeTensor(gateGlobal, layoutC, Catlass::Arch::PositionGM{});
     auto tensorUp = tla::MakeTensor(upGlobal, layoutC, Catlass::Arch::PositionGM{});
 
-    // Keep this scheduler and startBlockIdx evolution identical to P1.  The
-    // same AIC that writes a gate/up tile subsequently produces that tile's
-    // dHp and publishes the P1 PIPE_FIX notification, which is the readiness
-    // edge used by AIV1 before loading gate/up from GM.
+    // Match the save=none P1 scheduler and startBlockIdx evolution. The
+    // AIC that writes a Gate/Up tile later produces its dHp and publishes
+    // the P1 PIPE_FIX notification. The selected AIV's WaitForCube orders
+    // both outputs before it loads Gate/Up from GM.
     BlockScheduler scheduler({m, outputN, k}, Catlass::MakeCoord(L1_TILE_M, L1_TILE_N));
     const uint32_t coreLoops = scheduler.GetCoreLoops();
     const uint32_t startLoopIdx =
@@ -255,7 +255,7 @@ __aicore__ inline void GroupMatmulRecompute(BackwardGroupMatmulParam<RowMajor, W
 // dHpBase aliases this expert's Hp plane: each tile has one AIV owner, which
 // loads the complete dHp into UB before replacing it with Hp. All AIC writes
 // retire before either lane starts consuming this expert. Other experts use
-// disjoint row bands; later dW2 waits for all P1 writes to finish.
+// disjoint bands; each expert's dW2 retires before P2 overwrites its dO.
 template <class WeightLayout>
 __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, WeightLayout, 0, true>& gmm2Params,
                                             MegaMoeBF16Impl::BlockEpilogueSwigluBackwardBF16<L1TileShape>& epilogueOp,
@@ -340,7 +340,7 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
     startBlockIdx = (startBlockIdx + loops) % gmm2Params.blockNum;
 }
 
-// P1: GMM2 Grad || SwiGLU Grad. AIC alternates completed dHp tiles between
+// Save=none P1: AIC alternates completed GMM2 dHp tiles between
 // its two paired AIVs. Each AIV owns an independent UB slot, so Cube can
 // produce tile i+1 while the other AIV consumes tile i. A slot is reused only
 // after its AIV has published completion through the matching cross-core
@@ -355,8 +355,8 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
 {
     if constexpr (g_coreType == AscendC::AIC) {
     } else {
-        // Both paired AIVs consume alternating P1 tiles. Keep one dynamic
-        // per-expert bar on each AIV lane so load balance is directly visible.
+        // Both paired AIVs consume alternating save=none P1 tiles. Their
+        // independent UB slots use matching cross-core release events.
     }
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // F
@@ -457,7 +457,7 @@ __aicore__ inline void GMM1GradCombineGM(BackwardGroupMatmulParam<RowMajor, Weig
     const uint32_t n = Get<N_VALUE>(problemShape);
     const uint32_t k = Get<K_VALUE>(problemShape);
     if constexpr (g_coreType == AscendC::AIC) {
-        // Keep the GEMM interval separate from its input wait.
+        // The caller establishes this expert's input readiness before P2.
 
     } else if (mm.subBlockIdx == 0) {
         while (AscendC::ReadGmByPassDCache(dxReady) < static_cast<int32_t>(mm.blockNum)) {
@@ -508,9 +508,9 @@ __aicore__ inline void GMM1GradCombineGM(BackwardGroupMatmulParam<RowMajor, Weig
     startBlockIdx = (startBlockIdx + loops) % mm.blockNum;
 }
 
-// P2: GMM1 Grad || backward Combine.  AIC computes dX = dZ @ W1 into the
-// AIV0 UB; AIV0 sends each dX tile back to the source ranks (CombineTokens).
-// Ping-pong tile protocol, identical to the forward GMM2.
+// Save=none P2: canonical dX=dZ@W1; legacy dX=dZ@W1.T. AIC writes
+// AIV0 UB, and AIV0 returns each dX tile to its source (CombineTokens).
+// Ping-pong ownership uses the forward GMM2's cross-core protocol.
 template <uint32_t TargetUBIdx, class WeightLayout>
 __aicore__ inline void GMM1GradCombine(BackwardGroupMatmulParam<RowMajor, WeightLayout, TargetUBIdx>& gmm1Params,
                                        const Params& params,
@@ -600,8 +600,8 @@ __aicore__ inline void GMM1DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 0,
                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
                               const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, uint32_t expertIdx)
 {
-    const uint32_t m = Get<M_VALUE>(problemShape);                         // N
-    const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // K
+    const uint32_t m = Get<M_VALUE>(problemShape);                         // canonical N / legacy K
+    const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // canonical K / legacy N
     const uint32_t k = static_cast<uint32_t>(Get<K_VALUE>(problemShape));  // Me
 
     AscendC::GlobalTensor<bfloat16_t> aGlobal;
@@ -611,7 +611,7 @@ __aicore__ inline void GMM1DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 0,
     bGlobal.SetGlobalBuffer((__gm__ bfloat16_t*)gmmAddrInfo.bGlobal);
     cGlobal.SetGlobalBuffer((__gm__ bfloat16_t*)gmmAddrInfo.cGlobal);
 
-    // A = dZ^T: ColumnMajor (N, Me) view of the dZ [Me, N] expert rows.
+    // A is canonical dZ.T or legacy Xpacked.T, viewed as ColumnMajor.
     auto layoutA = tla::MakeLayout<bfloat16_t, Catlass::layout::ColumnMajor>(m, k);
     auto layoutB = tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(k, n);
     auto layoutC = tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(m, n);
@@ -642,14 +642,14 @@ __aicore__ inline void GMM1DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 0,
     startBlockIdx = (startBlockIdx + coreLoops) % gmm1Params.blockNum;
 }
 
-// P4: GMM2 weight gradient, pure AIC, L0C -> GM. Canonical computes
-// dO^T @ H -> [K,F]; legacy computes H^T @ dO -> [F,K].
+// GMM2 dW: canonical dO.T@Hp -> [K,F]; legacy Hp.T@dO -> [F,K].
+// Saved modes run this before per-expert P2 dO reuse; none runs it in P4.
 __aicore__ inline void GMM2DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 1, true>& gmm2Params,
                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
                               const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, uint32_t expertIdx)
 {
-    const uint32_t m = Get<M_VALUE>(problemShape);                         // K
-    const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // F
+    const uint32_t m = Get<M_VALUE>(problemShape);                         // canonical K / legacy F
+    const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // canonical F / legacy K
     const uint32_t k = static_cast<uint32_t>(Get<K_VALUE>(problemShape));  // Me
 
     AscendC::GlobalTensor<bfloat16_t> aGlobal;
@@ -659,7 +659,7 @@ __aicore__ inline void GMM2DW(BackwardGroupMatmulParam<ColumnMajor, RowMajor, 1,
     bGlobal.SetGlobalBuffer((__gm__ bfloat16_t*)gmmAddrInfo.bGlobal);
     cGlobal.SetGlobalBuffer((__gm__ bfloat16_t*)gmmAddrInfo.cGlobal);
 
-    // A = dO^T: ColumnMajor (K, Me) view of the dO [Me, K] expert rows.
+    // A is canonical dO.T or legacy Hp.T, viewed as ColumnMajor.
     auto layoutA = tla::MakeLayout<bfloat16_t, Catlass::layout::ColumnMajor>(m, k);
     auto layoutB = tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(k, n);
     auto layoutC = tla::MakeLayout<bfloat16_t, Catlass::layout::RowMajor>(m, n);

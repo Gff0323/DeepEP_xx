@@ -3,25 +3,36 @@
  *
  * DeepEP MegaMoe BF16 training backward kernel.
  *
- * Baseline stage pipeline (reuse-do moves each expert dW2 immediately before P2):
+ * Notation: R rounds to BF16; h is the unweighted BF16 SwiGLU activation
+ * with the configured clipping, Hp = R(h*p), and dh = R(p*dHp). Neither
+ * h nor dh denotes the hidden width. For each expert, canonical weights
+ * are W1=[2F,K] and W2=[K,F], where K=k_ is the hidden width and n_=2F.
+ * The formulas below use that layout; transW=false uses the transposed
+ * weight storage and matching gradient layouts.
  *
- *   P0-A  route gather           grad_y -> peermem.ptrA0 (AIV)
+ * Stage pipeline (saved modes compute each expert's dW2 immediately before P2):
+ *
+ *   P0-A  route gather           raw grad_y -> peermem.ptrA0 (AIV), without p
  *   P0-B  restore count table + Dispatch dO from peers -> ptrDO (AIV0)
- *   P0-C  GMM1 recompute         Z = Xpacked @ W1.T -> gate/up planes (AIC)
- *   P1    GMM2 Grad || early-topk epilogue: dHp, Hp, dHp*H, dH=p*dHp, dZ
- *   P2    GMM1 Grad || Combine: dX = dZ @ W1
+ *   P0-C  save=none recompute    Z = Xpacked @ W1.T -> gate/up GM planes (AIC)
+ *   P1    GMM2 Grad + epilogue   dHp = dO @ W2; h, Hp, dp partials, dh -> dZ
+ *   P2    GMM1 Grad + Combine    packed dX = dZ @ W1 -> peers' ptrD
  *   P3    GMM1 dW                dW1 = dZ.T @ Xpacked -> grad_weight1 (AIC)
- *   P4    GMM2 dW                dW2 = dO.T @ Hp -> grad_weight2 (AIC)
- *   P5    Unpermute              grad_x = sum_slot(ptrD) (AIV)
- *   P6    Reduce/route/unpermute  grad_topk = sum_F(dHp*H) (AIV)
+ *   P4    save=none GMM2 dW      dW2 = dO.T @ Hp -> grad_weight2 (AIC)
+ *   P5    Unpermute              FP32 sum_slot(ptrD) -> BF16 grad_x (AIV)
+ *   P6    Reduce/route/unpermute  P1 dp partials -> grad_topk (AIV)
  *
- * Saved-mode multi-M experts consume per-producer row progress in P1;
- * single-M experts and k=0 retain the complete-expert dispatch flag. Every
- * dispatch band still publishes bwFlagDispatch_[expert]. The P0 staging (gather slots,
- * count-table restore tile, dispatch ping-pong ring) lives in a fixed static
- * UB window above the P1/P2 tile region (see StageUb), so no whole-stage UB
- * ownership handover exists between P0 and P1: dispatch of later experts
- * proceeds while the AIC already fixpipes early experts' dHp tiles.
+ * P1 saved modes (BF16/MXFP8) write dHp to GM; each AIV waits for all AICs
+ * to finish that expert before loading its assigned tiles and replacing
+ * dHp with Hp in the same plane. The AIC reads dO using per-producer row
+ * progress for eligible multi-M experts, or the complete-expert dispatch
+ * flag otherwise. In save=none, P1 waits for complete-expert dispatch and
+ * alternates dHp Fixpipe tiles between the paired AIV UB slots, with a
+ * per-tile completion handshake. Both paths reduce R(dHp*h) over F for dp.
+ * Every dispatch band publishes bwFlagDispatch_[expert], including those
+ * using row progress. P0 staging occupies a fixed UB window above the
+ * P1/P2 work tiles (see StageUb), so dispatch can overlap earlier experts'
+ * P1 work without a whole-stage UB ownership handover.
  *
  * Saved forward context (routing metadata, packed X and count-table snapshot)
  * and backward-only scratch are passed as separate buffers.
@@ -44,10 +55,11 @@ namespace MegaMoeImpl {
 
 using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
-// P1 alternates between both paired AIVs: AIC event 0 targets AIV0 and event
-// FLAG_ID_MAX targets AIV1; each AIV consumes its local event 0. P2 targets
-// AIV0 with local ping-pong events 0/1.
-constexpr uint16_t BW_P1_EVENT = 0;  // P1 AIC <-> AIV0/AIV1 SwiGLU Grad
+// In save=none, P1 alternates between the paired AIVs: AIC event 0 targets
+// AIV0 and event FLAG_ID_MAX targets AIV1; each AIV consumes local event 0.
+// Its P2 uses AIV0 with local ping-pong events 0/1. Saved modes use GM
+// completion counters instead of these per-tile output events.
+constexpr uint16_t BW_P1_EVENT = 0;  // save=none P1 AIC <-> AIV0/AIV1
 constexpr uint32_t BW_TOPK_ROUTE_BATCH_ROWS = 1024;
 constexpr uint32_t BW_TOPK_PARTIAL_UB_BYTES = 128 * 1024;
 
@@ -302,13 +314,13 @@ __aicore__ inline void MegaMoeBF16Backward::Init(GM_ADDR context, GM_ADDR gradY,
 // restore tile and the P0-B dispatch ring all bind here; they are
 // sequential in time on one lane, so one shared region serves all three.
 // Nothing in P0 goes through TPipe, so the staging region never overlaps
-// the CATLASS-managed tile area: P1's fixpipe may target the paired AIV's
-// tiles while dispatch is still copying later experts, and the per-expert
-// bwFlagDispatch_[e] / DO_WAIT_e handshake is the only P1 entry gate.
-// A tile fixpiped into a lane that has not entered P1 yet simply sits in
-// the (statically bound) tile region until that lane's epilogue consumes
-// it; the per-phase CATLASS Resource TBufs that may overlap the region
-// are allocation-only on the vector side (never written, never zeroed).
+// the CATLASS-managed tile area. In save=none, P1 can Fixpipe an early
+// expert's dHp tile into either paired AIV while P0 dispatch copies later
+// experts. The tile stays in the statically bound work region until that
+// lane's epilogue consumes it; CATLASS Resource TBufs that overlap the
+// region are allocation-only on the vector side (never written or zeroed).
+// The dO read dependency is separate: saved-mode AICs use row progress or
+// complete-expert dispatch readiness, while save=none uses the latter.
 // Raw fixed-position binding, same pattern as the epilogue's own tile
 // members (VECIN raw tiles at fixed byte offsets, fed by plain DataCopy in
 // both directions).  The return type spells bfloat16_t, NOT the class alias
@@ -367,6 +379,8 @@ __aicore__ inline void MegaMoeBF16Backward::GatherRoutes()
     GlobalTensor<QuantOutType> ptrA0;
     ptrA0.SetGlobalBuffer((__gm__ QuantOutType*)params_.peermemInfo.ptrA0);
 
+    // Both gather paths copy raw dY in route order. The forward scales h
+    // before W2, so P1 applies p to dHp as dh=R(p*dHp), not to dO here.
     // Preserve the fixed P0 window above all three P1/P2 work tiles.
     // Do not borrow their space: P1 may already fixpipe while P0-B runs.
     const uint32_t capacity = MegaMoeBF16BackwardCatlassImpl::ArchTag::UB_SIZE - BW_STAGE_BASE_BYTES;
@@ -413,8 +427,6 @@ __aicore__ inline void MegaMoeBF16Backward::GatherRoutes()
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t route = coreOffset; route < coreOffset + coreLen; route++) {
         int32_t token = expandedRowIdx(route) / static_cast<int32_t>(topK_);
-        // In the early-topk forward, p is applied to H before W2. Therefore
-        // backward dispatches raw dY; p belongs on dH=p*dHp in P1.
         auto event = (route % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
         auto dataInBf16 = (route % 2 == 0) ? dataIn0Bf16 : dataIn1Bf16;
         // dY is already BF16. Copy it directly through a ping-pong UB slot:
@@ -575,8 +587,7 @@ __aicore__ inline void MegaMoeBF16Backward::DispatchTokensBackward(GM_ADDR dstBa
                 rowsCopyCnt = maxOutputSize_ - rowStartInDst;
             }
             // Forward saved the exclusive source offset for each local
-            // expert. Read it directly, without a fixed ten-source cache or
-            // an offset advanced by a capacity-clipped receive count.
+            // expert; this offset is independent of receive-capacity clipping.
             const int32_t rowSrcOffset = preSumBeforeRankWorkSpace_(dstRankIdx * expertPerRank_ + expertIdx);
             int32_t rowsPerCore = Ops::Base::CeilDiv(rowsCopyCnt, static_cast<int32_t>(dispatchBlockNumPerEP_));
             int32_t rowDstOffsetPerCore = rowStartInDst + aivIdxInGroup * rowsPerCore;
@@ -675,8 +686,8 @@ __aicore__ inline void MegaMoeBF16Backward::ClearGradWeightPlane(GM_ADDR base, u
     }
 }
 
-// Non-empty experts are fully overwritten by P3/P4 GEMMs.  Empty experts do
-// not launch either GEMM, so all AIVs cooperatively clear only those output
+// Non-empty experts are fully overwritten by the dW1/dW2 GEMMs. Empty experts
+// do not launch either GEMM, so all AIVs cooperatively clear only those output
 // planes while the AICs compute weight gradients for the non-empty experts.
 // Reproduce UpdateGroupParams' maxOutputSize clamp: an expert beyond the
 // receive-capacity boundary is also skipped by both GEMMs and must be zero.
@@ -801,9 +812,9 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1RecomputePhase()
     BackwardGroupMatmulParam<RowMajor, WeightLayout, 0, true> gmm1Params;
     cumMRows_ = 0;
     preOffset_ = 0;
-    // Each phase drives its own GEMM dimensions.  P0-C computes
-    // Z = Xpacked @ W1.T with GEMM {m=Me, n=N, k=K}; M is the per-expert
-    // token count set by UpdateGroupParams below, N/K are fixed here.
+    // P0-C uses GEMM {m=Me, n=2F, k=K}: Xpacked @ W1.T for canonical
+    // weights, or Xpacked @ W1 for transposed storage. Me is set per expert
+    // by UpdateGroupParams; K=k_ and 2F=n_ are fixed here.
     Get<N_VALUE>(problemShape_) = n_;
     Get<K_VALUE>(problemShape_) = k_;
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
@@ -830,12 +841,15 @@ __aicore__ inline void MegaMoeBF16Backward::GMM2GradPhase()
     vecSetSyncCom_ = 0;
     uint32_t nextTargetAiv = 0;
     const int32_t dispatchTarget = static_cast<int32_t>(worldSize_ * dispatchBlockNumPerEP_);
-    // The dual target copier changes only Fixpipe subBlockId. AIC keeps one
-    // BlockMmad instance and one CATLASS L1/L0 event state machine.
+    // GmOutput selects GM dHp output for saved modes. Otherwise the dual
+    // target copier selects a paired AIV UB slot through Fixpipe subBlockId;
+    // the AIC keeps one BlockMmad instance and L1/L0 event state machine.
     BackwardGroupMatmulParam<RowMajor, WeightLayout, GmOutput ? 0U : DUAL_AIV_TARGET, GmOutput> gmm2Params;
     cumMRows_ = 0;
     preOffset_ = 0;
-    // P1 GEMM: dH = dO @ W2 is [Me, K] x [K, F]; N = F = n_/2, K = K.
+    // P1 GEMM produces dHp, not dh: canonical dHp = dO @ W2 is
+    // [Me,K] x [K,F], with GEMM N=F=n_/2 and K=k_. Transposed storage
+    // uses W2.T. The epilogue subsequently forms dh=R(p*dHp) and dZ.
     Get<N_VALUE>(problemShape_) = n_ / MegaMoeBF16BackwardCatlassImpl::SWIGLU_N_HALF;
     Get<K_VALUE>(problemShape_) = k_;
     uint32_t nonemptyOrdinal = 0;
@@ -851,8 +865,8 @@ __aicore__ inline void MegaMoeBF16Backward::GMM2GradPhase()
             const auto rowReady = MakeDispatchRowReady(expertIdx, nonemptyOrdinal);
             if constexpr (g_coreType == AscendC::AIC) {
                 if (!metadataKnown && ProducerPhaseSupported(rowReady, blockNum_)) {
-                    // Required P0 readiness only, once per AIC invocation.
-                    // No dependency on any earlier source's payload.
+                    // Wait once for restored count-table/producer metadata.
+                    // This flag does not signal completion of dO payload DMA.
                     while (ReadGmByPassDCache(reinterpret_cast<__gm__ int32_t*>(bwWs_.ptrBwFlagDHpReady) + 1) != 1) {
                     }
                     metadataKnown = true;
@@ -895,7 +909,9 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1GradPhase()
         BackwardGroupMatmulParam<RowMajor, WeightLayout, 0, false> gmm1Params;
         cumMRows_ = 0;
         preOffset_ = 0;
-        // P2 GEMM: dX = dZ @ W1 is [Me, N] x [N, K]; N = K, K = N.
+        // P2 GEMM produces packed dX: canonical dZ @ W1 is
+        // [Me,2F] x [2F,K], with GEMM N=k_ and K=n_. Transposed storage
+        // uses W1.T; Combine sends the resulting rows to source-rank ptrD.
         Get<N_VALUE>(problemShape_) = k_;
         Get<K_VALUE>(problemShape_) = n_;
         for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
@@ -912,8 +928,9 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1GradPhase()
     }
 }
 
-// dO and dX have identical packed-row/K layouts. Retire dW2 for one expert
-// before changing that band's lifetime; later experts occupy disjoint bands.
+// Saved-mode dO and dX share the same packed-row/K GM band. Complete
+// dW2=dO.T@Hp and all AIC dO reads before P2 overwrites that band with dX;
+// other experts occupy disjoint bands.
 template <bool TransW>
 __aicore__ inline void MegaMoeBF16Backward::GMM1GradReuseDOPhase()
 {
@@ -1265,18 +1282,15 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     // P0 staging (gather slots / count-table restore / dispatch ring) is a
     // fixed static UB window above the P1/P2 tile region (StageUb), so P0
     // needs no TPipe and no ownership handover into P1.  P5/P6 allocate
-    // their reduction buffers in local pipes as before.
+    // their reduction buffers in local pipes.
     InitStageLayout();
-    // Bridge the wakeup-to-first-stage window (rest of Init + layout setup)
-    // so the head of every lane is tiled; start_cycle_ comes from Init's Tik.
-
     // The Host-side token-table clear is ordered before this kernel on the
     // same stream. The entry device synchronization makes that local
     // ordering visible to every peer without a Host stream synchronize or
     // aclshmem_barrier_all.
     CrossRankSyncInWorldSize();
 
-    // ---- P0-A: weighted gather grad_y * topk_weights -> ptrA0 (all AIV) ----
+    // ---- P0-A: gather raw grad_y into route order -> ptrA0 (all AIV) ----
     if constexpr (g_coreType == AscendC::AIV) {
         GatherRoutes();
 
@@ -1286,16 +1300,17 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         RestoreTokenPerExpert();
         SyncAll<true>();
         if (MegaMoeBF16Training::BackwardUsesGm(savedGateUpMode_) && splitExperts_ > 0 && aivCoreIdx_ == 0) {
-            // word1 of expert0's existing DHp flag cacheline replaces the
-            // removed chunk arrivals. All AIV metadata is complete already.
+            // Word1 of expert0's dHp flag cacheline signals that every AIV
+            // has finished count-table restore and producer metadata setup.
             AtomicAdd(reinterpret_cast<__gm__ int32_t*>(bwWs_.ptrBwFlagDHpReady) + 1, int32_t(1));
         }
 
         if (subBlockIdx_ == 0) {
-            // AIV0: dispatch dO -> ptrDO for all experts.  Every band
-            // publishes bwFlagDispatch_[expert]; the AIC's per-expert
-            // DO_WAIT_e consumes it, so later experts are still in flight
-            // here while P1 already computes earlier ones.
+            // AIV0s pull peers' raw route dY into packed dO for all experts.
+            // Every producer band publishes bwFlagDispatch_[expert]; eligible
+            // saved-mode experts also publish row progress. P1 AICs wait for
+            // the selected readiness before reading dO, allowing earlier
+            // experts' work to overlap later experts' dispatch.
             cumMRows_ = 0;
             preOffset_ = 0;
             uint32_t nonemptyOrdinal = 0;
@@ -1314,13 +1329,11 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         // no P0-B work at all.
     }
 
-    // ---- P0-C: optional GMM1 fallback ----
+    // ---- P0-C: save=none GMM1 recompute ----
     // BF16/MXFP8 modes consume the matching forward-persistent gate/up in P1.
-    // Only save=none recomputes GMM1 into backward scratch. The direct-GM
-    // fallback does not touch AIV1 UB, so it can overlap P0-A/P0-B.
+    // Only save=none recomputes GMM1 into backward GM scratch. The AIC does
+    // not hand these results through AIV UB, so it can overlap P0-A/P0-B.
     if constexpr (g_coreType == AscendC::AIV) {
-        // AIVs walk the recompute phase without touching the MMAD; time the
-        // bookkeeping walk (param ctor + per-expert count-table GM reads).
     }
     if (savedGateUpMode_ == MegaMoeBF16Training::kSaveNone) {
         if (params_.tilingData->transW) {
@@ -1332,15 +1345,16 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     if constexpr (g_coreType == AscendC::AIV) {
     }
 
-    // ---- P1: GMM2 Grad || dual-AIV SwiGLU Grad ----
-    // No whole-stage ownership wait: P0's staging is a static region above
-    // the tile area, so the fixpipe may target either paired AIV while
-    // dispatch is still in flight.  P1 entry is gated per expert by
-    // DO_WAIT_e (bwFlagDispatch_[e]) inside GMM2GradSwiGLUGradDualAiv, and
-    // the per-lane wait is accumulated on the AIV lane.  Saved gate/up
-    // modes skip the GMM1 fallback above entirely, so the AIC reaches
-    // DO_WAIT_0 directly and the first-expert transfer is the only P1
-    // entry cost; save=none overlaps that transfer with the fallback.
+    // ---- P1: GMM2 dHp + SwiGLU backward epilogue ----
+    // Saved BF16/MXFP8: AICs read dO only after the selected producer-row
+    // or complete-expert readiness, then write dHp to ptrHp in GM. AIVs
+    // wait for all AIC dHp arrivals for that expert, load assigned tiles
+    // into UB, and replace dHp with Hp while writing dZ and dp partials.
+    // save=none: AICs wait for complete-expert dO dispatch and alternately
+    // Fixpipe dHp tiles into paired AIV UB slots. Each slot has a per-tile
+    // completion handshake before reuse; gate/up comes from P0-C scratch.
+    // P0 staging is disjoint from these work tiles, so neither path needs
+    // a whole-stage UB ownership handover after dispatch.
     const bool gmOutput = MegaMoeBF16Training::BackwardUsesGm(savedGateUpMode_);
     if (gmOutput) {
         if (params_.tilingData->transW) {
@@ -1381,16 +1395,19 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
-        // Each AIV publishes only after all of its dZ/Hp/dpPartials MTE3
-        // writes are visible. This is the global boundary consumed above.
+        // Every AIV retires its dZ/Hp/dpPartials MTE3 writes before these
+        // arrivals. save=none AICs consume bwFlagAiv1Ready_ at the P1 exit;
+        // saved modes instead use per-expert dzReady before dW2/P2.
         PipeBarrier<PIPE_ALL>();
         AtomicAdd((__gm__ int32_t*)bwFlagAiv1Ready_, int32_t(1));
         AtomicAdd((__gm__ int32_t*)bwFlagHDone_, int32_t(1));
     }
 
-    // ---- P2: GMM1 Grad || Combine (AIC + AIV0) ----
-    // Saved-mode P2 writes dX into dO; none uses AIV0 UB only
-    // after the full P1 barrier. Each AIV enters here after its own P1 loop.
+    // ---- P2: packed dX GEMM + Combine (AIC + AIV0) ----
+    // Saved modes wait for each expert's dzReady, compute dW2, and retire
+    // all AIC dO readers before overwriting dO with GM dX. AIV0 waits for
+    // that expert's dxReady before Combine. save=none uses AIV0 UB output
+    // after the full P1 barrier; each AIV enters after its own P1 loop.
     if (gmOutput) {
         if (params_.tilingData->transW) {
             GMM1GradPhase<true, true>();
@@ -1419,7 +1436,8 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         // the existing drained local + cross-rank P5 barrier protects ptrD.
     }
 
-    // ---- P3/P4: weight gradients (AIC) overlapped with P5 (AIV) ----
+    // ---- P3 dW1 / save=none P4 dW2 (AIC), overlapped with P5 (AIV) ----
+    // Saved-mode dW2 has already run per expert immediately before P2 dX.
     if constexpr (g_coreType == AscendC::AIC) {
         if (params_.tilingData->transW) {
             GMM1DWPhase<true>();
@@ -1442,15 +1460,15 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
-        // P3/P4 use all AICs for non-empty expert DW.  Use all paired AIVs for
-        // the complementary empty-expert zero fill so no single core clears a
+        // AICs write non-empty experts' weight gradients. Use all paired
+        // AIVs for the empty-expert zero fill so no single core clears a
         // complete weight plane and the writes overlap the AIC GEMMs.
         ClearEmptyExpertGradWeights();
         // Every AIV0 may still be sending dX tiles into a peer's ptrD while
-        // its paired AIV1 has already finished H recompute.  Do not publish
-        // cross-rank completion until all local AIV pipelines are drained and
-        // every local AIV has reached this point; otherwise a peer can start
-        // top-k unpermute from a partially-written ptrD.
+        // its paired AIV1 has finished its P1 epilogue and empty-expert clear.
+        // Do not publish cross-rank completion until all local AIV pipelines
+        // are drained and every local AIV has reached this point; otherwise a peer can start
+        // dX unpermute from a partially-written ptrD.
 
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();

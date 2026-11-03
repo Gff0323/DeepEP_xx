@@ -1125,7 +1125,7 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
         CrossRankSyncInWorldSize();
     }
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
-    // 1. moe_init_routing_v3 + 量化
+    // 1. Initialize routing and pack BF16 tokens without quantization.
     moe_init_routing_v3<bfloat16_t, QuantOutType>(
         params_.aGmAddr, params_.expertIdxGmAddr, nullptr, nullptr, params_.peermemInfo.ptrA0,
         params_.workspaceInfo.expandedRowIdx, tokenPerExpertCurRankAddr_, nullptr,
