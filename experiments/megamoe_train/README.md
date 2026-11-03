@@ -10,6 +10,11 @@ The initial BF16 implementation derives from **b8cff148**. See
 [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md) for the computation contract.
 The API, code architecture, autograd bridge and resource lifetime are described
 in the [framework design (中文)](docs/BF16_FRAMEWORK_DESIGN_ZH.md).
+
+For a guided source walkthrough, open the [visual source guide (中文)](docs/visual/README.md):
+architecture, forward/backward call chains, AIC/AIV swimlanes and buffer lifetimes.
+Its interactive reader also opens directly from a local checkout.
+
 This is a separate training component alongside `experiments/megamoe` (inference).
 BF16 has its own Host directory, Python module, kernels and tests. Quantized
 training implementations are not provided by this component.

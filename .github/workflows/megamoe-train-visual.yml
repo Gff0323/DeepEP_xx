@@ -1,0 +1,95 @@
+name: MegaMoE Train visual documentation
+
+on:
+  push:
+    branches: [feat/megamoe-train-bf16]
+    paths:
+      - experiments/megamoe_train/**
+      - deep_ep/**
+      - csrc/runtime/**
+      - CMakeLists.txt
+      - build_support.py
+      - setup.py
+      - .github/workflows/megamoe-train-visual.yml
+  pull_request:
+    paths:
+      - experiments/megamoe_train/**
+      - deep_ep/**
+      - csrc/runtime/**
+      - CMakeLists.txt
+      - build_support.py
+      - setup.py
+      - .github/workflows/megamoe-train-visual.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: megamoe-train-visual-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: experiments/megamoe_train/docs/visual
+
+jobs:
+  build:
+    name: Build and check documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out source and documentation
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: experiments/megamoe_train/docs/visual/package-lock.json
+      - name: Install documentation dependencies
+        run: npm ci
+      - name: Build source guide
+        run: npm run build
+      - name: Check source references and generated documentation
+        run: npm run check
+      - name: Install browser for interaction checks
+        run: npx playwright install --with-deps chromium
+      - name: Check browser interactions and offline reading
+        run: npm run test:browser
+      - name: Preserve failed-check evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: megamoe-train-visual-checks
+          path: experiments/megamoe_train/docs/visual/.artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Package the website
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/feat/megamoe-train-bf16'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: experiments/megamoe_train/docs/visual/site
+
+  deploy:
+    name: Publish source guide
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/feat/megamoe-train-bf16'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy generated website
+        id: deployment
+        uses: actions/deploy-pages@v4
