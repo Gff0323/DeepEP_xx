@@ -117,7 +117,9 @@ experiments/megamoe_train/
 │   ├── test_mega_moe.py           唯一入口：完整前后向精度 / Event 计时
 │   ├── cpu_reference.py          Torch CPU FP64 / autograd 真值
 │   ├── npu_baseline.py           BF16 小算子链与 MXFP8 模式参考
-│   └── precision_metrics.py      混合容差、双标杆与 JSON 报告
+│   ├── precision_metrics.py      混合容差、双标杆与 JSON 报告
+│   ├── atk_compare.py            可选 ATK 内部 CV 比较器适配
+│   └── cases.json                分层 shape、路由、保存模式与 clipping 清单
 ├── benchmarks/paired.py           历史迁移性能对照工具
 ├── CMakeLists.txt                 可选训练扩展构建
 ├── upstream.json                  来源文件映射与固定哈希
@@ -353,15 +355,17 @@ Host 在提交前后向后，对实际参与计算的 Tensor 调用 `NPUCachingA
 | --- | --- |
 | [test_mega_moe.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe.py) | 唯一入口、输入快照、安装包选择、Gloo 协调、融合算子前后向、Event 计时 |
 | [cpu_reference.py](../../experiments/megamoe_train/tests/bf16/cpu_reference.py) | Torch CPU FP64 前向与 autograd 反向；按专家/行分块，不插入 BF16 舍入 |
-| [npu_baseline.py](../../experiments/megamoe_train/tests/bf16/npu_baseline.py) | 移植源仓 BigOp 专家链：GMM、BF16 SiLU、激活 autograd 反向、MXFP8 和 NPU scatter_add |
+| [npu_baseline.py](../../experiments/megamoe_train/tests/bf16/npu_baseline.py) | 共享 GMM；原 BigOp 用于 CPU 双标杆，MegaMoE 数值契约参考用于混合容差 |
 | [precision_metrics.py](../../experiments/megamoe_train/tests/bf16/precision_metrics.py) | 误差指标、混合容差、双标杆判据、结构化报告 |
+| [atk_compare.py](../../experiments/megamoe_train/tests/bf16/atk_compare.py) | 可选调用 ATK 私有 CV 比较器，逐 rank、逐输出比较，不替换现有门禁 |
+| [cases.json](../../experiments/megamoe_train/tests/bf16/cases.json) | smoke/core/extended/model 分层用例；原入口负责列举、顺序执行和汇总 |
 | [upstream.json](../../experiments/megamoe_train/upstream.json) / [check_source_import.py](../../experiments/megamoe_train/scripts/check_source_import.py) | 来源映射、固定哈希、精度参考版本与必需文件 |
 
 默认先跑精度、通过后跑性能。精度同时执行前向和反向，检查 `y、dx、dtopk_weights、dw1、dw2`，专家计数要求完全一致。三路消费同一份 BF16 输入、固定且不重复的专家 ID、路由权重、专家参数和上游梯度。当前算子边界不含 router，CPU 真值不重新执行 router，也不叠加 router 输入梯度。
 
 精度流程为 `输入快照 → CPU FP64 真值 / NPU 小算子 baseline / 融合算子 → 逐 rank、逐结果验收`。CPU 真值每次重算；当前组件没有 CSV、参考结果缓存、自建多机协调层或独立生命周期测试入口。单次调用已完整执行 forward/backward/close，跨调用生命周期仍受第 5 节的调用方契约约束。
 
-NPU baseline 选取源仓 BigOp 的实现：使用 npu_grouped_matmul 及 grouped wgrad，BF16 的 F.silu(gate)*up 小算子图，并由 autograd 重放激活反向。原始 y/dx 按专家顺序在 NPU 上执行 BF16 scatter_add；混合容差的 `dx` 按源仓精度钩子使用 FP32 scatter_add 后回写 BF16。Gloo 只搬运路由值，不在 CPU 上合并 TopK 结果。MXFP8 混合容差使用模式一致的参考，双标杆仍相对原始 BF16 baseline 与未压缩 FP64 真值。clipping 使用规范化后的 FP32 limit，并按原始保存值的掩码计算模式参考。
+NPU 参考共用源仓 BigOp 的 npu_grouped_matmul 及 grouped wgrad，但区分两种数值契约。混合容差使用 `megamoe_contract`：SiLU/Up 和激活导数采用 FP32 中间计算，保留 H、Hp、dH 和最终梯度的 BF16 边界；前向 y 按 TopK 顺序逐次 BF16 累加，反向 dx 按 TopK 顺序 FP32 累加后一次转回 BF16。CPU 双标杆仍使用原始 BigOp 的 BF16 小算子图、autograd 激活反向与 NPU BF16 scatter_add，分母不切换为新的契约参考。Gloo 只搬运路由值。MXFP8 只改变反向操作数；契约参考在 FP32 中限幅解码值，梯度掩码保留原始前向决策。保存模式和验收门限保持不变。
 
 两套判据同时通过才算精度通过：混合容差使用实际输出 dtype，BF16 的 atol/rtol 为 2^-7、匹配率至少 99%，并设最大绝对误差门禁；双标杆相对 CPU FP64 计算 MARE/MERE/RMSE，比值上限分别为 5、1.5、1.5，分母下限为 2^-8。非有限值、缺少梯度或尺寸错误不能通过完整精度验收。
 
@@ -369,4 +373,6 @@ NPU baseline 选取源仓 BigOp 的实现：使用 npu_grouped_matmul 及 groupe
 
 当前主来源清单包含 64 个导入映射，另记录 17 份退役测试/辅助文件和 1 份源仓过程文档，原始来源 SHA 均保留。49 份 C++ 文件的固定 token 哈希保持不变。精度设计另参考源仓 `568ac7c07e2e669582f7ce684bf5dd27f503efad`，其路径和原始 SHA 在 `precision_reference` 单独记录，不改变计算内核固定来源。
 
-当前四个测试文件统一使用 Torch Tensor；CPU 真值使用 Torch CPU FP64 前向与 autograd 反向。本轮仅进行语法、引用、来源与格式检查，数值和设备验证留到远端机器执行，不据此声明精度或性能通过。历史设备结果参见 [首轮迁移验收记录](首轮迁移验收.md)，应按其中的源码版本与环境理解。
+当前核心四个测试文件统一使用 Torch Tensor；CPU 真值使用 Torch CPU FP64 前向与 autograd 反向。契约参考已通过静态检查及四项远端 CPU 检查，覆盖激活舍入、导数、MXFP8 掩码与累加顺序。独立设备实验在 EP2/M129/H256/F512、bf16 保存、clip0 下对齐数值契约后，y 及四项梯度与未修改内核逐 bit 相同；更新后的统一入口及其它模式仍待设备复测，不据此声明完整精度或性能验收通过。历史设备结果参见 [首轮迁移验收记录](首轮迁移验收.md)，应按其中的源码版本与环境理解。
+
+可选 `--atk` 在现有判据外增加内部 `cv_fused_double_benchmark` 比较，仍用融合结果、原 BF16 BigOp、CPU FP64 三路数据。`--suite` 使用同一入口顺序启动独立 case；`--list-cases` 只列配置，不加载框架或访问设备。本轮仅完成本地适配和协议检查，ATK 私有比较器调用与用例矩阵尚未进行设备回归，不能作为已通过的精度结论。

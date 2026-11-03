@@ -29,7 +29,7 @@ dGate = R((FP32(dH) * u) * (s * (1 + g * (1 - s))) * gate_mask)
 
 覆盖`ComputeForwardAux`（尾块H）、`ComputeFusedFullTile`（满tile H及导数）、`ComputeSwigluGradImpl`（尾块导数），并同步清理`ComputeSwigluRecompute`的同类旧舍入。后者当前没有调用点，保持其契约一致，未新增调用。
 
-独立CPU参考`reference_packed_intermediates()`也改为前后共享同一H，并明确保留`dH=R(p*dHp)`的边界。高精度数学梯度参考仍独立保留，未放宽已有设备误差阈值。
+统一测试中的 NPU 小算子参考显式保留 H、Hp、dH 和 dZ 的 BF16 边界；CPU FP64 数学真值独立计算，不插入这些舍入。旧的中间值开发检查不再是当前测试入口；完整精度以混合容差和 CPU 双标杆共同验收。
 
 ## 保留的行为
 
