@@ -23,12 +23,14 @@ npm run test:browser
 
 ```bash
 python tools/package-editor.py
-code --install-extension .artifacts/megamoe-train-source-guide-0.1.0.vsix
+code --install-extension .artifacts/megamoe-train-source-guide-0.2.0.vsix
 ```
 
 普通浏览器继续直接打开离线 HTML；在线页面保留 **复制定位路径**。使用 VS Code 自带内置浏览器时，也可以复制后按 **Ctrl+P** 粘贴并回车。这里与扩展提供的源码导览是两个不同的打开方式。
 
 修改 `data/*.json` 中对应节点的标题、讲解、输入、输出、等待和连线。`sources` 使用文件路径与源码锚点定位函数或控制点；函数移动或改名时同步修改锚点。节点 ID 保持稳定，便于页面链接和跨图下钻。
+
+三个阅读场景由 `data/learning-case.json` 与 `tools/learning-scenes.mjs` 生成。输入规则、聚合计数和所选 token 的数据共同驱动路由图、保存桥和流水示意；修改案例后同时检查路由守恒和数值结果。教学路由与依赖泳道用于解释代码，实测时间及性能记录单独维护。
 
 训练代码更新后：
 

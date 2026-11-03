@@ -3,10 +3,13 @@
   'use strict';
   const editorBridge = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
   const data = JSON.parse(document.getElementById('reader-data').textContent);
+  const learning = data.learning || { case: { focusTokens: [] }, scenes: [] };
+  const initial = new URLSearchParams(location.hash.slice(1));
+  const learningState = { token: initial.get('token') || learning.case.focusTokens[0]?.id, phase: initial.get('phase') === 'backward' ? 'backward' : 'forward', resource: initial.get('resource') || '' };
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const groups = [ ['L1', '项目架构'], ['L2', '模块关系'], ['L3', '执行生命周期'], ['L4', '函数调用链'], ['L5', '核内与内存'] ];
-  let graph, selected, scale = 1;
+  let graph, selected, activeScene = null, scale = 1;
   const canvas = $('canvas'), viewport = $('viewport');
   $('repository').href = data.sourceRepository;
   $('revision').href = `${data.sourceRepository}/tree/${data.sourceCommit}`;
@@ -16,7 +19,8 @@
     document.querySelector('.scenario').append(badge);
     $('source-map').onclick = event => { event.preventDefault(); editorBridge.postMessage({ type: 'openMapping' }); };
   }
-  $('navigation').innerHTML = groups.map(([layer, title]) => `<div class="nav-group"><span class="nav-label">${layer} · ${title}</span>${data.graphs.filter(g => g.layer === layer).map(g => `<button type="button" data-view="${g.id}">${esc(g.title)}</button>`).join('')}</div>`).join('');
+  $('navigation').innerHTML = (learning.scenes.length ? `<div class="nav-group"><span class="nav-label">三个阅读场景</span>${learning.scenes.map(scene => `<button type="button" data-view="${scene.id}">${esc(scene.title)}</button>`).join('')}</div>` : '') + groups.map(([layer, title]) => `<div class="nav-group"><span class="nav-label">${layer} · ${title}</span>${data.graphs.filter(g => g.layer === layer).map(g => `<button type="button" data-view="${g.id}">${esc(g.title)}</button>`).join('')}</div>`).join('');
+  $('case-token').innerHTML = learning.case.focusTokens.map(token => `<option value="${esc(token.id)}">${esc(token.label || `rank${token.rank} · token${token.token}`)}</option>`).join('');
   function setScale(value) {
     scale = Math.max(.55, Math.min(1.75, value));
     const svg = canvas.querySelector('svg');
@@ -24,8 +28,51 @@
     svg.style.height = `${graph.height * scale}px`;
     $('zoom-label').textContent = `${Math.round(scale * 100)}%`;
   }
-  function fit() { setScale(Math.min(1, (viewport.clientWidth - 18) / graph.width)); }
-  function updateHash() { history.replaceState(null, '', `#view=${graph.id}&node=${selected.id}`); }
+  function fit() { if (!activeScene) setScale(Math.min(1, (viewport.clientWidth - 18) / graph.width)); }
+  function updateHash() {
+    const state = new URLSearchParams({ view: activeScene?.id || graph.id, node: selected.id });
+    if (learningState.token) { state.set('token', learningState.token); state.set('phase', learningState.phase); }
+    if (learningState.resource) state.set('resource', learningState.resource);
+    history.replaceState(null, '', `#${state}`);
+  }
+  function activateNavigation(id) {
+    for (const button of $('navigation').querySelectorAll('[data-view]')) {
+      const active = button.dataset.view === id;
+      button.classList.toggle('active', active); button.setAttribute('aria-pressed', String(active));
+    }
+    $('reader-layout').classList.remove('nav-open'); $('nav-toggle').setAttribute('aria-expanded', 'false');
+  }
+  function applyLearningState() {
+    if (!learning.case.focusTokens.some(token => token.id === learningState.token)) learningState.token = learning.case.focusTokens[0]?.id;
+    $('case-token').value = learningState.token; $('case-phase').value = learningState.phase;
+    const token = learning.case.focusTokens.find(token => token.id === learningState.token);
+    const phaseLabel = activeScene?.id === 'learn-token' ? (learningState.phase === 'forward' ? '前向' : '反向') : '前后向对照';
+    $('case-context').textContent = token ? `当前追踪：${token.label || `rank${token.rank} · token${token.token}`} · ${phaseLabel}。切换场景会保留选择。` : '';
+    for (const element of canvas.querySelectorAll('[data-learning-token],[data-learning-phase]')) {
+      const hidden = (element.dataset.learningToken && element.dataset.learningToken !== learningState.token) || (element.dataset.learningPhase && element.dataset.learningPhase !== learningState.phase);
+      element.toggleAttribute('hidden', !!hidden);
+    }
+    for (const element of canvas.querySelectorAll('[data-learning-resource]')) element.classList.toggle('learning-resource-active', element.dataset.learningResource === learningState.resource);
+    updateHash();
+  }
+  function inspectLearningNode(id, open = false) {
+    const owner = data.graphs.find(candidate => candidate.nodes.some(node => node.id === id));
+    if (!owner) return;
+    graph = owner; select(id);
+    for (const element of canvas.querySelectorAll('[data-learning-node]')) element.classList.toggle('learning-selected', element.dataset.learningNode === id);
+    if (open && editorBridge) editorBridge.postMessage({ type: 'openSource', nodeId: id, sourceIndex: 0 });
+  }
+  function showLearning(scene, node) {
+    activeScene = scene; document.body.classList.add('learning-mode');
+    $('view-title').textContent = scene.title; $('view-layer').textContent = '学习案例 · H7168 / F3072';
+    $('view-summary').textContent = scene.summary; $('node-count').textContent = '固定输入 · 跨图追踪';
+    $('learning-controls').hidden = false; $('graph-toolbar').hidden = true; $('graph-exports').hidden = true;
+    $('case-phase-control').hidden = scene.id !== 'learn-token';
+    viewport.classList.add('learning-mode'); canvas.classList.add('learning-canvas'); canvas.innerHTML = scene.html;
+    viewport.scrollTo(0, 0); activateNavigation(scene.id);
+    inspectLearningNode(node || scene.phaseSources?.[learningState.phase] || scene.sourceNode); applyLearningState();
+    $('search-status').textContent = '点击图中的数据或阶段，右侧查看对应源码。';
+  }
   function localFile(source) {
     if (location.protocol !== 'file:') return '';
     return new URL(`../../../../${source.path}`, location.href).href;
@@ -98,16 +145,17 @@
     $('search-status').textContent = q ? `找到 ${matched} / ${graph.nodes.length} 个节点` : '点击节点查看说明和源码';
   }
   function showView(id, node) {
+    const scene = learning.scenes.find(scene => scene.id === id);
+    if (scene) { showLearning(scene, node); return; }
+    activeScene = null; document.body.classList.remove('learning-mode');
+    $('learning-controls').hidden = true; $('graph-toolbar').hidden = false; $('graph-exports').hidden = false;
+    viewport.classList.remove('learning-mode'); canvas.classList.remove('learning-canvas');
     graph = data.graphs.find(g => g.id === id) || data.graphs[0];
     $('view-title').textContent = graph.title;
     $('view-layer').textContent = `${graph.layer} · ${groups.find(([key]) => key === graph.layer)[1]}`;
     $('view-summary').textContent = graph.summary;
     $('node-count').textContent = `${graph.nodes.length} 个节点`;
-    for (const button of $('navigation').querySelectorAll('[data-view]')) {
-      const active = button.dataset.view === graph.id;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', String(active));
-    }
+    activateNavigation(graph.id);
     canvas.innerHTML = graph.svg;
     viewport.scrollTo(0, 0);
     $('query').value = '';
@@ -127,6 +175,25 @@
     setTimeout(() => URL.revokeObjectURL(url), 500);
   }
   for (const button of $('navigation').querySelectorAll('[data-view]')) button.onclick = () => showView(button.dataset.view);
+  $('nav-toggle').onclick = () => { const open = $('reader-layout').classList.toggle('nav-open'); $('nav-toggle').setAttribute('aria-expanded', String(open)); };
+  $('case-token').onchange = () => { learningState.token = $('case-token').value; applyLearningState(); };
+  $('case-phase').onchange = () => {
+    learningState.phase = $('case-phase').value;
+    if (activeScene?.phaseSources?.[learningState.phase]) inspectLearningNode(activeScene.phaseSources[learningState.phase]);
+    applyLearningState();
+  };
+  canvas.addEventListener('click', event => {
+    const target = event.target.closest('[data-learning-node]');
+    if (activeScene && target) {
+      const resource = target.closest('[data-learning-resource]');
+      if (resource) learningState.resource = resource.dataset.learningResource;
+      inspectLearningNode(target.dataset.learningNode, true); applyLearningState();
+    }
+  });
+  canvas.addEventListener('keydown', event => {
+    const target = event.target.closest('[data-learning-node]');
+    if (activeScene && target && ['Enter', ' '].includes(event.key)) { event.preventDefault(); target.dispatchEvent(new MouseEvent('click', { bubbles: true })); }
+  });
   $('fit').onclick = fit;
   $('zoom-in').onclick = () => setScale(scale + .1);
   $('zoom-out').onclick = () => setScale(scale - .1);
@@ -136,12 +203,11 @@
   $('svg-download').onclick = () => download(graph.svg, 'image/svg+xml', `${graph.id}.svg`);
   $('mmd-download').onclick = () => download(graph.mermaid, 'text/plain', `${graph.id}.mmd`);
   document.addEventListener('keydown', event => {
-    if (event.target.matches('input,textarea')) return;
+    if (event.target.matches('input,textarea,select') || activeScene) return;
     if (event.key === 'ArrowRight' && selected.ordinal < graph.nodes.length) { event.preventDefault(); select(graph.nodes[selected.ordinal].id, true); }
     if (event.key === 'ArrowLeft' && selected.ordinal > 1) { event.preventDefault(); select(graph.nodes[selected.ordinal - 2].id, true); }
   });
   new ResizeObserver(() => { if (graph) fit(); }).observe(viewport);
-  const state = new URLSearchParams(location.hash.slice(1));
-  showView(state.get('view'), state.get('node'));
-  window.__reader = { data, graph: () => graph, selected: () => selected, showView, select };
+  showView(initial.get('view') || learning.scenes[0]?.id, initial.get('node'));
+  window.__reader = { data, graph: () => graph, selected: () => selected, view: () => activeScene?.id || graph.id, learningState: () => ({ ...learningState }), showView, select };
 })();

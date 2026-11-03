@@ -4,7 +4,7 @@
 
 ## 一次性安装
 
-1. 获取本目录扩展打包生成的 `megamoe-train-source-guide-0.1.0.vsix`。
+1. 获取本目录扩展打包生成的 `megamoe-train-source-guide-0.2.0.vsix`。
 2. 在 VS Code 扩展面板菜单中选择 **Install from VSIX…（从 VSIX 安装）**，选中该文件。
 3. 在 VS Code 打开 DeepEP 仓库，运行命令 **MegaMoE: 打开训练源码导览**。
 
@@ -12,7 +12,7 @@
 
 ```bash
 python tools/package-editor.py
-code --install-extension .artifacts/megamoe-train-source-guide-0.1.0.vsix
+code --install-extension .artifacts/megamoe-train-source-guide-0.2.0.vsix
 ```
 
 以后直接打开 `experiments/megamoe_train/docs/visual/index.html`，即可使用源码导览。已经在内置浏览器中打开的旧标签可关闭，再运行上述命令；也可使用 **Reopen Editor With…（重新打开编辑器的方式）→ MegaMoE 训练源码导览**。

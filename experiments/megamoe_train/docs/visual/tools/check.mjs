@@ -12,6 +12,8 @@ const manifest = JSON.parse(fs.readFileSync(path.join(visual, 'source-map.json')
 const html = fs.readFileSync(path.join(visual, 'index.html'), 'utf8');
 const data = JSON.parse(html.match(/<script id="reader-data" type="application\/json">([\s\S]*?)<\/script>/)[1]);
 assert.equal(data.graphs.length, 8);
+assert.equal(data.learning.scenes.length, 3);
+assert.equal(manifest.learningScenes.length, 3);
 assert.equal(manifest.sourceCommit, data.sourceCommit);
 assert.equal(manifest.nodes.length, data.graphs.reduce((sum, g) => sum + g.nodes.length, 0));
 assert(!/<script[^>]+src=/.test(html), 'Reader must open offline without external runtime scripts');
@@ -33,6 +35,11 @@ for (const node of manifest.nodes) {
     assert(new URL(source.url).pathname.includes(`/blob/${manifest.sourceCommit}/`), `${node.id}: source URL`);
     for (const row of source.excerpt) assert.equal(row.text, lines[row.line - 1], `${node.id}: excerpt ${row.line}`);
   }
+}
+for (const scene of data.learning.scenes) {
+  assert(nodeIds.has(scene.sourceNode), `${scene.id}: initial source`);
+  for (const match of scene.html.matchAll(/data-learning-node=["']([^"']+)["']/g)) assert(nodeIds.has(match[1]), `${scene.id}: ${match[1]}`);
+  assert(!/<script\b/.test(scene.html), `${scene.id}: scripts belong to the shared reader`);
 }
 const overlaps = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 for (const graph of data.graphs) {
@@ -65,12 +72,12 @@ for (const file of ['README.md', 'CALLPOINTS.md', 'MAINTAINING.md']) {
     if (!relative) continue;
     // PNGs are rendered by the browser check immediately following this step.
     if (/^diagrams\/[^/]+\.png$/.test(relative)) {
-      assert(data.graphs.some(g => relative === `diagrams/${g.id}.png`), relative);
+      assert([...data.graphs, ...data.learning.scenes].some(g => relative === `diagrams/${g.id}.png`), relative);
     } else assert(fs.existsSync(path.resolve(visual, decodeURIComponent(relative))), `${file}: ${target}`);
     ++links;
   }
 }
 fs.mkdirSync(path.join(visual, '.artifacts'), { recursive: true });
-const report = { ok: true, sourceCommit: manifest.sourceCommit, graphs: data.graphs.length, nodes: nodeIds.size, sourceFiles: sourceCache.size, localLinks: links };
+const report = { ok: true, sourceCommit: manifest.sourceCommit, graphs: data.graphs.length, learningScenes: data.learning.scenes.length, nodes: nodeIds.size, sourceFiles: sourceCache.size, localLinks: links };
 fs.writeFileSync(path.join(visual, '.artifacts', 'source-check.json'), JSON.stringify(report, null, 2) + '\n');
 console.log(report);

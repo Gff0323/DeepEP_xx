@@ -23,6 +23,11 @@ const server = http.createServer((req, res) => {
   catch { res.writeHead(404).end(); }
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+async function chooseView(page, id) {
+  const button = page.locator(`[data-view="${id}"]`);
+  if (!await button.isVisible()) await page.locator('#nav-toggle').click();
+  await button.click();
+}
 try {
   const context = await browser.newContext({ viewport: { width: 1600, height: 1060 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
@@ -38,12 +43,12 @@ try {
     await window.mermaid.parse(diagram.source);
   }, diagram);
   await syntaxPage.close();
-  assert.equal(await page.locator('[data-view]').count(), 8);
+  assert.equal(await page.locator('[data-view]').count(), 11);
   assert.equal(await page.locator('.source-location').first().inputValue(), await page.evaluate(() => {
     const source = window.__reader.selected().sources[0]; return `${source.path}:${source.line}`;
   }));
   for (const id of ids) {
-    await page.locator(`[data-view="${id}"]`).click();
+    await chooseView(page, id);
     assert.equal(await page.evaluate(() => window.__reader.graph().id), id);
     const first = await page.locator('#canvas [data-node]').first().getAttribute('data-node');
     await page.locator(`#canvas [data-node="${first}"]`).click();
@@ -92,7 +97,43 @@ try {
     fs.copyFileSync(image, path.join(visual, 'site', 'diagrams', `${id}.png`));
     await svgPage.close();
   }
-  await page.locator('[data-view="06-backward-kernel"]').click();
+  const scenes = await page.evaluate(() => window.__reader.data.learning.scenes.map(scene => scene.id));
+  const focus = await page.evaluate(() => window.__reader.data.learning.case.focusTokens.map(token => token.id));
+  const sceneReports = [];
+  for (const id of scenes) {
+    await chooseView(page, id);
+    assert.equal(await page.evaluate(() => window.__reader.view()), id);
+    assert(await page.locator('#canvas').evaluate(canvas => canvas.clientWidth <= canvas.parentElement.clientWidth + 2), `${id}: content fits its panel`);
+    await page.locator('#case-token').selectOption(focus[0]);
+    if (id === 'learn-token') await page.locator('#case-phase').selectOption('forward');
+    assert(await page.locator('#canvas [data-learning-node]:visible').count() > 0, `${id}: clickable sources`);
+    const source = page.locator('#canvas [data-learning-node]:visible').first();
+    const nodeId = await source.getAttribute('data-learning-node');
+    await source.click();
+    assert.equal(await page.evaluate(() => window.__reader.selected().id), nodeId);
+    assert.equal(await page.evaluate(() => window.__reader.view()), id, 'Source inspection keeps the scene');
+    const output = path.join(visual, 'diagrams', `${id}.png`);
+    await page.locator('#viewport').screenshot({ path: output, scale: 'css' });
+    fs.copyFileSync(output, path.join(visual, 'site', 'diagrams', `${id}.png`));
+    await page.locator('#case-token').selectOption(focus[1]);
+    if (id === 'learn-token') await page.locator('#case-phase').selectOption('backward');
+    if (id === 'learn-saved') {
+      await page.locator('#canvas [data-learning-resource]').first().click();
+      assert.equal(await page.locator('#canvas .learning-resource-active').count(), 1, 'Producer and consumers share the selected tensor');
+    }
+    const before = await page.evaluate(() => window.__reader.learningState());
+    await chooseView(page, '00-overview');
+    await chooseView(page, id);
+    assert.deepEqual(await page.evaluate(() => window.__reader.learningState()), before, `${id}: preserved context`);
+    const invalidVisible = await page.locator('#canvas [data-learning-token]:visible').evaluateAll((elements, token) => elements.filter(el => el.dataset.learningToken !== token).map(el => el.dataset.learningToken), focus[1]);
+    assert.deepEqual(invalidVisible, [], `${id}: visible token slices`);
+    await page.screenshot({ path: path.join(artifacts, `${id}.png`) });
+    sceneReports.push({ id, source: true, tokenAndPhase: true, context: true });
+  }
+  const sceneHash = await page.evaluate(() => location.hash);
+  await page.reload();
+  assert.equal(await page.evaluate(() => location.hash), sceneHash, 'Scene deep link reload');
+  await chooseView(page, '06-backward-kernel');
   const download = page.waitForEvent('download');
   await page.locator('#mmd-download').click();
   assert.equal((await download).suggestedFilename(), '06-backward-kernel.mmd');
@@ -107,9 +148,10 @@ try {
     if (target.node) assert.equal(await page.evaluate(() => window.__reader.selected().id), target.node);
   }
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.locator('[data-view="00-overview"]').click();
+  await chooseView(page, 'learn-token');
   assert(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)), 'Mobile page overflow');
   await page.screenshot({ path: path.join(artifacts, 'mobile.png'), fullPage: true });
+  await chooseView(page, '00-overview');
   // A fresh context with all network requests blocked must still read file://.
   const offline = await browser.newContext({ viewport: { width: 1440, height: 960 }, offline: true });
   const local = await offline.newPage();
@@ -120,7 +162,7 @@ try {
     .flatMap(graph => graph.nodes.flatMap(node => node.sources.map(source => source.path))))]
     .map(file => new URL(`../../../../${file}`, location.href).href));
   for (const source of localSources) assert(fs.existsSync(fileURLToPath(source)), `Local source file: ${source}`);
-  await local.locator('[data-view="06-backward-kernel"]').click();
+  await chooseView(local, '06-backward-kernel');
   assert.equal(await local.locator('.source-links a[href^="file:"]').count(), 0, 'No misleading raw file link');
   const source = await local.evaluate(() => window.__reader.selected().sources[0]);
   const sourcePath = path.resolve(visual, '../../../..', source.path);
@@ -152,6 +194,12 @@ try {
   await native.goto(`http://127.0.0.1:${server.address().port}`);
   assert.equal(await native.evaluate(() => window.__editorAcquisitions), 1);
   assert.equal(await native.locator('[data-copy-location],.source-location').count(), 0);
+  await chooseView(native, 'learn-token');
+  const teachingTarget = native.locator('#canvas [data-learning-node]:visible').first();
+  const teachingId = await teachingTarget.getAttribute('data-learning-node');
+  await teachingTarget.click();
+  assert.deepEqual(await native.evaluate(() => window.__editorMessages.at(-1)), { type: 'openSource', nodeId: teachingId, sourceIndex: 0 });
+  await chooseView(native, '00-overview');
   const selectedId = await native.evaluate(() => window.__reader.selected().id);
   await native.locator('[data-open-source]').first().click();
   assert.deepEqual(await native.evaluate(() => window.__editorMessages.at(-1)), { type: 'openSource', nodeId: selectedId, sourceIndex: 0 });
@@ -163,8 +211,8 @@ try {
   await native.screenshot({ path: path.join(artifacts, 'editor-bridge.png') });
   await hosted.close();
   assert.deepEqual(errors, []);
-  fs.writeFileSync(path.join(artifacts, 'browser-check.json'), JSON.stringify({ ok: true, errors, views: reports, offline: true, mobile: true, editorBridge: true, drilldown: targets.length, downloads: true }, null, 2) + '\n');
-  console.log(`Browser PASS: ${reports.length} views; offline, mobile, source cards, drilldown and downloads.`);
+  fs.writeFileSync(path.join(artifacts, 'browser-check.json'), JSON.stringify({ ok: true, errors, views: reports, scenes: sceneReports, offline: true, mobile: true, editorBridge: true, drilldown: targets.length, downloads: true }, null, 2) + '\n');
+  console.log(`Browser PASS: ${reports.length} source views + ${sceneReports.length} learning scenes; offline, mobile, source cards, context and native bridge.`);
 } catch (error) {
   fs.writeFileSync(path.join(artifacts, 'browser-error.txt'), String(error.stack));
   throw error;

@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import cp from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { routeGraph, roundedPath } from './router.mjs';
+import { buildLearningScenes } from './learning-scenes.mjs';
 
 export const visual = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const root = path.resolve(visual, '../../../..');
@@ -28,7 +29,7 @@ const colors = {
   vector: ['#e5edff', '#4266ac'], comm: ['#e2f3f2', '#257b80'], memory: ['#f4eafa', '#82539b'], neutral: ['#edf0f4', '#596578'],
 };
 const readSource = new Map();
-const graphFiles = fs.readdirSync(path.join(visual, 'data')).filter(x => x.endsWith('.json')).sort();
+const graphFiles = fs.readdirSync(path.join(visual, 'data')).filter(x => /^\d\d-.*\.json$/.test(x)).sort();
 if (graphFiles.length !== 8) throw new Error(`Expected eight graph files, found ${graphFiles.length}`);
 const graphs = graphFiles.map(file => JSON.parse(fs.readFileSync(path.join(visual, 'data', file), 'utf8')));
 const allIds = new Set();
@@ -82,6 +83,14 @@ for (const graph of graphs) for (const node of graph.nodes) if (node.drilldown) 
   const destination = graphs.find(g => g.id === node.drilldown.view);
   if (!destination || (node.drilldown.node && !destination.nodes.some(n => n.id === node.drilldown.node))) throw new Error(`Invalid drilldown: ${node.id}`);
 }
+const learning = buildLearningScenes();
+if (learning.scenes.length !== 3) throw new Error('Expected three learning scenes');
+for (const scene of learning.scenes) {
+  if (!allIds.has(scene.sourceNode)) throw new Error(`Missing scene source: ${scene.id}`);
+  for (const match of scene.html.matchAll(/data-learning-node=["']([^"']+)["']/g)) {
+    if (!allIds.has(match[1])) throw new Error(`Unknown learning source ${scene.id}: ${match[1]}`);
+  }
+}
 
 const measure = (s, size) => [...s].reduce((sum, c) => sum + (c.codePointAt(0) > 255 ? 1 : 0.57) * size, 0);
 function wrap(text, width, size, maxLines = 2) {
@@ -129,12 +138,13 @@ for (const graph of graphs) {
 }
 const manifest = { sourceCommit, sourceRepository: repoUrl, sourceBranch: 'feat/megamoe-train-bf16',
   scenario: { platform: 'Ascend950', save: 'bf16', hidden: 7168, ffn: 3072, clipping: false, forceExpertReady: false },
+  learningScenes: learning.scenes.map(({ id, title, sourceNode }) => ({ id, title, sourceNode })),
   files: Object.fromEntries([...readSource].map(([file, data]) => [file, { sha256: data.sha256, lines: data.lines.length - 1 }])), nodes: manifestNodes };
 fs.writeFileSync(path.join(visual, 'source-map.json'), JSON.stringify(manifest, null, 2) + '\n');
-const bundle = { sourceCommit, sourceRepository: repoUrl, scenario: manifest.scenario, graphs };
+const bundle = { sourceCommit, sourceRepository: repoUrl, scenario: manifest.scenario, graphs, learning };
 const payload = JSON.stringify(bundle).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
 const html = fs.readFileSync(path.join(visual, 'assets', 'page.html'), 'utf8')
-  .replace('/*__STYLE__*/', fs.readFileSync(path.join(visual, 'assets', 'reader.css'), 'utf8'))
+  .replace('/*__STYLE__*/', ['reader.css', 'layout.css', 'learning.css'].map(file => fs.readFileSync(path.join(visual, 'assets', file), 'utf8')).join('\n'))
   .replace('/*__DATA__*/', payload)
   .replace('/*__APP__*/', fs.readFileSync(path.join(visual, 'assets', 'reader.js'), 'utf8'));
 fs.writeFileSync(path.join(visual, 'index.html'), html);
@@ -145,6 +155,10 @@ markdown += '**VS Code 一键定位**：按[扩展安装说明](vscode/README.md
 if (siteUrl) markdown += `[下载 VS Code 导览扩展](${siteUrl}downloads/megamoe-train-source-guide.vsix)\n\n`;
 markdown += '本地用浏览器打开 index.html，即可点击节点查看读写、等待和带行号源码。仓库网页可以直接阅读下方图文，通过调用点表跳转源码。\n\n';
 markdown += '普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。\n\n';
+markdown += '## 三个阅读场景\n\n固定侧栏可以随时回到章节。三个场景共用同一份教学路由，切换后保留所选 token 和前反向阶段；点击数据或阶段可查看真实源码。\n\n';
+for (const scene of learning.scenes) {
+  markdown += `### ${scene.title}\n\n${scene.summary}\n\n![${scene.title}](diagrams/${scene.id}.png)\n\n`;
+}
 for (const graph of graphs) {
   markdown += `## ${graph.layer} · ${graph.title}\n\n${graph.summary}\n\n![${graph.title}](diagrams/${graph.id}.png)\n\n[查看矢量图](diagrams/${graph.id}.svg) · [查看图源](diagrams/${graph.id}.mmd) · [本节调用点](CALLPOINTS.md#${graph.id})\n\n`;
 }

@@ -2,7 +2,7 @@
 
 按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H7168/F3072、关闭 clipping。
 
-源码快照：[b654c0a](https://github.com/xixing-321/DeepEP/tree/b654c0a6c1a45c10c79e95a592d3a2110982e040)。
+源码快照：[155d5e8](https://github.com/xixing-321/DeepEP/tree/155d5e8734ab2641fecc95c2bfebefd996cb3007)。
 
 [离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)
 
@@ -15,6 +15,28 @@
 本地用浏览器打开 index.html，即可点击节点查看读写、等待和带行号源码。仓库网页可以直接阅读下方图文，通过调用点表跳转源码。
 
 普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。
+
+## 三个阅读场景
+
+固定侧栏可以随时回到章节。三个场景共用同一份教学路由，切换后保留所选 token 和前反向阶段；点击数据或阶段可查看真实源码。
+
+### 追踪一个 token 的前后向
+
+同一份固定输入：看 route 行号、关键数值、矩阵 tile 和四项梯度最终归属。
+
+![追踪一个 token 的前后向](diagrams/learn-token.png)
+
+### 前向保存的数据，反向怎样使用
+
+连接生产者与消费者，再沿同一地址看三次生命周期切换。
+
+![前向保存的数据，反向怎样使用](diagrams/learn-saved.png)
+
+### 三核交接与缓冲复用
+
+按 tile0/1/2 展开协议依赖；横向位置表达先后与可并行关系，不表示实测时间。
+
+![三核交接与缓冲复用](diagrams/learn-pipeline.png)
 
 ## L1 · MegaMoE BF16 训练做什么
 

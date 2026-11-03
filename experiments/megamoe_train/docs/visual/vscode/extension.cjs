@@ -60,11 +60,15 @@ function anchorLine(document, source) {
   throw new Error('当前源码中找不到对应锚点，请重新生成导览后打开。');
 }
 
-async function showSource(document, line) {
+async function showSource(panel, document, line) {
   const line0 = Math.max(0, Math.min(line, document.lineCount - 1));
   const range = new vscode.Range(line0, 0, line0, 0);
+  // Anchor navigation to the guide's column. The previously opened source
+  // takes focus, so relative Beside on every click can create a third group.
+  const column = panel.viewColumn;
+  const viewColumn = Number.isInteger(column) && column >= 1 ? Math.min(column + 1, 9) : vscode.ViewColumn.Beside;
   const editor = await vscode.window.showTextDocument(document, {
-    viewColumn: vscode.ViewColumn.Beside,
+    viewColumn,
     selection: range,
     preview: false,
   });
@@ -128,10 +132,12 @@ function activate(context) {
       if (token.isCancellationRequested) return;
       const references = sourceReferences(JSON.parse(decodeText(mappingBytes)), root);
       panel.webview.options = { enableScripts: true, localResourceRoots: [] };
-      const listener = panel.webview.onDidReceiveMessage(async message => {
-        try {
+      let pending = Promise.resolve(), disposed = false;
+      const listener = panel.webview.onDidReceiveMessage(message => {
+        pending = pending.then(async () => {
+          if (disposed) return;
           if (message?.type === 'openMapping') {
-            await showSource(await vscode.workspace.openTextDocument(mappingUri), 0);
+            await showSource(panel, await vscode.workspace.openTextDocument(mappingUri), 0);
           } else if (message?.type === 'openSource') {
             if (typeof message.nodeId !== 'string' || !Number.isInteger(message.sourceIndex) || message.sourceIndex < 0) {
               throw new Error('源码节点选择无效，请重新打开导览。');
@@ -139,13 +145,12 @@ function activate(context) {
             const source = references.get(message.nodeId)?.[message.sourceIndex];
             if (!source) throw new Error('找不到对应源码映射，请重新生成导览。');
             const sourceDocument = await vscode.workspace.openTextDocument(source.uri);
-            await showSource(sourceDocument, anchorLine(sourceDocument, source));
+            await showSource(panel, sourceDocument, anchorLine(sourceDocument, source));
           }
-        } catch (error) {
-          reportError(error);
-        }
+        }).catch(reportError);
+        return pending;
       });
-      panel.onDidDispose(() => listener.dispose());
+      panel.onDidDispose(() => { disposed = true; listener.dispose(); });
       panel.webview.html = readerHtml(decodeText(pageBytes));
     },
   };
