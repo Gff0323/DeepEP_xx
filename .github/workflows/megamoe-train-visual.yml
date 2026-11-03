@@ -7,6 +7,7 @@ on:
       - experiments/megamoe_train/**
       - deep_ep/**
       - csrc/runtime/**
+      - csrc/bindings/**
       - CMakeLists.txt
       - build_support.py
       - setup.py
@@ -16,6 +17,7 @@ on:
       - experiments/megamoe_train/**
       - deep_ep/**
       - csrc/runtime/**
+      - csrc/bindings/**
       - CMakeLists.txt
       - build_support.py
       - setup.py
