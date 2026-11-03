@@ -39,7 +39,7 @@
       "subtitle": "saved-bf16 不重算 GMM1",
       "symbol": "BackwardSavedStateInfo / BackwardUsesGm",
       "description": [
-        "反向读取前向保存的 packed X、packed p、原始 Gate/Up 和路由/计数信息。bf16 模式使用 GM dHp 路径；只有 none 模式在此反向中重新执行 GMM1。这里的 GM 表示激活梯度交接位置，与前向 H3584 选择 UB SwiGLU 是不同策略。"
+        "反向读取前向保存的 packed X、packed p、原始 Gate/Up 和路由/计数信息。bf16 模式使用 GM dHp 路径；只有 none 模式在此反向中重新执行 GMM1。这里的 GM 表示激活梯度交接位置，与前向 H7168 选择 UB SwiGLU 是不同策略。"
       ],
       "reads": [
         "training_saved_state",

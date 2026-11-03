@@ -128,7 +128,7 @@ for (const graph of graphs) {
   fs.writeFileSync(path.join(visual, 'diagrams', `${graph.id}.mmd`), graph.mermaid);
 }
 const manifest = { sourceCommit, sourceRepository: repoUrl, sourceBranch: 'feat/megamoe-train-bf16',
-  scenario: { platform: 'Ascend950', save: 'bf16', hidden: 3584, ffn: 3072, clipping: false, forceExpertReady: false },
+  scenario: { platform: 'Ascend950', save: 'bf16', hidden: 7168, ffn: 3072, clipping: false, forceExpertReady: false },
   files: Object.fromEntries([...readSource].map(([file, data]) => [file, { sha256: data.sha256, lines: data.lines.length - 1 }])), nodes: manifestNodes };
 fs.writeFileSync(path.join(visual, 'source-map.json'), JSON.stringify(manifest, null, 2) + '\n');
 const bundle = { sourceCommit, sourceRepository: repoUrl, scenario: manifest.scenario, graphs };
@@ -138,7 +138,7 @@ const html = fs.readFileSync(path.join(visual, 'assets', 'page.html'), 'utf8')
   .replace('/*__DATA__*/', payload)
   .replace('/*__APP__*/', fs.readFileSync(path.join(visual, 'assets', 'reader.js'), 'utf8'));
 fs.writeFileSync(path.join(visual, 'index.html'), html);
-let markdown = `# MegaMoE BF16 训练源码图解\n\n按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H3584/F3072、关闭 clipping。\n\n`;
+let markdown = `# MegaMoE BF16 训练源码图解\n\n按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H7168/F3072、关闭 clipping。\n\n`;
 markdown += `源码快照：[${sourceCommit.slice(0, 7)}](${repoUrl}/tree/${sourceCommit})。\n\n[离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)\n\n`;
 if (siteUrl) markdown += `[在线交互导览](${siteUrl})\n\n`;
 markdown += '**VS Code 一键定位**：按[扩展安装说明](vscode/README.md)安装一次，运行 **MegaMoE: 打开训练源码导览**。点击图内节点，即可在旁边的编辑器中查看对应文件和行号；多处来源可在详情中分别打开。\n\n';

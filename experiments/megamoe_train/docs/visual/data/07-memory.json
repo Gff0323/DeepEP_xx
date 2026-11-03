@@ -211,7 +211,7 @@
       "subtitle": "一对输入，不是两个可独立激活的任务",
       "symbol": "GroupMatmulSwiglu：tensorBlockUbFirst / Second",
       "description": [
-        "H3584 saved-bf16走UB交接：AIC把同一逻辑tile的Gate和Up写到两块AIV0 UB，再NotifyVector。AIV0保存并激活后NotifyCube归还存储；下一任务AIC的WaitForVector保护覆盖。不要把这两块解释成前后两个任务的ping-pong输出，它们在此处是一对SwiGLU输入。"
+        "H7168 saved-bf16走UB交接：AIC把同一逻辑tile的Gate和Up写到两块AIV0 UB，再NotifyVector。AIV0保存并激活后NotifyCube归还存储；下一任务AIC的WaitForVector保护覆盖。不要把这两块解释成前后两个任务的ping-pong输出，它们在此处是一对SwiGLU输入。"
       ],
       "reads": [
         "X tile 与 Wg/Wu"

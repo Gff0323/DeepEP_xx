@@ -29,7 +29,7 @@
       "subtitle": "X、expert IDs、p、W1、W2",
       "symbol": "MegaMoeBF16Train.forward",
       "description": [
-        "调用方已完成路由，提供每个 token 的专家 ID 和路由权重 p。算子边界不重新执行 router。默认示例使用 Ascend950、H3584、F3072、BF16 保存和 canonical 专家权重。"
+        "调用方已完成路由，提供每个 token 的专家 ID 和路由权重 p。算子边界不重新执行 router。默认示例使用 Ascend950、H7168、F3072、BF16 保存和 canonical 专家权重。"
       ],
       "reads": [
         "X [M,H] BF16",

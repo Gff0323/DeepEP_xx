@@ -2,7 +2,7 @@
   "id": "05-forward-kernel",
   "title": "前向：Dispatch、GMM1、SwiGLU、GMM2 与回传",
   "layer": "L5",
-  "summary": "沿普通 BF16、H3584、F3072、saved-bf16、clipping 关闭的路径阅读。纵向表示源码阶段和依赖，不是耗时比例；不同核可以处于不同阶段。X/p 就绪、专家 SwiGLU 完成、UB 槽可复用是三种不同条件。",
+  "summary": "沿普通 BF16、H7168、F3072、saved-bf16、clipping 关闭的路径阅读。纵向表示源码阶段和依赖，不是耗时比例；不同核可以处于不同阶段。X/p 就绪、专家 SwiGLU 完成、UB 槽可复用是三种不同条件。",
   "lanes": [
     {
       "id": "f_all",
@@ -30,14 +30,14 @@
       "id": "f_select",
       "lane": "f_all",
       "step": 0,
-      "title": "选择 H3584 的 UB 前向路径",
+      "title": "选择 H7168 的 UB 前向路径",
       "subtitle": "bf16 保存模式决定数值状态",
       "symbol": "MegaMoeBF16Forward::ProcessSelected",
       "description": [
-        "当前构建将前向 SwiGLU handoff 设为 auto。H3584 且解析后的保存模式为 bf16 时，GMM1 的 Gate/Up 先送入 AIV0 UB；H 小于3584或 H3584 配合 saved-mxfp8 时才选择 GM staging。这里先固定 UB 路径学习。"
+        "当前构建将前向 SwiGLU handoff 设为 auto。H7168、保存模式为 bf16 时选择 UB 路径：GMM1 的 Gate/Up 先送入 AIV0 UB，再由 AIV0 保存并计算 SwiGLU。这里固定该路径学习。"
       ],
       "reads": [
-        "hidden=3584",
+        "hidden=7168",
         "resolved savedMode=bf16",
         "swiglu_limit 关闭"
       ],

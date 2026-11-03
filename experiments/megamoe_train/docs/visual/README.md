@@ -1,8 +1,8 @@
 # MegaMoE BF16 训练源码图解
 
-按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H3584/F3072、关闭 clipping。
+按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H7168/F3072、关闭 clipping。
 
-源码快照：[29c1659](https://github.com/xixing-321/DeepEP/tree/29c16596004c871036ec781f96d4ba442c8497e1)。
+源码快照：[b654c0a](https://github.com/xixing-321/DeepEP/tree/b654c0a6c1a45c10c79e95a592d3a2110982e040)。
 
 [离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)
 
@@ -58,7 +58,7 @@ autograd将dY与前向状态送入Host反向入口；Host规划scratch并提交�
 
 ## L5 · 前向：Dispatch、GMM1、SwiGLU、GMM2 与回传
 
-沿普通 BF16、H3584、F3072、saved-bf16、clipping 关闭的路径阅读。纵向表示源码阶段和依赖，不是耗时比例；不同核可以处于不同阶段。X/p 就绪、专家 SwiGLU 完成、UB 槽可复用是三种不同条件。
+沿普通 BF16、H7168、F3072、saved-bf16、clipping 关闭的路径阅读。纵向表示源码阶段和依赖，不是耗时比例；不同核可以处于不同阶段。X/p 就绪、专家 SwiGLU 完成、UB 槽可复用是三种不同条件。
 
 ![前向：Dispatch、GMM1、SwiGLU、GMM2 与回传](diagrams/05-forward-kernel.png)
 
