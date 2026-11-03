@@ -138,8 +138,32 @@ try {
   assert.equal(await local.evaluate(() => location.hash), hash);
   await local.screenshot({ path: path.join(artifacts, 'offline.png') });
   await offline.close();
+  // The optional editor host uses native messages instead of file/protocol navigation.
+  const hosted = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  await hosted.addInitScript(() => {
+    window.__editorMessages = []; window.__editorAcquisitions = 0;
+    window.acquireVsCodeApi = () => {
+      ++window.__editorAcquisitions;
+      return { postMessage: message => window.__editorMessages.push(message) };
+    };
+  });
+  const native = await hosted.newPage();
+  native.on('pageerror', error => errors.push(error.message));
+  await native.goto(`http://127.0.0.1:${server.address().port}`);
+  assert.equal(await native.evaluate(() => window.__editorAcquisitions), 1);
+  assert.equal(await native.locator('[data-copy-location],.source-location').count(), 0);
+  const selectedId = await native.evaluate(() => window.__reader.selected().id);
+  await native.locator('[data-open-source]').first().click();
+  assert.deepEqual(await native.evaluate(() => window.__editorMessages.at(-1)), { type: 'openSource', nodeId: selectedId, sourceIndex: 0 });
+  const graphNode = await native.locator('#canvas [data-node]').nth(1).getAttribute('data-node');
+  await native.locator(`#canvas [data-node="${graphNode}"]`).click();
+  assert.deepEqual(await native.evaluate(() => window.__editorMessages.at(-1)), { type: 'openSource', nodeId: graphNode, sourceIndex: 0 });
+  await native.locator('#source-map').click();
+  assert.deepEqual(await native.evaluate(() => window.__editorMessages.at(-1)), { type: 'openMapping' });
+  await native.screenshot({ path: path.join(artifacts, 'editor-bridge.png') });
+  await hosted.close();
   assert.deepEqual(errors, []);
-  fs.writeFileSync(path.join(artifacts, 'browser-check.json'), JSON.stringify({ ok: true, errors, views: reports, offline: true, mobile: true, drilldown: targets.length, downloads: true }, null, 2) + '\n');
+  fs.writeFileSync(path.join(artifacts, 'browser-check.json'), JSON.stringify({ ok: true, errors, views: reports, offline: true, mobile: true, editorBridge: true, drilldown: targets.length, downloads: true }, null, 2) + '\n');
   console.log(`Browser PASS: ${reports.length} views; offline, mobile, source cards, drilldown and downloads.`);
 } catch (error) {
   fs.writeFileSync(path.join(artifacts, 'browser-error.txt'), String(error.stack));

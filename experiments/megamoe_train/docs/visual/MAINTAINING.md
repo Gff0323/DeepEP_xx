@@ -17,9 +17,16 @@ npm run test:browser
 
 阅读时直接打开 [index.html](index.html)，无需启动服务。仓库网页入口是 [README.md](README.md)，保留图文说明和源码链接。
 
-打开节点源码时，点击 **复制定位路径**，在 VS Code 按 **Ctrl+P**，粘贴并回车，即可进入源码编辑页并定位行号。此操作也适用于 VS Code 内置浏览器；使用在线站点时，先在 VS Code 打开本地仓库。
+在 VS Code 中推荐使用[源码导览扩展](vscode/README.md)。安装一次后，运行 **MegaMoE: 打开训练源码导览**；点击图内节点，即可在右侧编辑器中定位到对应源码，多处来源可在详情中分别点 **打开源码**。图解和源码保持并排，扩展直接读取本仓库的页面与映射。
 
-在 Edge、Chrome 等外部浏览器中打开本地 HTML，还可以点击 **用 VS Code 打开** 直接跳转。当前 VS Code 内置浏览器会把 `file:` 和 `vscode:` 链接当成浏览器标签处理，请使用复制定位路径的入口。
+本地构建安装包的命令：
+
+```bash
+python tools/package-editor.py
+code --install-extension .artifacts/megamoe-train-source-guide-0.1.0.vsix
+```
+
+普通浏览器继续直接打开离线 HTML；在线页面保留 **复制定位路径**。使用 VS Code 自带内置浏览器时，也可以复制后按 **Ctrl+P** 粘贴并回车。这里与扩展提供的源码导览是两个不同的打开方式。
 
 修改 `data/*.json` 中对应节点的标题、讲解、输入、输出、等待和连线。`sources` 使用文件路径与源码锚点定位函数或控制点；函数移动或改名时同步修改锚点。节点 ID 保持稳定，便于页面链接和跨图下钻。
 
@@ -31,6 +38,8 @@ npm run test:browser
 4. 完成源码引用与浏览器检查，提交修改后的文档、图源和生成文件。
 
 浏览器检查的截图和报告写入 `.artifacts/`；`node_modules/`、`.artifacts/` 和发布暂存目录 `site/` 是本地生成目录。网页阅读和文档构建不需要 NPU 或 CANN。
+
+修改编辑器接入时，运行 `npm run test:editor` 检查消息、源码路径和当前文档锚点定位，再执行浏览器检查。`python tools/package-editor.py --site` 同时把 VSIX 放入站点下载目录。扩展代码更新后需重新打包安装；只更新训练代码、图或讲解时无需重装扩展，重新打开导览即可。
 
 ## 自动发布
 

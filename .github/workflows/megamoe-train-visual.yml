@@ -58,10 +58,14 @@ jobs:
         run: npm run build
       - name: Check source references and generated documentation
         run: npm run check
+      - name: Check native editor integration
+        run: npm run test:editor
       - name: Install browser for interaction checks
         run: npx playwright install --with-deps chromium
       - name: Check browser interactions and offline reading
         run: npm run test:browser
+      - name: Package optional VS Code source guide
+        run: python tools/package-editor.py --site
       - name: Preserve failed-check evidence
         if: failure()
         uses: actions/upload-artifact@v4

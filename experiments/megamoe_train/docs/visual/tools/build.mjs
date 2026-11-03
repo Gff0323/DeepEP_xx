@@ -141,8 +141,10 @@ fs.writeFileSync(path.join(visual, 'index.html'), html);
 let markdown = `# MegaMoE BF16 训练源码图解\n\n按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H3584/F3072、关闭 clipping。\n\n`;
 markdown += `源码快照：[${sourceCommit.slice(0, 7)}](${repoUrl}/tree/${sourceCommit})。\n\n[离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)\n\n`;
 if (siteUrl) markdown += `[在线交互导览](${siteUrl})\n\n`;
+markdown += '**VS Code 一键定位**：按[扩展安装说明](vscode/README.md)安装一次，运行 **MegaMoE: 打开训练源码导览**。点击图内节点，即可在旁边的编辑器中查看对应文件和行号；多处来源可在详情中分别打开。\n\n';
+if (siteUrl) markdown += `[下载 VS Code 导览扩展](${siteUrl}downloads/megamoe-train-source-guide.vsix)\n\n`;
 markdown += '本地用浏览器打开 index.html，即可点击节点查看读写、等待和带行号源码。仓库网页可以直接阅读下方图文，通过调用点表跳转源码。\n\n';
-markdown += '在 VS Code 内置浏览器中学习时，点击节点内的 **复制定位路径**，按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。\n\n';
+markdown += '普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。\n\n';
 for (const graph of graphs) {
   markdown += `## ${graph.layer} · ${graph.title}\n\n${graph.summary}\n\n![${graph.title}](diagrams/${graph.id}.png)\n\n[查看矢量图](diagrams/${graph.id}.svg) · [查看图源](diagrams/${graph.id}.mmd) · [本节调用点](CALLPOINTS.md#${graph.id})\n\n`;
 }

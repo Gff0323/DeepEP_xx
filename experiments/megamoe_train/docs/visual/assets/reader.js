@@ -1,6 +1,7 @@
 // Copyright (c) 2026, DeepEP contributors.
 (() => {
   'use strict';
+  const editorBridge = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
   const data = JSON.parse(document.getElementById('reader-data').textContent);
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
@@ -10,6 +11,11 @@
   $('repository').href = data.sourceRepository;
   $('revision').href = `${data.sourceRepository}/tree/${data.sourceCommit}`;
   $('revision').textContent = `源码 ${data.sourceCommit.slice(0, 7)}`;
+  if (editorBridge) {
+    const badge = document.createElement('span'); badge.textContent = 'VS Code 源码直达';
+    document.querySelector('.scenario').append(badge);
+    $('source-map').onclick = event => { event.preventDefault(); editorBridge.postMessage({ type: 'openMapping' }); };
+  }
   $('navigation').innerHTML = groups.map(([layer, title]) => `<div class="nav-group"><span class="nav-label">${layer} · ${title}</span>${data.graphs.filter(g => g.layer === layer).map(g => `<button type="button" data-view="${g.id}">${esc(g.title)}</button>`).join('')}</div>`).join('');
   function setScale(value) {
     scale = Math.max(.55, Math.min(1.75, value));
@@ -40,7 +46,12 @@
   function details(node) {
     const lane = graph.lanes.find(l => l.id === node.lane);
     const list = [['读', node.reads], ['写', node.writes], ['等', node.waits]];
-    const sourceBlocks = node.sources.map((source, index) => `<details class="source-block" ${index === 0 ? 'open' : ''}><summary>${esc(source.path.split('/').at(-1))}:${source.line}</summary><div class="source-links"><button type="button" data-copy-location>复制定位路径</button><a target="_blank" rel="noopener" href="${esc(source.url)}">在线源码 ↗</a>${localFile(source) ? `<a href="${esc(editorFile(source))}" title="在 Edge、Chrome 等外部浏览器中使用；VS Code 内置浏览器请复制定位路径">用 VS Code 打开</a>` : ''}</div><div class="source-locator"><input class="source-location" aria-label="源码定位路径" readonly value="${esc(sourceLocation(source))}"><span class="copy-status" role="status">复制后，在 VS Code 按 Ctrl+P 粘贴并回车。</span></div><div class="source-path">${esc(source.path)}</div><div class="code-lines">${source.excerpt.map(row => `<div class="code-line ${row.line === source.line ? 'anchor-line' : ''}"><span class="ln">${row.line}</span><code>${esc(row.text)}</code></div>`).join('')}</div></details>`).join('');
+    const sourceBlocks = node.sources.map((source, index) => {
+      const open = editorBridge ? `<button type="button" data-open-source="${index}">打开源码</button>` : '<button type="button" data-copy-location>复制定位路径</button>';
+      const locator = editorBridge ? '' : `<div class="source-locator"><input class="source-location" aria-label="源码定位路径" readonly value="${esc(sourceLocation(source))}"><span class="copy-status" role="status">复制后，在 VS Code 按 Ctrl+P 粘贴并回车。</span></div>`;
+      const protocolLink = !editorBridge && localFile(source) ? `<a href="${esc(editorFile(source))}" title="在 Edge、Chrome 等外部浏览器中使用；VS Code 内置浏览器请复制定位路径">用 VS Code 打开</a>` : '';
+      return `<details class="source-block" ${index === 0 ? 'open' : ''}><summary>${esc(source.path.split('/').at(-1))}:${source.line}</summary><div class="source-links">${open}<a target="_blank" rel="noopener" href="${esc(source.url)}">在线源码 ↗</a>${protocolLink}</div>${locator}<div class="source-path">${esc(source.path)}</div><div class="code-lines">${source.excerpt.map(row => `<div class="code-line ${row.line === source.line ? 'anchor-line' : ''}"><span class="ln">${row.line}</span><code>${esc(row.text)}</code></div>`).join('')}</div></details>`;
+    }).join('');
     return `<div class="detail-kicker"><span class="pill">${esc(lane.label)}</span><span>${node.ordinal} / ${graph.nodes.length}</span></div><h3>${esc(node.title)}</h3>${node.symbol ? `<code class="function-name">${esc(node.symbol)}</code>` : ''}${(node.description || []).map(p => `<p>${esc(p)}</p>`).join('')}<dl class="detail-list">${list.filter(([, values]) => values?.length).map(([title, values]) => `<div><dt>${title}</dt><dd>${values.map(esc).join('<br>')}</dd></div>`).join('')}</dl>${node.formula ? `<pre class="formula">${esc(node.formula)}</pre>` : ''}${node.drilldown ? `<button type="button" class="drilldown" data-drill-view="${esc(node.drilldown.view)}" data-drill-node="${esc(node.drilldown.node || '')}">继续深入 → ${esc(data.graphs.find(g => g.id === node.drilldown.view).title)}</button>` : ''}<div class="detail-nav"><button type="button" id="previous" ${node.ordinal === 1 ? 'disabled' : ''}>← 上一步</button><button type="button" id="next" ${node.ordinal === graph.nodes.length ? 'disabled' : ''}>下一步 →</button></div><div class="sources-title">对应源码</div>${sourceBlocks}`;
   }
   function select(id, scroll = false) {
@@ -52,6 +63,9 @@
       edge.classList.toggle('dimmed', !related);
     }
     $('inspector').innerHTML = details(selected);
+    for (const button of $('inspector').querySelectorAll('[data-open-source]')) button.onclick = () => {
+      editorBridge.postMessage({ type: 'openSource', nodeId: selected.id, sourceIndex: Number(button.dataset.openSource) });
+    };
     for (const button of $('inspector').querySelectorAll('[data-copy-location]')) button.onclick = () => {
       const block = button.closest('.source-block'), field = block.querySelector('.source-location');
       field.focus(); field.select();
@@ -99,8 +113,12 @@
     $('query').value = '';
     fit(); search(); select(node);
     for (const element of canvas.querySelectorAll('[data-node]')) {
-      element.onclick = () => select(element.dataset.node);
-      element.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); select(element.dataset.node); } };
+      const openNode = () => {
+        select(element.dataset.node);
+        if (editorBridge) editorBridge.postMessage({ type: 'openSource', nodeId: selected.id, sourceIndex: 0 });
+      };
+      element.onclick = openNode;
+      element.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); openNode(); } };
     }
   }
   function download(content, type, name) {

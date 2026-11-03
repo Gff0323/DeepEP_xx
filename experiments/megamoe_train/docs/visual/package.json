@@ -8,6 +8,7 @@
     "build": "node tools/build.mjs",
     "check": "node tools/check.mjs",
     "test:browser": "node tools/browser-check.mjs",
+    "test:editor": "node tools/editor-check.mjs",
     "serve": "node tools/serve.mjs"
   },
   "devDependencies": {
