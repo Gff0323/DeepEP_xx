@@ -58,7 +58,7 @@ setup(
     package_dir=package_dir,
     package_data={
         "deep_ep_experimental.ep_gmm_fused": ["NOTICE.md", "upstream.json"],
-        "deep_ep_experimental.megamoe_train": ["*.so", "LICENSE", "NOTICE.md", "upstream.json"],
+        "deep_ep_experimental.megamoe_train": ["*.so"],
         "deep_ep_experimental.megamoe": ["*.so", "configs/*.json"],
     },
     ext_modules=[Extension("deep_ep._C", sources=[])],

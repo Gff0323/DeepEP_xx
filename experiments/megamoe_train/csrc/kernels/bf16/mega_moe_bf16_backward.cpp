@@ -1,6 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * DeepEP MegaMoe BF16 training backward kernel entry.
  */
 #include "kernel_operator.h"

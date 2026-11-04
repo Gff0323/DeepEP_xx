@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """Two-rank real-device lifetime/stream/queued-forward regression.
 
 Launch with torchrun --nproc-per-node=2 after installing the training wheel.

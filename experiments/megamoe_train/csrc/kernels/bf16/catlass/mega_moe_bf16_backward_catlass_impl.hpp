@@ -1,6 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * BF16 grouped GEMM wrappers for the DeepEP MegaMoe backward pipeline.
  *
  * Expert-local stages use N=2F and hidden width K. Canonical weights are

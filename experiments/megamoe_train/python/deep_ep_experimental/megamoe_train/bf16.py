@@ -1,3 +1,7 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+# Modified by xixing 2026
+
 """BF16 autograd bridge and explicit lifetime for the shared SHMEM owner."""
 
 from ctypes import c_float

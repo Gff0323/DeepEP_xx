@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """Independent NPU references using BigOp's grouped-GEMM building blocks.
 
 The MegaMoE reference follows its declared FP32 activation and ordered combine

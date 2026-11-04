@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 #pragma once
 #include "schedule/backward_dispatch_schedule_math.hpp"
 namespace MegaMoeBF16BackwardCatlassImpl {
