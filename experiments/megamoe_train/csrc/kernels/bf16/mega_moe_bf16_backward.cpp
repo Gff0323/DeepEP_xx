@@ -2,23 +2,6 @@
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  *
  * DeepEP MegaMoe BF16 training backward kernel entry.
- *
- * ABI:
- *   deepep_train_mega_moe_bf16_backward_ready_k_kernel_do(
- *       block_dim, stream,
- *       context,           Mc2MoeContext (peermem window addresses + rank)
- *       grad_y,            [M, K] BF16
- *       topk_weights,      [M, T] BF16
- *       weight1,           canonical [E,N,K] or legacy [E,K,N] BF16
- *       weight2,           canonical [E,K,F] or legacy [E,F,K] BF16
- *       grad_x,            [M, K] BF16 (host pre-zeroed)
- *       grad_topk_weights, [M, T] BF16 (host pre-zeroed)
- *       grad_weight1,      same shape/layout as weight1 (host pre-zeroed)
- *       grad_weight2,      same shape/layout as weight2 (host pre-zeroed)
- *       training_saved_state, UInt8 compact forward-persistent state
- *       dispatch_output,      packed X followed by packed TopK weights
- *       backward_workspace, UInt8 backward-only scratch
- *       tiling_host, ffts_addr)
  */
 #include "kernel_operator.h"
 #include "mega_moe_quant_constants.hpp"

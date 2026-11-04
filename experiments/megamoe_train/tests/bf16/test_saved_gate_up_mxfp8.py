@@ -44,8 +44,8 @@ class SavedMxFp8Tests(unittest.TestCase):
 
     def test_mode_specific_allocations(self):
         args = (4096, 7168, 16, 8, 4, 65536, 8192)
-        self.assertEqual(training_saved_state_size(*args, save_mxfp8=True), 1493833728)
-        self.assertEqual(training_saved_state_size(*args, save_mxfp8=False), 2013927424)
+        self.assertEqual(training_saved_state_size(*args, save_mxfp8=True), 1493832704)
+        self.assertEqual(training_saved_state_size(*args, save_mxfp8=False), 2013926400)
 
     def test_groups_scales_and_reference_checker(self):
         ref = w8a8_reference()

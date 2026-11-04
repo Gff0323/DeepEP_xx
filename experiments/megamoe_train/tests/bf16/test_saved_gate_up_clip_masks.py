@@ -86,9 +86,9 @@ class SavedClipMaskTests(unittest.TestCase):
 
     def test_format_allocation_and_per_call_mode(self):
         args = (4096, 7168, 16, 8, 4, 65536, 8192)
-        self.assertEqual(training_saved_state_size(*args, save_mxfp8=True, save_clip_masks=True), 1594497024)
-        self.assertEqual(training_saved_state_size(*args, save_clip_masks=True), 2013927424)
-        self.assertEqual(training_saved_state_size(*args, save_gate_up=False, save_clip_masks=True), 940185600)
+        self.assertEqual(training_saved_state_size(*args, save_mxfp8=True, save_clip_masks=True), 1594496000)
+        self.assertEqual(training_saved_state_size(*args, save_clip_masks=True), 2013926400)
+        self.assertEqual(training_saved_state_size(*args, save_gate_up=False, save_clip_masks=True), 940184576)
         bridge, op = load_bridge(), Operator()
         contexts = []
         modes = (("mxfp8", 1.001), ("mxfp8", 0), ("bf16", 1), ("auto", 1), ("none", 1))

@@ -18,15 +18,14 @@ static_assert(DEEPEP_BF16_FORCE_EXPERT_READY == 0 || DEEPEP_BF16_FORCE_EXPERT_RE
 
 namespace MegaMoeBF16Training {
 
+constexpr uint64_t kAlignment32 = 32;
 constexpr uint64_t kAlignment128 = 128;
 constexpr uint64_t kAlignment256 = 256;
 constexpr uint64_t kAlignment512 = 512;
 constexpr uint64_t kBf16Bytes = 2;
 constexpr uint64_t kInt32Bytes = 4;
 constexpr uint64_t kIntCacheline = 16;
-// Reserve 1 KiB in saved-state to preserve the fixed offsets of the
-// following Gate/Up, scale and clipping-mask planes.
-constexpr uint64_t kBackwardProgressElements = 256;
+constexpr uint32_t kSwigluNHalf = 2U;
 constexpr uint64_t kMaxEpRanks = 1024;
 constexpr uint64_t kMaxLocalExperts = 32;
 constexpr uint64_t kMaxTotalExperts = 2048;
@@ -128,7 +127,7 @@ MEGA_MOE_BF16_HOST_DEVICE constexpr uint32_t ResolveSavedGateUpMode(uint32_t mod
 // The device build explicitly sets 2 in CMake. The fallback below only applies
 // to translation units without that definition, including Host/CPU consumers.
 // Host allocation queries the built device SO instead of using that fallback.
-// This switch does not control the separate BackwardUsesGm() saved-mode policy.
+// This switch does not control the separate UseGmForBackwardDataGrad() saved-mode policy.
 #ifndef DEEPEP_BF16_SWIGLU_DECOUPLE
 #define DEEPEP_BF16_SWIGLU_DECOUPLE 0
 #endif
@@ -157,7 +156,7 @@ MEGA_MOE_BF16_HOST_DEVICE constexpr uint64_t ForwardSwigluExtraBytes(uint64_t n,
 
 // Use the resolved saved mode in both host allocation and device execution.
 // Saved modes use Hp/dO reuse and per-expert readiness; none retains UB.
-MEGA_MOE_BF16_HOST_DEVICE constexpr bool BackwardUsesGm(uint32_t savedMode)
+MEGA_MOE_BF16_HOST_DEVICE constexpr bool UseGmForBackwardDataGrad(uint32_t savedMode)
 {
     return savedMode != kSaveNone;
 }
@@ -170,7 +169,7 @@ MEGA_MOE_BF16_HOST_DEVICE constexpr bool UseBackwardDispatchRowReady(uint32_t sa
                                                                      uint32_t splitExperts, uint64_t effectiveRows,
                                                                      uint64_t computeRows)
 {
-    return BackwardUsesGm(savedMode) && ordinal < splitExperts && effectiveRows > computeRows;
+    return UseGmForBackwardDataGrad(savedMode) && ordinal < splitExperts && effectiveRows > computeRows;
 }
 
 MEGA_MOE_BF16_HOST_DEVICE constexpr bool SaveGateUpAsMxFp8(float tilingLimit, uint32_t mode = kSaveAuto)
@@ -271,8 +270,7 @@ struct TrainingSavedStateLayout {
     uint64_t savedTokenCountsOffset;
     uint64_t dispatchedTopkWeightsOffset;
     uint64_t dispatchedTopkWeightsBytes;
-    uint64_t backwardProgressOffset;  // Reserved 1 KiB preserving subsequent plane offsets.
-    // Existing metadata and reserved-region offsets stay fixed.
+    // Size of routing metadata before optional saved gate/up planes.
     uint64_t legacyBytes;
     uint64_t gateOffset;
     uint64_t upOffset;
@@ -306,8 +304,7 @@ struct TrainingSavedStateLayout {
               savedTokenCountsOffset +
               AlignUp(worldSize * AlignUp(worldSize * expertPerRank, kAlignment128) * kInt32Bytes, kAlignment512)),
           dispatchedTopkWeightsBytes(embedDispatchOutput ? AlignUp(maxRecvTokens * kBf16Bytes, kAlignment512) : 0),
-          backwardProgressOffset(dispatchedTopkWeightsOffset + dispatchedTopkWeightsBytes),
-          legacyBytes(backwardProgressOffset + AlignUp(kBackwardProgressElements * kInt32Bytes, kAlignment128)),
+          legacyBytes(dispatchedTopkWeightsOffset + dispatchedTopkWeightsBytes),
           gateOffset(AlignUp(legacyBytes, kAlignment512)),
           upOffset(gateOffset +
                    (saveGateUp ? AlignUp(maxRecvTokens * (n / 2) * (saveMxFp8 ? 1 : kBf16Bytes), kAlignment512) : 0)),
@@ -377,19 +374,19 @@ struct UDMAForwardTransientWorkspaceLayout {
 // Backward-only per-producer row-progress suffix; preceding workspace and
 // saved-state offsets remain fixed. Host allocation zeros these counters
 // before backward Dispatch publishes readiness. These are synchronization
-// counters, separate from the reserved 1 KiB saved-state region.
+// counters used for dispatch readiness.
 struct BackwardDispatchProgressLayout {
     static constexpr uint64_t kSlotBytes = 64;
     MEGA_MOE_BF16_HOST_DEVICE static constexpr uint64_t ExtraBytes(uint64_t experts, uint64_t sources,
                                                                    uint64_t producersPerSource, uint32_t savedMode)
     {
-        return BackwardUsesGm(savedMode) ? experts * sources * producersPerSource * kSlotBytes : 0;
+        return UseGmForBackwardDataGrad(savedMode) ? experts * sources * producersPerSource * kSlotBytes : 0;
     }
     MEGA_MOE_BF16_HOST_DEVICE static constexpr uint64_t TotalBytes(uint64_t legacyBytes, uint64_t experts,
                                                                    uint64_t sources, uint64_t producersPerSource,
                                                                    uint32_t savedMode)
     {
-        return BackwardUsesGm(savedMode) && experts != 0
+        return UseGmForBackwardDataGrad(savedMode) && experts != 0
                    ? AlignUp(legacyBytes, kSlotBytes) + ExtraBytes(experts, sources, producersPerSource, savedMode)
                    : legacyBytes;
     }
@@ -484,8 +481,9 @@ struct ForwardDispatchTileReadyLayout {
 MEGA_MOE_BF16_HOST_DEVICE constexpr uint32_t DefaultBackwardDispatchSplitExperts(uint32_t savedMode,
                                                                                  uint32_t localExperts)
 {
-    return BackwardUsesGm(savedMode) && localExperts <= ForwardDispatchTileReadyLayout::kMaxReadyExperts ? localExperts
-                                                                                                         : 0U;
+    return UseGmForBackwardDataGrad(savedMode) && localExperts <= ForwardDispatchTileReadyLayout::kMaxReadyExperts
+               ? localExperts
+               : 0U;
 }
 
 }  // namespace MegaMoeBF16Training

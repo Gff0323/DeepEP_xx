@@ -120,7 +120,7 @@ __aicore__ inline bool GatherTopkWeightsTwoWindows(GM_ADDR weightsAddr, GM_ADDR 
     return true;
 }
 
-// Shared by BF16, MGroup and UDMA before their Dispatch/transport UB setup.
+// Shared by BF16 and UDMA before their Dispatch/transport UB setup.
 // No persistent state or tiling changes; false requests the scalar fallback.
 __aicore__ inline bool TryGatherTopkWeights(GM_ADDR weightsAddr, GM_ADDR sortedIndicesAddr, GM_ADDR outputAddr,
                                             uint64_t totalRoutes, uint32_t coreIndex, uint32_t coreCount,

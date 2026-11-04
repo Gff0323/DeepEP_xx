@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  *
- * BF16 SwiGLU backward epilogues for the DeepEP MegaMoe backward pipeline.
+ * SwiGLU backward epilogues for MegaMoe BF16.
  *
  * For clamped Gate/Up, h=BF16(SiLU_FP32(gate)*up) uses FP32 SiLU and Mul.
  * Hp = BF16(h*p) and dh = BF16(p*dHp) have separate BF16 boundaries;
@@ -41,9 +41,7 @@ static constexpr AscendC::Reg::CastTrait kBackwardCastFP32ToBF16 = {
     AscendC::Reg::RegLayout::ZERO, AscendC::Reg::SatMode::NO_SAT, AscendC::Reg::MaskMergeMode::ZEROING,
     AscendC::RoundMode::CAST_RINT};
 
-// Amplifier for the clamp range indicator: |raw - clamped| is exactly zero
-// for unclamped elements, so multiplying by this scale saturates any nonzero
-// difference before min(1, .) turns it into a clean 0/1 mask.
+// Saturate nonzero clamp differences to form a 0/1 range indicator.
 static constexpr float kClampMaskScale = 1.0e30F;
 
 template <typename L0TileShape_>
@@ -76,11 +74,6 @@ public:
     __aicore__ inline void Init(Params const& params)
     {
         if constexpr (g_coreType == AscendC::AIV) {
-            // Store the whole parameter set: ComputeForwardAux /
-            // ComputeSwigluGrad / ComputeSwigluRecompute read
-            // params_.swigluLimit from it.  Without this copy the limit
-            // stays at the default (disabled) value and the clamp is
-            // silently skipped in the backward pass.
             params_ = params;
             gatePlaneGm_.SetGlobalBuffer((__gm__ bfloat16_t*)params.gatePlaneGmAddr);
             upPlaneGm_.SetGlobalBuffer((__gm__ bfloat16_t*)params.upPlaneGmAddr);
@@ -108,7 +101,6 @@ public:
         }
     }
 
-    // problemShape = {0, N, K, 0}; F = N / 2.
     __aicore__ inline void UpdateNextProblem(const ProblemShape& problemShape)
     {
         outputN_ = Get<1>(problemShape);
@@ -133,8 +125,7 @@ public:
                                         static_cast<uint32_t>((globalStride - columns) * sizeof(bfloat16_t)), 0, 0};
         AscendC::DataCopyPadExtParams<bfloat16_t> pad{false, 0U, 0U, 0U};
         AscendC::DataCopyPad(l0cOutUbFirst_, gm, copy, pad);
-        // Complete the GM read before V uses dHp. Later Hp writes use the
-        // V_MTE3 edge, so MTE2 -> V -> MTE3 protects in-place GM replacement.
+        // Complete the dHp read before its in-place replacement with Hp.
         SyncFunc<AscendC::HardEvent::MTE2_V>();
     }
 
@@ -189,16 +180,13 @@ public:
         // from the later dh=BF16(p*dHp) input to the derivative.
         ApplyPackedWeight(extraA_, singleM, singleN, rowStrideInPlane, mLoc);
 
-        // The FP32 partials reuse the start of each row in tile1; tile2 holds
-        // Hp. Both are V outputs consumed by MTE3.
+        // tile1 holds FP32 partials and tile2 holds Hp until MTE3 consumes both.
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
         const uint32_t dpTileIdx = nLoc / BACKWARD_DP_PARTIAL_TILE_N;
         AscendC::DataCopyExtParams partialCopyParams{
             static_cast<uint16_t>(singleM), static_cast<uint32_t>(sizeof(float)),
-            // For UB -> GM DataCopyPad, srcStride is counted in 32-byte
-            // DataBlocks. A 4-byte blockLen still occupies one source
-            // DataBlock, so skip the remaining blocks in the padded UB row.
+            // srcStride counts 32-byte blocks; the 4-byte partial occupies one padded block.
             static_cast<uint32_t>(rowStrideInPlane * sizeof(bfloat16_t) / AscendC::ONE_BLK_SIZE - 1U),
             static_cast<uint32_t>((dpPartialTiles_ - 1) * sizeof(float)), 0};
         AscendC::DataCopyPad(dpPartialsGm_[(rowBase_ + mLoc) * dpPartialTiles_ + dpTileIdx],
@@ -208,7 +196,7 @@ public:
                                                  static_cast<uint32_t>((outputF_ - singleN) * sizeof(bfloat16_t)), 0};
         AscendC::DataCopyPad(hpGm_[rowBase_ * outputF_ + flatOffset], extraA_, auxCopyParams);
 
-        // Both buffers are MTE3 sources and will be overwritten by MTE2.
+        // Retire both MTE3 sources before reloading gate/up.
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         LoadGateUpTiles(rowBase_ + mLoc, nLoc, singleM, singleN, l0cOutUbSecond_, extraA_);
@@ -218,28 +206,21 @@ public:
         AscendC::PipeBarrier<PIPE_V>();
         ComputeSwigluGrad(singleM, singleN, rowStrideInPlane);
 
-        // extraA_ holds the up tile.  PIPE_V reads it while computing dGate,
-        // and the next loop iteration reuses the same UB through PIPE_MTE2.
-        // Keep that loop-carried WAR dependency explicit; MTE2_V above only
-        // orders the current load before V and does not protect the next load.
+        // Retire V's up-tile reads before the next MTE2 refill.
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
 
-        // dGate/dUp are produced by PIPE_V and consumed by PIPE_MTE3.
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
 
-        // dGate tile (UB offset 0) -> ptrGradZ rows at col nLoc.
-        // dUp tile (UB offset kTileBytes) -> ptrGradZ rows at col F + nLoc.
+        // dGate and dUp occupy column planes 0 and F.
         AscendC::DataCopyExtParams gradCopyParams{static_cast<uint16_t>(singleM),
                                                   static_cast<uint32_t>(singleN * sizeof(bfloat16_t)), 0,
                                                   static_cast<uint32_t>((outputN_ - singleN) * sizeof(bfloat16_t)), 0};
         AscendC::DataCopyPad(gradZGm_[rowBase_ * outputN_ + mLoc * outputN_ + nLoc], l0cOutUbFirst_, gradCopyParams);
         AscendC::DataCopyPad(gradZGm_[rowBase_ * outputN_ + mLoc * outputN_ + outputF_ + nLoc], l0cOutUbSecond_,
                              gradCopyParams);
-        // l0cOutUbSecond_ is the MTE3 source for dUp and becomes the MTE2
-        // destination for the next gate tile.  Do not let that next load
-        // overwrite dUp while MTE3 is still reading it.
+        // Retire dUp's MTE3 read before the next gate load reuses this tile.
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         // Retire dZ MTE3 writes before returning. The save=none caller then
@@ -257,11 +238,8 @@ private:
     static constexpr uint32_t kMxDataElements = kDecodeRows * kTileColumns;
     static constexpr uint32_t kMxScaleRowBytes = 32;
     static constexpr uint32_t kMxScaleBytes = kDecodeRows * kMxScaleRowBytes;
-    // DIST_INTLV_B16/B32 are dual-register stores.  They ignore the mask and
-    // always write 2 * VL (512 bytes on A5), even though only the compact
-    // prefix is consumed below.  Reserve the full physical store footprint;
-    // otherwise each following scale row overwrites the beginning of
-    // mxDecoded_ and corrupts an already decoded row in the current chunk.
+    // DIST_INTLV stores ignore the mask and write 512 bytes on A5.
+    // Reserve their full footprint so scale stores cannot corrupt mxDecoded_.
     static constexpr uint32_t kMxDualRegisterStoreBytes = 2U * 256U;
     static constexpr uint32_t kMxScaleBf16Elements = kMxDualRegisterStoreBytes / sizeof(bfloat16_t);
     static constexpr uint32_t kMxScaleBf16Bytes = kMxScaleBf16Elements * sizeof(bfloat16_t);
@@ -274,7 +252,6 @@ private:
     static constexpr uint32_t kMxScaleBf16Offset = kMxScaleOffset + kMxScaleBytes;
     static constexpr uint32_t kMxScaleFp32Offset = kMxScaleBf16Offset + kMxScaleBf16Bytes;
     static constexpr uint32_t kMxDecodedOffset = kMxScaleFp32Offset + kMxScaleFp32Bytes;
-    // Retain every decoded row until the whole-tile gradient mask consumes it.
     static constexpr uint32_t kClipMaskBytes = kTileRows * kMxScaleRowBytes;
     static constexpr uint32_t kGateHighOffset = kMxDecodedOffset + kMxDecodedBytes;
     static constexpr uint32_t kUpLowOffset = kGateHighOffset + kClipMaskBytes;
@@ -322,9 +299,6 @@ private:
         AscendC::DataCopyPad(dst, src[index], copyParams, padParams);
     }
 
-    // Decode one E4M3FN plane in small row chunks. The E8M0 conversion and
-    // group broadcast mirror the production MXFP8 combine path; no full
-    // decompressed GM plane is materialized.
     __aicore__ inline void DecodeMxFp8Plane(const AscendC::GlobalTensor<int8_t>& dataGm,
                                             const AscendC::GlobalTensor<int8_t>& scaleGm,
                                             const AscendC::GlobalTensor<int8_t>& lowMaskGm,
@@ -341,8 +315,7 @@ private:
             const uint32_t globalRow = rowStart + chunkRow;
             const int64_t dataIndex = static_cast<int64_t>(globalRow) * outputF_ + nLoc;
             const int64_t scaleIndex = static_cast<int64_t>(globalRow) * scaleWidth + nLoc / 32;
-            // The scratch regions are overwritten by MTE2 in the next chunk;
-            // wait for all vector consumers from this chunk first.
+            // Retire this chunk's V consumers before MTE2 reuses scratch.
             AscendC::SyncFunc<AscendC::HardEvent::V_MTE2>();
             CopyMxRowsToUb(dataGm, dataIndex, rows, singleN, outputF_, mxData_);
             CopyMxRowsToUb(scaleGm, scaleIndex, rows, groups, scaleWidth, mxScale_);
@@ -369,10 +342,8 @@ private:
             AscendC::Cast(dst[chunkRow * singleN], mxDecoded_, AscendC::RoundMode::CAST_RINT,
                           static_cast<uint32_t>(rows) * singleN);
             if (hasLowMask) {
-                // The masks record decisions made from raw forward BF16.
-                // Force masked values beyond the finite limit so the existing
-                // FP32 clamp restores exactly +/-L and produces a zero range
-                // indicator, without re-inferring the decision from MXFP8.
+                // Restore forward's clipping decision, not a decision recomputed from lossy MXFP8.
+                // An out-of-range sentinel makes the FP32 clamp restore the exact finite limit.
                 AscendC::SyncFunc<AscendC::HardEvent::V_S>();
                 ApplyClipSentinels(dst[chunkRow * singleN], rows, singleN, groups, gatePlane, chunkRow);
                 AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -448,9 +419,7 @@ private:
         auto gateHighWords = gateHighMask_.template ReinterpretCast<uint32_t>();
         auto upLowWords = upLowMask_.template ReinterpretCast<uint32_t>();
         auto highWords = upHighMask_.template ReinterpretCast<uint32_t>();
-        // Infinity is only an internal branch sentinel. The following FP32
-        // clamp turns it into the finite user limit before any arithmetic.
-        // Unlike max-finite BF16, this remains outside every finite limit.
+        // Infinity is an internal sentinel beyond every finite limit; the following clamp removes it.
         constexpr uint16_t positiveInfinityBf16 = 0x7f80U;
         constexpr uint16_t negativeInfinityBf16 = 0xff80U;
         for (uint16_t row = 0; row < rows; ++row) {
@@ -544,10 +513,7 @@ private:
                     AscendC::Reg::DataCopy(packed0, products + offset);
                     AscendC::Reg::Interleave(packed0, packed1, packed0, packed1);
                     const uint16_t partLanesMax = static_cast<uint16_t>(kBf16PerReg / 2);
-                    // bisheng vectorizes this reduction loop and requires the
-                    // induction variable and every loop-condition operand to be
-                    // uint16_t.  Precompute the trip count so the condition is
-                    // only `part < partCount`.
+                    // Bisheng requires uint16_t induction and loop-condition operands in this reduction.
                     const uint16_t partCount = partRemaining > partLanesMax ? 2U : 1U;
                     for (uint16_t part = 0; part < partCount; ++part) {
                         const uint16_t partLanes = partRemaining > partLanesMax ? partLanesMax : partRemaining;
@@ -577,8 +543,6 @@ private:
             Ops::Base::CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(kElementsPerRepeat)));
         constexpr float kOne = 1.0F;
         const float limit = params_.swigluLimit;
-        // The disabled limit (FLT_MAX) makes the clamps numerical no-ops;
-        // skip them entirely so the unlimited path pays nothing extra.
         const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
         __ubuf__ bfloat16_t* gate = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
         __ubuf__ bfloat16_t* up = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
@@ -627,7 +591,6 @@ private:
                         AscendC::Reg::Exp(ex, neg, mask);
                         AscendC::Reg::Adds(den, ex, kOne, mask);
                         AscendC::Reg::Div<float, &kBackwardDivMode>(silu, gf, den, mask);
-                        // Match forward: BF16(SiLU_FP32(gate) * Up_FP32).
                         AscendC::Reg::Mul(h, silu, uf, mask);
                         AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hOut, h, mask);
                         AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
@@ -648,9 +611,7 @@ private:
     __aicore__ inline void ComputeSwigluGrad(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
         if (params_.savedGateUpMode == MegaMoeBF16Training::kSaveMxFp8 && params_.gateHighGmAddr != nullptr) {
-            // MXFP8 can move an untruncated value across the clipping
-            // boundary. Clamp the reconstructed value, but derive the
-            // derivative switch exclusively from the forward bit planes.
+            // Use saved forward bit planes for derivatives; decoded values may cross the clipping limit.
             ComputeSwigluGradImpl<true>(mSize, nSize, rowStride);
         } else {
             ComputeSwigluGradImpl<false>(mSize, nSize, rowStride);
@@ -668,9 +629,6 @@ private:
             Ops::Base::CeilDiv(static_cast<uint64_t>(vectorColumns), static_cast<uint64_t>(kElementsPerRepeat)));
         constexpr float kOne = 1.0F;
         const float limit = params_.swigluLimit;
-        // The disabled limit (FLT_MAX) makes the clamps numerical no-ops;
-        // skip them (and the range indicators) entirely so the unlimited
-        // path pays nothing extra.
         const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
         __ubuf__ bfloat16_t* dH = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
         __ubuf__ bfloat16_t* gate = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
@@ -713,11 +671,7 @@ private:
                         AscendC::Reg::RegTensor<float> gateC, upC, gateInd, upInd, diff;
                         AscendC::Reg::RegTensor<float> limitReg, negLimitReg;
                         AscendC::Reg::RegTensor<bfloat16_t> dUpOut, dGateOut;
-                        // sigmoid(gate) = 1 / (1 + exp(-gate)).  Reg::Div only
-                        // takes tensor operands, so materialize a constant 1.
                         AscendC::Reg::Duplicate(oneFp, kOne, mask);
-                        // dsv4 swiglu_limit clamp, mirroring the eager path:
-                        // gateC = min(gate, L); upC = clamp(up, -L, L).
                         if (limitEnabled) {
                             AscendC::Reg::Muls(limitReg, oneFp, limit, mask);
                             AscendC::Reg::Muls(negLimitReg, oneFp, -limit, mask);
@@ -725,15 +679,10 @@ private:
                             AscendC::Reg::Max(upC, upFp, negLimitReg, mask);
                             AscendC::Reg::Min(upC, upC, limitReg, mask);
                             if constexpr (UseSavedClipMask) {
-                                // The scalar post-pass below applies the exact
-                                // forward mask. Keep all lanes enabled here so
-                                // an unmasked decoded value crossing L cannot
-                                // invent a new zero-gradient branch.
+                                // Preserve the forward mask; decoded values must not introduce new clipped lanes.
                                 gateInd = oneFp;
                                 upInd = oneFp;
                             } else {
-                                // Range indicators (1 = inside, 0 = clamped):
-                                // BF16/none use the exact raw GMM1 value.
                                 AscendC::Reg::Sub(diff, gateFp, gateC, mask);
                                 AscendC::Reg::Abs(diff, diff, mask);
                                 AscendC::Reg::Muls(diff, diff, kClampMaskScale, mask);
@@ -746,18 +695,13 @@ private:
                                 AscendC::Reg::Sub(upInd, oneFp, diff, mask);
                             }
                         } else {
-                            // No limit: the clamp is the identity, so alias
-                            // the raw registers (no instruction) and let the
-                            // gradients flow through unmodified.
                             gateC = gateFp;
                             upC = upFp;
                         }
-                        // sigmoid / silu / silu' use the CLAMPED gate.
                         AscendC::Reg::Muls(neg, gateC, -kOne, mask);
                         AscendC::Reg::Exp(exp, neg, mask);
                         AscendC::Reg::Adds(denom, exp, kOne, mask);
                         AscendC::Reg::Div<float, &kBackwardDivMode>(sig, oneFp, denom, mask);
-                        // Forward does not materialize a BF16 SiLU tensor.
                         AscendC::Reg::Div<float, &kBackwardDivMode>(silu, gateC, denom, mask);
                         AscendC::Reg::Mul(dUpFp, dHFp, silu, mask);
                         if (limitEnabled) {
@@ -766,8 +710,6 @@ private:
                         // The derivative keeps dS=dh*up in FP32; no BF16 dS
                         // is materialized before the gate derivative.
                         AscendC::Reg::Mul(gradSwish, dHFp, upC, mask);
-                        // dGate = dS * sig * (1 + gateC * (1 - sig)),
-                        // zeroed where gate was clamped.
                         AscendC::Reg::Muls(oneMinusS, sig, -kOne, mask);
                         AscendC::Reg::Adds(oneMinusS, oneMinusS, kOne, mask);
                         AscendC::Reg::Mul(inner, gateC, oneMinusS, mask);
@@ -788,9 +730,7 @@ private:
             }
         }
         if constexpr (UseSavedClipMask) {
-            // Vector stores must retire before scalar clears masked gradient
-            // lanes. Order the scalar stores against both possible consumers:
-            // the next MTE2 reuse and the current MTE3 dZ writeout.
+            // Retire V stores before scalar mask clears; order those clears before MTE2/MTE3.
             AscendC::SyncFunc<AscendC::HardEvent::V_S>();
             ApplySavedClipGradientMask(mSize, nSize, rowStride);
             AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>();
@@ -837,11 +777,7 @@ private:
                     AscendC::Reg::RegTensor<float> gateC, upC, gateInd, upInd, diff;
                     AscendC::Reg::RegTensor<float> limitReg, negLimitReg;
                     AscendC::Reg::RegTensor<bfloat16_t> dUpOut, dGateOut;
-                    // sigmoid(gate) = 1 / (1 + exp(-gate)).  Reg::Div only
-                    // takes tensor operands, so materialize a constant 1.
                     AscendC::Reg::Duplicate(oneFp, kOne, mask);
-                    // dsv4 swiglu_limit clamp, mirroring the eager path:
-                    // gateC = min(gate, L); upC = clamp(up, -L, L).
                     if (limitEnabled) {
                         AscendC::Reg::Muls(limitReg, oneFp, limit, mask);
                         AscendC::Reg::Muls(negLimitReg, oneFp, -limit, mask);
@@ -849,15 +785,10 @@ private:
                         AscendC::Reg::Max(upC, upFp, negLimitReg, mask);
                         AscendC::Reg::Min(upC, upC, limitReg, mask);
                         if constexpr (UseSavedClipMask) {
-                            // The scalar post-pass below applies the exact
-                            // forward mask. Keep all lanes enabled here so
-                            // an unmasked decoded value crossing L cannot
-                            // invent a new zero-gradient branch.
+                            // Preserve the forward mask; decoded values must not introduce new clipped lanes.
                             gateInd = oneFp;
                             upInd = oneFp;
                         } else {
-                            // Range indicators (1 = inside, 0 = clamped):
-                            // BF16/none use the exact raw GMM1 value.
                             AscendC::Reg::Sub(diff, gateFp, gateC, mask);
                             AscendC::Reg::Abs(diff, diff, mask);
                             AscendC::Reg::Muls(diff, diff, kClampMaskScale, mask);
@@ -870,13 +801,9 @@ private:
                             AscendC::Reg::Sub(upInd, oneFp, diff, mask);
                         }
                     } else {
-                        // No limit: the clamp is the identity, so alias
-                        // the raw registers (no instruction) and let the
-                        // gradients flow through unmodified.
                         gateC = gateFp;
                         upC = upFp;
                     }
-                    // sigmoid / silu / silu' use the CLAMPED gate.
                     AscendC::Reg::Muls(neg, gateC, -kOne, mask);
                     AscendC::Reg::Exp(exp, neg, mask);
                     AscendC::Reg::Adds(denom, exp, kOne, mask);
@@ -907,10 +834,8 @@ private:
                     if (limitEnabled) {
                         AscendC::Reg::Mul(dUpFp, dUpFp, upInd, mask);
                     }
-                    // No standalone BF16 dS tensor in the fused graph.
+                    // Keep dS in FP32, matching the fused forward's tensor boundaries.
                     AscendC::Reg::Mul(gradSwish, dHFp, upC, mask);
-                    // dGate = dS * sig * (1 + gateC * (1 - sig)),
-                    // zeroed where gate was clamped.
                     AscendC::Reg::Muls(oneMinusS, sig, -kOne, mask);
                     AscendC::Reg::Adds(oneMinusS, oneMinusS, kOne, mask);
                     AscendC::Reg::Mul(inner, gateC, oneMinusS, mask);
@@ -1005,8 +930,6 @@ private:
             Ops::Base::CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(kElementsPerRepeat)));
         constexpr float kOne = 1.0F;
         const float limit = params_.swigluLimit;
-        // The disabled limit (FLT_MAX) makes the clamps numerical no-ops;
-        // skip them entirely so the unlimited path pays nothing extra.
         const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
         __ubuf__ bfloat16_t* gate = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
         __ubuf__ bfloat16_t* up = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();

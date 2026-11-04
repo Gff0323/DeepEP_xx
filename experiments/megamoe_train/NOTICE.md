@@ -21,3 +21,13 @@ records their original hashes. No CATCCOS runtime/template dependency is added.
 Source checks verify the declared import revision and required files.
 Original source hashes are provenance records; they do not require adapted
 files to remain byte-identical to the initial implementation.
+
+Follow-up cleanup adapts `17a685c` and `0c1d4a5`: remove unused MGroup
+declarations and its inactive MMAD branch, and share alignment/size constants
+with their original types. Layout and planning headers remain separate under
+`csrc/kernels/bf16/layout/`.
+The existing two-window TopK-weight gather implementation is retained.
+
+Removed BF16 backward debug stage prints, GM phase markers and their 1 KiB
+saved-state region. Dispatch-readiness flags and computational synchronization
+are retained; Host and Device must be rebuilt together for the saved-state layout.

@@ -37,7 +37,7 @@
       "step": 0,
       "title": "读取匹配前向的持久状态",
       "subtitle": "saved-bf16 不重算 GMM1",
-      "symbol": "BackwardSavedStateInfo / BackwardUsesGm",
+      "symbol": "BackwardSavedStateInfo / UseGmForBackwardDataGrad",
       "description": [
         "反向读取前向保存的 packed X、packed p、原始 Gate/Up 和路由/计数信息。bf16 模式使用 GM dHp 路径；只有 none 模式在此反向中重新执行 GMM1。这里的 GM 表示激活梯度交接位置，与前向 H7168 选择 UB SwiGLU 是不同策略。"
       ],
@@ -56,13 +56,13 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp",
-          "anchor": "MEGA_MOE_BF16_HOST_DEVICE constexpr bool BackwardUsesGm(",
+          "anchor": "MEGA_MOE_BF16_HOST_DEVICE constexpr bool UseGmForBackwardDataGrad(",
           "before": 2,
           "after": 5
         },
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "    const bool gmOutput = MegaMoeBF16Training::BackwardUsesGm(savedGateUpMode_);",
+          "anchor": "    const bool useGmDataGrad = MegaMoeBF16Training::UseGmForBackwardDataGrad(savedGateUpMode_);",
           "before": 0,
           "after": 8
         }
@@ -407,7 +407,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "                // Retire dZ/Hp/partials MTE3 before publishing the expert arrival.",
+          "anchor": "                // Idle AIVs must also publish completion after dZ/Hp/partial stores retire.",
           "before": 2,
           "after": 5
         }
@@ -655,7 +655,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // Precision boundary: accumulate routed BF16 dX rows in FP32 and",
+          "anchor": "        // Accumulate in FP32 and round once; BF16 scatter_add may use a different rounding tree.",
           "before": 1,
           "after": 18
         },
@@ -690,7 +690,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // ptrD held routed dX until every source rank completed P5.",
+          "anchor": "        // All ranks must finish reading dX before ptrD is reused for dp.",
           "before": 2,
           "after": 8
         }
@@ -764,7 +764,7 @@
         },
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // Batched remote dp writes must be globally complete before any source",
+          "anchor": "        // Finish remote dp writes before any rank reads ptrD.",
           "before": 0,
           "after": 14
         }
