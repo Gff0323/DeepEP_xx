@@ -4,8 +4,8 @@
 /*
  * DeepEP MegaMoe BF16 training backward kernel.
  *
- * Notation: R rounds to BF16; h is the unweighted BF16 SwiGLU activation
- * with the configured clipping, Hp = R(h*p), and dh = R(p*dHp). Neither
+ * Notation: R rounds to BF16; h is the unweighted FP32 SwiGLU activation
+ * with the configured clipping, Hp = R(h*p), and dh = FP32(p)*FP32(dHp). Neither
  * h nor dh denotes the hidden width. For each expert, canonical weights
  * are W1=[2F,K] and W2=[K,F], where K=k_ is the hidden width and n_=2F.
  * The formulas below use that layout; transW=false uses the transposed
@@ -29,7 +29,7 @@
  * progress for eligible multi-M experts, or the complete-expert dispatch
  * flag otherwise. In save=none, P1 waits for complete-expert dispatch and
  * alternates dHp Fixpipe tiles between the paired AIV UB slots, with a
- * per-tile completion handshake. Both paths reduce R(dHp*h) over F for dp.
+ * per-tile completion handshake. Both paths reduce FP32(dHp)*h over F for dp.
  * Every dispatch band publishes bwFlagDispatch_[expert], including those
  * using row progress. P0 staging occupies a fixed UB window above the
  * P1/P2 work tiles (see StageUb), so dispatch can overlap earlier experts'

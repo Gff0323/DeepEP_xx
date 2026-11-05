@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 // Dependency-free rectilinear routing for the offline SVG. Every connector has
 // explicit source/target ports, orthogonal segments, and a non-overlapping label.
 const key=(x,y)=>x+','+y;

@@ -1,4 +1,6 @@
-// Copyright (c) 2026, DeepEP contributors.
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 'use strict';
 
 const vscode = require('vscode');

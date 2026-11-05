@@ -16,7 +16,7 @@
  *                         Xpacked.T @ dZ -> [K,N].
  *   P4    GMM2 dW       : canonical dO.T @ Hp -> [K,F], or legacy
  *                         Hp.T @ dO -> [F,K].
- * h=BF16(SiLU_FP32(gate)*up), Hp=BF16(h*p), dh=BF16(p*dHp). The P1
+ * h=SiLU_FP32(gate)*up and dh=p*dHp stay FP32; Hp=BF16(h*p). The P1
  * epilogue derives dZ from dh and reduces FP32 dHp*h into row partials.
  * Saved modes run each expert's dW2 before P2 reuses dO as dX; none
  * retains dO until P4. Stage labels describe dependencies, not a barrier.

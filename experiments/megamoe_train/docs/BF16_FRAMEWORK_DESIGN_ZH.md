@@ -178,7 +178,7 @@ Python GC 不执行集体 SHMEM 清理，不能代替显式 `close()`。发生�
 | 验证入口 | 能检查的内容 |
 | --- | --- |
 | [test_mega_moe.py](../tests/bf16/test_mega_moe.py) | 单入口前后向精度和性能；固定输入、全部四项梯度和 counts |
-| [cpu_reference.py](../tests/bf16/cpu_reference.py) / [npu_baseline.py](../tests/bf16/npu_baseline.py) | Torch CPU FP64 真值、原始 NPU BF16 BigOp 和契约辅助参考 |
+| [cpu_reference.py](../tests/bf16/cpu_reference.py) / [npu_baseline.py](../tests/bf16/npu_baseline.py) | 独立 Torch CPU FP64 真值；`fp32-boundaries-v2` BigOp 与契约参考共用 FP32 中间计算、BF16 张量边界 |
 | [atk_compare.py](../tests/bf16/atk_compare.py) / [cases.json](../tests/bf16/cases.json) | ATK 双标杆判定及用例清单；典型尺寸从 M512 开始 |
 | [bf16_lifecycle.py](../tests/integration/bf16_lifecycle.py) | ProcessGroup/gloo协调下的重复调用、排队前向、流约束、布局和关闭重建；重复结果对照不替代独立golden |
 

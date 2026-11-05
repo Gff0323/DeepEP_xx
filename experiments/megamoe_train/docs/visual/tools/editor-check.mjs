@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 // Exercise the real extension's message bridge against current repository files.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';

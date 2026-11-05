@@ -13,20 +13,20 @@ flowchart TB
   subgraph lane_b_aiv0["AIV0：Dispatch / P1 / 回传"]
     b_dispatch_do["专家卡拉取各源 rank 的 dY"]
     b_do_ready["发布真实 dO 行进度与专家完成"]
-    b_epi0["AIV0 分领自己的 P1 tile"]
+    b_epi0["AIV0 执行 SwiGLU Grad"]
     b_dx_send["将 dX route 贡献送回源 rank"]
   end
   subgraph lane_b_aic["AIC：dHp、dW2、dX、dW1"]
     b_dhp["计算 dHp，写到临时借用的 Hp 平面"]
     b_dhp_retire["本专家所有 dHp 写退休"]
-    b_wait_dz["逐专家进入 dO 复用流程"]
+    b_wait_dz["等待 DZReady 后算 dW2"]
     b_dw2["提前计算并保存专家 dW2"]
     b_do_release["所有 AIC 共同释放 dO 行段"]
     b_dx["计算 dX 并覆盖已释放的 dO"]
     b_dw1["计算专家 dW1，留在专家 rank"]
   end
   subgraph lane_b_aiv1["AIV1：P1 激活梯度"]
-    b_epi1["AIV1 处理交替分配的 P1 tile"]
+    b_epi1["AIV1 执行 SwiGLU Grad"]
   end
   subgraph lane_b_gm["GM 中间量与精度边界"]
     b_numeric["产出 Hp、dZ 与 FP32 dp partial"]

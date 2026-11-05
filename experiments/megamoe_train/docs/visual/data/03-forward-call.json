@@ -34,7 +34,9 @@
       "subtitle": "Module → Function.apply",
       "symbol": "MegaMoeBF16Train.forward",
       "description": [
-        "Module校验max_recv_tokens、clipping limit与保存模式，然后把输入传给Function.apply。这里的save_gmm1_output默认bf16；本图选择canonical权重、H7168、F3072和关闭clipping。"
+        "调用 op(...) 时，nn.Module 的调用机制进入 MegaMoeBF16Train.forward。它校验 max_recv_tokens、clipping limit 与保存模式，再调用 _MegaMoeBF16TrainFunction.apply(self, x, IDs, p, W1, W2, ...)。",
+        "启用梯度且有浮点输入需要求导时，apply 建立自定义 autograd 节点并执行 Function.forward。PyTorch 因此知道后续反传应调用哪个 Function.backward。",
+        "这里的 save_gmm1_output 默认 bf16；本图选择 canonical 权重、H7168、F3072 和关闭 clipping。"
       ],
       "reads": [
         "X、IDs、p、W1、W2、max_recv_tokens"
@@ -50,7 +52,8 @@
           "before": 7,
           "after": 3
         }
-      ]
+      ],
+      "formula": "op(...) → Module.forward(...) → Function.apply(...) → Function.forward(...)"
     },
     {
       "id": "fc_function",
@@ -60,7 +63,8 @@
       "subtitle": "检查实例与stream状态",
       "symbol": "_MegaMoeBF16TrainFunction.forward",
       "description": [
-        "Function先调用_check_ready，再调用op._executor.forward。_executor是训练包_C.BF16对象；整数IDs用于路由，p仍是可微浮点输入。"
+        "Function.forward 先调用 op._check_ready，再调用 op._executor.forward。_executor 是训练包 _C.BF16 对象，负责启动前向 kernel。整数 IDs 用于路由，p 是可微浮点输入。",
+        "ctx 是本次 Function 调用的上下文。前向结束后，它保存本次反向需要的 Tensor 和调用配置；反向时由 autograd 把同一个 ctx 交给 Function.backward。"
       ],
       "reads": [
         "op、所有前向输入"

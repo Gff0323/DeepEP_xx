@@ -865,7 +865,7 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
     import torch
     import torch.distributed as dist
 
-    from npu_baseline import run_baseline
+    from npu_baseline import BIGOP_REFERENCE_VERSION, run_baseline
     from precision_metrics import evaluate
 
     phase = phase_timer(rank, phase_seconds)
@@ -927,22 +927,27 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
                     "bf16",
                     args.swiglu_limit,
                     reference="bigop",
+                    trace=trace if mode == "bf16" else None,
                 ),
                 args,
                 rank,
                 world,
                 f"npu:{local_rank}",
             )
-        with phase("megamoe_contract_reference"):
-            mixed_baseline = combine_baseline(
-                run_baseline(
-                    inputs, f"npu:{local_rank}", rank * args.expert_per_rank, mode, args.swiglu_limit, trace=trace
-                ),
-                args,
-                rank,
-                world,
-                f"npu:{local_rank}",
-            )
+        if mode == "bf16":
+            # Both checks use the same uncompressed small-op reference.
+            mixed_baseline = raw_baseline
+        else:
+            with phase("megamoe_contract_reference"):
+                mixed_baseline = combine_baseline(
+                    run_baseline(
+                        inputs, f"npu:{local_rank}", rank * args.expert_per_rank, mode, args.swiglu_limit, trace=trace
+                    ),
+                    args,
+                    rank,
+                    world,
+                    f"npu:{local_rank}",
+                )
     sl = slice(rank * args.seq, (rank + 1) * args.seq) if precision else slice(None)
 
     def tensor(value, dtype=torch.bfloat16, grad=False):
@@ -989,7 +994,11 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
         "phase_seconds": phase_seconds,
         "precision_run": precision,
         "performance_run": False,
-        "references": {"mixed_tolerance": "megamoe_contract", "atk": "bigop_bf16_vs_cpu_fp64"},
+        "references": {
+            "mixed_tolerance": "megamoe_contract",
+            "atk": "bigop_fp32_boundaries_vs_cpu_fp64",
+            "bigop_version": BIGOP_REFERENCE_VERSION,
+        },
     }
     if precision:
         with phase("precision_metrics"):
@@ -1094,6 +1103,7 @@ def write_case_reports(args, rank, world, report, output):
     import torch.distributed as dist
 
     from precision_metrics import write_report
+    from npu_baseline import BIGOP_REFERENCE_VERSION
 
     precision, performance = report["precision_run"], report["performance_run"]
     write_report(output / f"rank_{rank}.json", report)
@@ -1112,7 +1122,7 @@ def write_case_reports(args, rank, world, report, output):
                 "precision_passed": all(value["precision"]["passed"] for value in reports) if precision else None,
                 "performance_run": all(value["performance_run"] for value in reports),
                 "ranks": reports,
-                "precision_reference_commit": "568ac7c07e2e669582f7ce684bf5dd27f503efad",
+                "precision_reference_version": BIGOP_REFERENCE_VERSION,
             },
         )
         print(f"[RESULT] {'PASS' if passed else 'FAIL'} skip={args.skip or 'none'} output={output}", flush=True)

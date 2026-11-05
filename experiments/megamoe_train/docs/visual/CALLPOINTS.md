@@ -13,7 +13,7 @@
 - **执行位置**：公开接口
 - **读取**：X [M,H] BF16；IDs [M,T] int32；p [M,T] BF16；W1 [E,2F,H]、W2 [E,H,F]
 
-源码：[bf16.py:99](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L99) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:103](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L103) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### o_experts · 本 rank 持有本地专家参数
 
@@ -23,7 +23,7 @@
 - **读取**：weight1、weight2 的 shape；max_recv_tokens
 - **写入**：n=2F、transW 布局选择
 
-源码：[training.cpp:63](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L63) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:67](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L67) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### o_runtime · 一个显式 SHMEM 资源所有者
 
@@ -34,7 +34,7 @@
 - **写入**：对称通信窗口、rank 身份
 - **等待**：各 rank 初始化顺序一致
 
-源码：[bf16.py:71](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L71) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:75](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L75) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### o_forward · 融合前向
 
@@ -46,10 +46,16 @@
 - **等待**：当前输入 ready；UB 复用与通信读写边界
 
 ```text
-G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
+R(x) 表示将 x 舍入到 BF16。GEMM 使用 FP32 累加。
+G = R(Xpacked · Wgᵀ)
+U = R(Xpacked · Wuᵀ)
+H = SiLU_FP32(G) × FP32(U)
+Hp = R(H × FP32(p))
+Yroute = R(Hp · W2ᵀ)
+Y = R(Σ_FP32 Yroute)  # 按 TopK 槽求和后写回 BF16
 ```
 
-源码：[mega_moe_bf16_forward.hpp:1077](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1077) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1030](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1030) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### o_counts · 计数与整数路由不求导
 
@@ -59,7 +65,7 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **读取**：前向 expert counts
 - **写入**：不可微 counts 输出
 
-源码：[bf16.py:25](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L25) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:29](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L29) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### o_backward · 融合反向
 
@@ -70,7 +76,7 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **写入**：dX [M,H]、dp [M,T]；dW1、dW2
 - **等待**：dO 数据 ready；dO/dX 生命周期与回源同步
 
-源码：[mega_moe_bf16_backward.hpp:1280](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1280) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1207](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1207) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### o_gradients · autograd 对齐四类梯度
 
@@ -80,7 +86,7 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **读取**：BackwardResult
 - **写入**：x、p、w1、w2 对应的梯度
 
-源码：[bf16.py:46](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L46) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:50](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L50) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### o_build · 可选训练组件与独立设备库
 
@@ -90,9 +96,9 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **读取**：CANN、CATLASS、SHMEM、Torch/NPU SDK
 - **写入**：训练 Python 扩展 _C；BF16 设备动态库
 
-源码：[CMakeLists.txt:67](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/CMakeLists.txt#L67) · [仓内文件](../../CMakeLists.txt)
+源码：[CMakeLists.txt:70](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/CMakeLists.txt#L70) · [仓内文件](../../CMakeLists.txt)
 
-源码：[mega_moe_bf16_forward.cpp:4](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L4) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
+源码：[mega_moe_bf16_forward.cpp:5](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L5) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
 
 <a id="01-modules"></a>
 
@@ -100,13 +106,31 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 
 ### m_python · 公开 Module 与 autograd
 
-公开 Module 验证调用参数并进入自定义 autograd.Function；Function 管理前向保存 Tensor 和四项梯度的返回对应关系。Python 不直接执行设备 .cpp，而是调用安装的训练扩展。
+MegaMoeBF16Train 继承 nn.Module，管理通信窗口、执行器和参数检查。调用 op(...) 时，PyTorch 先进入这个 Module 的 forward，再由它调用 _MegaMoeBF16TrainFunction.apply(...)。
+
+_MegaMoeBF16TrainFunction 继承 autograd.Function，分别定义前向和反向如何调用自定义 kernel。启用梯度且有浮点输入需要求导时，apply 把这个 Function 记录为计算图节点，并将输出 y 与该节点关联。
+
+训练代码执行 loss.backward() 后，autograd 沿计算图传回 grad_y，并调度 Function.backward。反向接口由 Function 提供，Module 负责公开调用和资源管理。
 
 - **执行位置**：Python 接口
 - **读取**：Tensor 输入、保存模式、EP group
 - **写入**：autograd 节点、y/counts
 
-源码：[bf16.py:49](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L49) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+```text
+op(...) → MegaMoeBF16Train.forward
+        → Function.apply → Function.forward
+        → op._executor.forward → 前向 kernel
+
+loss.backward() → autograd 引擎传回 grad_y
+                → Function.backward
+                → op._executor.backward → 反向 kernel
+```
+
+源码：[bf16.py:53](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L53) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+
+源码：[bf16.py:21](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L21) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+
+源码：[bf16.py:115](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### m_runtime · 根 Runtime 管理所有权
 
@@ -117,7 +141,7 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **写入**：Runtime.native、进程所有者记录
 - **等待**：EP 配置交换
 
-源码：[_runtime.py:136](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/deep_ep/_runtime.py#L136) · [仓内文件](../../../../deep_ep/_runtime.py)
+源码：[_runtime.py:136](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/deep_ep/_runtime.py#L136) · [仓内文件](../../../../deep_ep/_runtime.py)
 
 ### m_binding · 训练扩展注册对象
 
@@ -127,7 +151,7 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **读取**：Host 类型与方法声明
 - **写入**：_C.BF16、结果类型绑定
 
-源码：[bindings.cpp:4](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bindings.cpp#L4) · [仓内文件](../../csrc/bindings.cpp)
+源码：[bindings.cpp:8](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bindings.cpp#L8) · [仓内文件](../../csrc/bindings.cpp)
 
 ### m_session · Session 持有 SHMEM 窗口
 
@@ -138,9 +162,9 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **写入**：对称窗口、peer 地址
 - **等待**：Session 集合初始化/关闭
 
-源码：[session.cpp:336](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/csrc/runtime/session.cpp#L336) · [仓内文件](../../../../csrc/runtime/session.cpp)
+源码：[session.cpp:336](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/runtime/session.cpp#L336) · [仓内文件](../../../../csrc/runtime/session.cpp)
 
-源码：[module.cpp:64](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/csrc/bindings/module.cpp#L64) · [仓内文件](../../../../csrc/bindings/module.cpp)
+源码：[module.cpp:64](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/bindings/module.cpp#L64) · [仓内文件](../../../../csrc/bindings/module.cpp)
 
 ### m_host · Host 执行器与启动桥接
 
@@ -150,9 +174,9 @@ G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ
 - **读取**：Tensor、context、借用窗口
 - **写入**：输出 Tensor、启动参数
 
-源码：[training.cpp:463](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L463) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:464](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L464) · [仓内文件](../../csrc/bf16/training.cpp)
 
-源码：[launcher.cpp:59](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/launcher.cpp#L59) · [仓内文件](../../csrc/bf16/launcher.cpp)
+源码：[launcher.cpp:63](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L63) · [仓内文件](../../csrc/bf16/launcher.cpp)
 
 ### m_tiling · Host tiling 与共享布局
 
@@ -162,9 +186,9 @@ Host 查询 AIC/AIV/UB 资源，解析形状与保存模式，计算通信、持
 - **读取**：M/H/F/T、EP、E、max_recv_tokens；设备资源、保存模式
 - **写入**：MegaMoeTilingData、各区间大小和偏移
 
-源码：[tiling.cpp:43](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/tiling.cpp#L43) · [仓内文件](../../csrc/bf16/tiling.cpp)
+源码：[tiling.cpp:47](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/tiling.cpp#L47) · [仓内文件](../../csrc/bf16/tiling.cpp)
 
-源码：[mega_moe_layout.hpp:264](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L264) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:266](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L266) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
 ### m_device · 前反向设备主控
 
@@ -175,9 +199,9 @@ AscendC MIX 入口创建设备对象，调用 Init 和 Process。主控组织路
 - **写入**：Y 或四类梯度；算法状态与ready计数
 - **等待**：数据依赖与内存复用边界
 
-源码：[mega_moe_bf16_forward.cpp:18](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L18) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
+源码：[mega_moe_bf16_forward.cpp:19](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L19) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
 
-源码：[mega_moe_bf16_backward.cpp:33](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L33) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.cpp)
+源码：[mega_moe_bf16_backward.cpp:17](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L17) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.cpp)
 
 ### m_catlass · 计算、激活与路由组件
 
@@ -188,7 +212,7 @@ catlass 目录适配 BF16 MMAD，epilogue 负责 SwiGLU/梯度和保存格式，
 - **写入**：计算 tile、回源片段
 - **等待**：对应ready和槽归还
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:250](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L250) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:251](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L251) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### m_build · 根构建选择训练组件
 
@@ -198,9 +222,9 @@ catlass 目录适配 BF16 MMAD，epilogue 负责 SwiGLU/梯度和保存格式，
 - **读取**：根 SDK 依赖与构建选项
 - **写入**：训练 Host _C 与 BF16 SO
 
-源码：[CMakeLists.txt:42](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/CMakeLists.txt#L42) · [仓内文件](../../../../CMakeLists.txt)
+源码：[CMakeLists.txt:42](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/CMakeLists.txt#L42) · [仓内文件](../../../../CMakeLists.txt)
 
-源码：[CMakeLists.txt:48](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/CMakeLists.txt#L48) · [仓内文件](../../CMakeLists.txt)
+源码：[CMakeLists.txt:51](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/CMakeLists.txt#L51) · [仓内文件](../../CMakeLists.txt)
 
 <a id="02-lifecycle"></a>
 
@@ -214,7 +238,7 @@ catlass 目录适配 BF16 MMAD，epilogue 负责 SwiGLU/梯度和保存格式，
 - **读取**：ep_group、local_mem_size、timeout；当前 NPU stream
 - **写入**：Module 实例、_stream
 
-源码：[bf16.py:63](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L63) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:67](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L67) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### lc_owner · 建立共享通信所有者
 
@@ -225,9 +249,9 @@ catlass 目录适配 BF16 MMAD，epilogue 负责 SwiGLU/梯度和保存格式，
 - **写入**：SHMEM 对称窗口、Runtime.native
 - **等待**：各rank配置一致；初始化 barrier
 
-源码：[bf16.py:71](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L71) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:75](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L75) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
-源码：[module.cpp:64](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/csrc/bindings/module.cpp#L64) · [仓内文件](../../../../csrc/bindings/module.cpp)
+源码：[module.cpp:64](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/bindings/module.cpp#L64) · [仓内文件](../../../../csrc/bindings/module.cpp)
 
 ### lc_context · 执行器借用窗口并建立 context
 
@@ -237,9 +261,9 @@ Python 取出根 Session 的 workspace_address 后构造训练 BF16Executor。�
 - **读取**：窗口基址、bytes、rank/world；参考NPU Tensor
 - **写入**：BF16Executor、设备 context
 
-源码：[training.cpp:446](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L446) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:447](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L447) · [仓内文件](../../csrc/bf16/training.cpp)
 
-源码：[launcher.cpp:39](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/launcher.cpp#L39) · [仓内文件](../../csrc/bf16/launcher.cpp)
+源码：[launcher.cpp:43](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L43) · [仓内文件](../../csrc/bf16/launcher.cpp)
 
 ### lc_forward · 提交一次前向
 
@@ -250,7 +274,7 @@ Python 取出根 Session 的 workspace_address 后构造训练 BF16Executor。�
 - **写入**：y、counts、每次调用的状态Tensor
 - **等待**：Module仍存活且当前stream一致
 
-源码：[bf16.py:19](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L19) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:23](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L23) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### lc_saved · 持久状态跟随本次计算图
 
@@ -261,7 +285,7 @@ ctx 保存 p、W1、W2、counts 和两份前向状态。saved_state 保存路由
 - **写入**：ctx.saved_tensors
 - **等待**：Tensor存活到对应反向
 
-源码：[bf16.py:24](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L24) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:28](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L28) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### lc_scratch · 临时 workspace 按 stream 保活
 
@@ -271,7 +295,7 @@ ctx 保存 p、W1、W2、counts 和两份前向状态。saved_state 保存路由
 - **读取**：当前stream、参与调用的Tensor
 - **写入**：分配器stream使用记录
 
-源码：[training.cpp:283](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L283) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:284](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L284) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### lc_backward · autograd 提交对应反向
 
@@ -282,7 +306,7 @@ ctx 保存 p、W1、W2、counts 和两份前向状态。saved_state 保存路由
 - **写入**：dx、dtopk_weights、dw1、dw2
 - **等待**：同一Module、同一stream
 
-源码：[bf16.py:30](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L30) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:34](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L34) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### lc_drain · 结束使用后排空创建 stream
 
@@ -293,7 +317,7 @@ ctx 保存 p、W1、W2、counts 和两份前向状态。saved_state 保存路由
 - **写入**：已排空的设备工作
 - **等待**：_stream.synchronize()
 
-源码：[bf16.py:115](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:119](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L119) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### lc_release · Session 集合释放窗口
 
@@ -304,7 +328,7 @@ ctx 保存 p、W1、W2、counts 和两份前向状态。saved_state 保存路由
 - **写入**：释放的通信窗口、closed状态
 - **等待**：aclshmem_barrier_all
 
-源码：[session.cpp:349](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/csrc/runtime/session.cpp#L349) · [仓内文件](../../../../csrc/runtime/session.cpp)
+源码：[session.cpp:349](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/runtime/session.cpp#L349) · [仓内文件](../../../../csrc/runtime/session.cpp)
 
 ### lc_closed · 执行器清除借用地址和 context
 
@@ -314,7 +338,7 @@ Host执行器把借用窗口地址置零并释放context Tensor。它没有在�
 - **读取**：address_、context_
 - **写入**：address_=0、空context
 
-源码：[training.cpp:457](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L457) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:458](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L458) · [仓内文件](../../csrc/bf16/training.cpp)
 
 <a id="03-forward-call"></a>
 
@@ -322,24 +346,34 @@ Host执行器把借用窗口地址置零并释放context Tensor。它没有在�
 
 ### fc_public · 公开 forward 进入 autograd
 
-Module校验max_recv_tokens、clipping limit与保存模式，然后把输入传给Function.apply。这里的save_gmm1_output默认bf16；本图选择canonical权重、H7168、F3072和关闭clipping。
+调用 op(...) 时，nn.Module 的调用机制进入 MegaMoeBF16Train.forward。它校验 max_recv_tokens、clipping limit 与保存模式，再调用 _MegaMoeBF16TrainFunction.apply(self, x, IDs, p, W1, W2, ...)。
+
+启用梯度且有浮点输入需要求导时，apply 建立自定义 autograd 节点并执行 Function.forward。PyTorch 因此知道后续反传应调用哪个 Function.backward。
+
+这里的 save_gmm1_output 默认 bf16；本图选择 canonical 权重、H7168、F3072 和关闭 clipping。
 
 - **执行位置**：Python / autograd
 - **读取**：X、IDs、p、W1、W2、max_recv_tokens
 - **写入**：自定义autograd调用
 
-源码：[bf16.py:111](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L111) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+```text
+op(...) → Module.forward(...) → Function.apply(...) → Function.forward(...)
+```
+
+源码：[bf16.py:115](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### fc_function · Function.forward 调执行器
 
-Function先调用_check_ready，再调用op._executor.forward。_executor是训练包_C.BF16对象；整数IDs用于路由，p仍是可微浮点输入。
+Function.forward 先调用 op._check_ready，再调用 op._executor.forward。_executor 是训练包 _C.BF16 对象，负责启动前向 kernel。整数 IDs 用于路由，p 是可微浮点输入。
+
+ctx 是本次 Function 调用的上下文。前向结束后，它保存本次反向需要的 Tensor 和调用配置；反向时由 autograd 把同一个 ctx 交给 Function.backward。
 
 - **执行位置**：Python / autograd
 - **读取**：op、所有前向输入
 - **写入**：ForwardResult引用
 - **等待**：Module存活、创建stream一致
 
-源码：[bf16.py:19](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L19) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:23](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L23) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### fc_binding · pybind 转入 BF16Executor
 
@@ -349,9 +383,9 @@ pybind把Python方法映射到C++执行器。执行器检查借用地址仍有�
 - **读取**：Tensor对象、执行器rank/world/窗口
 - **写入**：Host前向调用
 
-源码：[bindings.cpp:20](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bindings.cpp#L20) · [仓内文件](../../csrc/bindings.cpp)
+源码：[bindings.cpp:24](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bindings.cpp#L24) · [仓内文件](../../csrc/bindings.cpp)
 
-源码：[training.cpp:463](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L463) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:464](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L464) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### fc_host · 检查Tensor与容量边界
 
@@ -361,7 +395,7 @@ Host检查NPU、连续性、dtype、权重布局、token和专家范围，计算
 - **读取**：输入Tensor与shape；借用SHMEM容量
 - **写入**：前向形状、weightLayout
 
-源码：[training.cpp:191](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L191) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:195](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L195) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### fc_tiling · 生成设备tiling与空间预算
 
@@ -371,9 +405,9 @@ Host检查NPU、连续性、dtype、权重布局、token和专家范围，计算
 - **读取**：shape、保存模式、平台资源
 - **写入**：MegaMoeTilingData、workspace/peer字节数
 
-源码：[tiling.cpp:43](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/tiling.cpp#L43) · [仓内文件](../../csrc/bf16/tiling.cpp)
+源码：[tiling.cpp:47](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/tiling.cpp#L47) · [仓内文件](../../csrc/bf16/tiling.cpp)
 
-源码：[launcher.cpp:34](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/launcher.cpp#L34) · [仓内文件](../../csrc/bf16/launcher.cpp)
+源码：[launcher.cpp:38](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L38) · [仓内文件](../../csrc/bf16/launcher.cpp)
 
 ### fc_allocate · 分配输出、持久状态与临时区
 
@@ -383,7 +417,7 @@ Y/counts为公开输出；saved_state和dispatch_output需要保留至反向；f
 - **读取**：saved-state、dispatch、transient布局
 - **写入**：Y [M,H]、counts [E]；saved_state、dispatch_output、forward scratch
 
-源码：[training.cpp:264](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L264) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:265](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L265) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### fc_launch · 当前NPU stream上的启动桥接
 
@@ -393,7 +427,7 @@ launcher取当前Acl stream，将Tensor data_ptr转为设备地址，把tiling_h
 - **读取**：context、输入输出Tensor、tiling
 - **写入**：C导出启动参数
 
-源码：[launcher.cpp:74](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/launcher.cpp#L74) · [仓内文件](../../csrc/bf16/launcher.cpp)
+源码：[launcher.cpp:78](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L78) · [仓内文件](../../csrc/bf16/launcher.cpp)
 
 ### fc_export · C导出函数提交MIX kernel
 
@@ -403,7 +437,7 @@ C导出函数把Host tiling重解释为MegaMoeTilingData，以指定block数和s
 - **读取**：裸地址、tiling_host、stream
 - **写入**：已提交的MIX kernel
 
-源码：[mega_moe_bf16_forward.cpp:32](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L32) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
+源码：[mega_moe_bf16_forward.cpp:33](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L33) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
 
 ### fc_device · 设备入口初始化前向对象
 
@@ -413,7 +447,7 @@ MIX入口初始化设备状态，构造MegaMoeBF16Forward，将持久、dispatch
 - **读取**：context、Tensor地址、tiling
 - **写入**：前向主控对象、地址视图
 
-源码：[mega_moe_bf16_forward.cpp:18](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L18) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
+源码：[mega_moe_bf16_forward.cpp:19](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L19) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.cpp)
 
 ### fc_pipeline · Process执行融合前向
 
@@ -424,7 +458,7 @@ Process先解析保存模式与权重布局，再进入选定GM/UB模板流程�
 - **写入**：Y、counts、packed X/p、保存Gate/Up
 - **等待**：当前输入ready、配对事件、跨rank边界
 
-源码：[mega_moe_bf16_forward.hpp:1117](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1117) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1070](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1070) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### fc_return · 保存反向状态，公开返回Y和counts
 
@@ -434,23 +468,37 @@ Host通过recordStream保持异步调用所需的Tensor寿命，Function把反�
 - **读取**：ForwardResult、p、W1、W2
 - **写入**：ctx.saved_tensors；(y, counts)
 
-源码：[bf16.py:24](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L24) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:28](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L28) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
-源码：[training.cpp:283](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L283) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:284](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L284) · [仓内文件](../../csrc/bf16/training.cpp)
 
 <a id="04-backward-call"></a>
 
 ## 一次反向的跨文件调用
 
-### bc_autograd · autograd传入最终输出的梯度
+### bc_autograd · loss.backward() 触发反向
 
-当上层损失对Y反传时，PyTorch调用这个Function的backward并给出grad_y。counts已标记不可微；本算子为x、p、w1、w2产生梯度，不重新构造router。
+训练代码先用 y 构造 loss，再执行 loss.backward()。autograd 沿计算图算出 dL/dY，并将它作为 grad_y 传给 _MegaMoeBF16TrainFunction.backward(ctx, grad_y)。
+
+Module 的 forward 在调用 Function.apply 时已建立这个节点与输出 y 的关系，因此这里由 autograd 引擎直接调度 Function.backward。
+
+统一测试直接执行 y.backward(dy)，为每个 y 元素指定上游梯度。这等价于构造 loss=(y*dy).sum() 再反向。counts 已标记不可微；本算子为 x、p、W1、W2 返回梯度。
 
 - **执行位置**：Python / autograd
 - **读取**：grad_y [M,H]；ctx
 - **写入**：反向Host调用
 
-源码：[bf16.py:30](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L30) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+```text
+y, counts = op(...)
+y.backward(dy)
+
+autograd → Function.backward(ctx, grad_y=dy)
+         → op._executor.backward(...)
+```
+
+源码：[bf16.py:34](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L34) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+
+源码：[test_mega_moe.py:974](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/tests/bf16/test_mega_moe.py#L974) · [仓内文件](../../tests/bf16/test_mega_moe.py)
 
 ### bc_saved · 恢复本次前向的保存Tensor
 
@@ -461,7 +509,7 @@ ctx取回与该前向对应的weights、W1、W2、counts、saved_state和dispatc
 - **写入**：连续grad_y、反向输入引用
 - **等待**：Module仍存活且stream一致
 
-源码：[bf16.py:31](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L31) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:35](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L35) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
 ### bc_binding · 绑定转入执行器backward
 
@@ -471,9 +519,9 @@ ctx取回与该前向对应的weights、W1、W2、counts、saved_state和dispatc
 - **读取**：反向Tensor、保存状态、执行器资源
 - **写入**：ops反向调用
 
-源码：[bindings.cpp:21](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bindings.cpp#L21) · [仓内文件](../../csrc/bindings.cpp)
+源码：[bindings.cpp:25](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bindings.cpp#L25) · [仓内文件](../../csrc/bindings.cpp)
 
-源码：[training.cpp:473](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L473) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:474](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L474) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### bc_host · 检查梯度输入与保存状态
 
@@ -483,7 +531,7 @@ Host从grad_y和权重恢复形状，检查dtype、连续性、有效保存状�
 - **读取**：gradY、p、W1/W2、counts；saved_state、dispatch_output
 - **写入**：反向shape与布局选择
 
-源码：[training.cpp:286](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L286) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:287](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L287) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### bc_layout · 规划反向scratch与ready后缀
 
@@ -493,9 +541,9 @@ Host复用共享tiling规则、检查各阶段UB占用，再按保存模式和sp
 - **读取**：tiling、savedMode、splitExperts；UB资源
 - **写入**：反向workspace各区间大小
 
-源码：[training.cpp:132](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L132) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:136](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L136) · [仓内文件](../../csrc/bf16/training.cpp)
 
-源码：[training.cpp:414](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L414) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:415](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L415) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### bc_allocate · 分配四项梯度与scratch
 
@@ -505,7 +553,7 @@ Host分配gradX、gradTopkWeights、gradWeight1、gradWeight2与backwardWorkspac
 - **读取**：backwardLayout、输入Tensor options
 - **写入**：dx [M,H]、dp [M,T]；dw1、dw2、backward scratch
 
-源码：[training.cpp:421](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L421) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:422](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L422) · [仓内文件](../../csrc/bf16/training.cpp)
 
 ### bc_launch · Host桥接到反向C启动符号
 
@@ -515,7 +563,7 @@ launcher取得当前Acl stream，把梯度输入、输出、持久状态、scrat
 - **读取**：context、Tensor地址、tiling、splitExperts
 - **写入**：C导出调用参数
 
-源码：[launcher.cpp:99](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/launcher.cpp#L99) · [仓内文件](../../csrc/bf16/launcher.cpp)
+源码：[launcher.cpp:103](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L103) · [仓内文件](../../csrc/bf16/launcher.cpp)
 
 ### bc_export · 导出函数提交反向MIX kernel
 
@@ -525,7 +573,7 @@ launcher取得当前Acl stream，把梯度输入、输出、持久状态、scrat
 - **读取**：裸地址、tiling_host、split_experts
 - **写入**：反向kernel提交
 
-源码：[mega_moe_bf16_backward.cpp:45](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L45) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.cpp)
+源码：[mega_moe_bf16_backward.cpp:29](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L29) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.cpp)
 
 ### bc_device · 设备对象恢复前向状态视图
 
@@ -535,7 +583,7 @@ MIX入口创建反向主控对象。Init把保存状态、dispatch_output、back
 - **读取**：context、输入输出地址、tiling；保存状态与scratch
 - **写入**：反向主控对象与地址视图
 
-源码：[mega_moe_bf16_backward.cpp:33](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L33) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.cpp)
+源码：[mega_moe_bf16_backward.cpp:17](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L17) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.cpp)
 
 ### bc_pipeline · Process执行四项梯度流程
 
@@ -546,21 +594,23 @@ MIX入口创建反向主控对象。Init把保存状态、dispatch_output、back
 - **写入**：源rank的dx/dp；专家rank的dw1/dw2
 - **等待**：输入ready、dzReady、doReleased、dxReady；跨rank读写与复用边界
 
-源码：[mega_moe_bf16_backward.hpp:1280](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1280) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1207](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1207) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:935](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L935) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:884](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L884) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### bc_return · 按原输入顺序返回梯度
 
 Host把四个Tensor组织为BackwardResult并记录当前stream，Python按forward输入位置返回梯度。x得到dx，路由权重得到dtopk_weights，两个专家参数得到dw1/dw2；op、IDs、容量、limit和模式没有梯度返回。
 
+返回位置与 Function.apply 的输入位置一一对应。autograd 将 dX、dp、dW1、dW2 继续传向各自上游；对于需要梯度的叶子 Tensor，loss.backward() 会将梯度累积到对应的 .grad。
+
 - **执行位置**：Python / autograd
 - **读取**：BackwardResult.dx/dtopk_weights/dw1/dw2
 - **写入**：对应输入的autograd梯度
 
-源码：[bf16.py:46](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L46) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
+源码：[bf16.py:50](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L50) · [仓内文件](../../python/deep_ep_experimental/megamoe_train/bf16.py)
 
-源码：[training.cpp:439](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/bf16/training.cpp#L439) · [仓内文件](../../csrc/bf16/training.cpp)
+源码：[training.cpp:440](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L440) · [仓内文件](../../csrc/bf16/training.cpp)
 
 <a id="05-forward-kernel"></a>
 
@@ -573,9 +623,9 @@ Host把四个Tensor组织为BackwardResult并记录当前stream，Python按forwa
 - **执行位置**：全核协调 / 所有 AIV
 - **读取**：hidden=7168；resolved savedMode=bf16；swiglu_limit 关闭
 
-源码：[mega_moe_bf16_forward.hpp:1107](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1107) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1060](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1060) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_layout.hpp:143](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L143) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:145](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L145) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
 ### f_routes · 在源 rank 生成排序 route 行
 
@@ -586,9 +636,9 @@ Host把四个Tensor组织为BackwardResult并记录当前stream，Python按forwa
 - **写入**：SHMEM ptrA0：排序 X；expandedRowIdx / expandedRowIdxGather；源 rank 专家计数
 - **等待**：入口跨 rank 同步，确认本轮通信表可用
 
-源码：[mega_moe_bf16_forward.hpp:1129](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1129) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1082](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1082) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[moe_init_routing_v3_apt.h:127](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h#L127) · [仓内文件](../../csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h)
+源码：[moe_init_routing_v3_apt.h:127](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h#L127) · [仓内文件](../../csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h)
 
 ### f_route_p · 让 p 与排序 X 一一对应
 
@@ -599,9 +649,9 @@ Host把四个Tensor组织为BackwardResult并记录当前stream，Python按forwa
 - **写入**：SHMEM ptrRoutedTopkWeights [M×TopK] BF16
 - **等待**：排序映射已生成；gather UB 释放后再申请 Dispatch UB
 
-源码：[mega_moe_bf16_forward.hpp:1139](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1139) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1092](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1092) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_bf16_forward.hpp:732](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L732) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:721](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L721) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### f_counts · 交换计数，确定专家接收地址
 
@@ -612,9 +662,9 @@ Host把四个Tensor组织为BackwardResult并记录当前stream，Python按forwa
 - **写入**：本专家接收前缀；ptrSumBeforeRank；prepared phase 元数据；前向持久计数快照
 - **等待**：源端排序 X/p 写完成；计数交换及既有核间同步
 
-源码：[mega_moe_bf16_forward.hpp:328](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L328) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:317](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L317) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_bf16_forward.hpp:1160](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1160) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1113](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1113) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### f_ready_policy · 逐专家决定 row-ready 或整专家等待
 
@@ -628,11 +678,11 @@ Host把四个Tensor组织为BackwardResult并记录当前stream，Python按forwa
 GMM1 compute rows=192；ready rows=384；minimum expert rows=768
 ```
 
-源码：[mega_moe_bf16_forward.hpp:1183](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1183) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1136](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1136) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_bf16_forward.hpp:1201](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1201) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1154](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1154) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_layout.hpp:398](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L398) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:398](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L398) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
 ### f_dispatch_x · 拉取当前 fragment 的 token 行
 
@@ -643,9 +693,9 @@ GMM1 compute rows=192；ready rows=384；minimum expert rows=768
 - **写入**：本地 ptrA：该专家 packed X [M_e,H]
 - **等待**：token staging 槽的上一次 MTE3 已读完
 
-源码：[mega_moe_bf16_forward.hpp:793](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L793) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:782](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L782) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_layout.hpp:428](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L428) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:428](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L428) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
 ### f_dispatch_p · 拉取同一 fragment 的路由权重
 
@@ -656,7 +706,7 @@ GMM1 compute rows=192；ready rows=384；minimum expert rows=768
 - **写入**：本地 ptrDispatchedTopkWeights
 - **等待**：p UB 槽上一次 MTE3 完成；MTE2 读取完成后才下发本地写
 
-源码：[mega_moe_bf16_forward.hpp:771](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L771) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:760](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L760) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### f_publish_ready · X 与 p 可见后发布 ready
 
@@ -667,7 +717,7 @@ row-ready 分支在 fragment 的 X 与 p 都写完后，建立 MTE3→Scalar 顺
 - **写入**：本地 ready block 行计数；整专家 producer 完成计数
 - **等待**：X 与 p 对本地 GM 的 MTE3 写入退休
 
-源码：[mega_moe_bf16_forward.hpp:856](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L856) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:845](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L845) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### f_wait_xp · 按本任务的真实输入等待
 
@@ -677,7 +727,7 @@ AIC 调度到一个 M192×N256 任务时，检查它需要的 X 行是否可用�
 - **读取**：当前 M tile 对应的 Dispatch ready；当前专家完成计数
 - **等待**：该计算任务依赖的 X+p 已完整到达
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:322](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L322) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:323](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L323) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### f_gate_up · 同一个 X tile 分别计算 Gate 和 Up
 
@@ -689,10 +739,14 @@ AIC 调度到一个 M192×N256 任务时，检查它需要的 X 行是否可用�
 - **等待**：X+p ready；上一对 Gate/Up UB 已被 AIV0 消费
 
 ```text
-G=Xpacked·Wgᵀ；U=Xpacked·Wuᵀ
+G = R(Xpacked · Wgᵀ)
+U = R(Xpacked · Wuᵀ)
+GEMM 用 FP32 累加，R(x) 表示将结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:388](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L388) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:389](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L389) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:381](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L381) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### f_save_raw · 保存原始 Gate / Up 给反向
 
@@ -703,11 +757,11 @@ AIV0 WaitForCube 后拿到完整 Gate/Up。saved-bf16 将两块原始 BF16 结�
 - **写入**：持久 savedGate / savedUp [R,F]
 - **等待**：AIC 的 Gate 与 Up Fixpipe 均完成；保存读者完成后再覆盖 UB
 
-源码：[block_epilogue_swiglu_forward_bf16.hpp:168](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L168) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
+源码：[block_epilogue_swiglu_forward_bf16.hpp:169](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L169) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
 
 ### f_swiglu_p · SwiGLU 后逐行乘路由 p
 
-AIV0 从本地 packed p 表批量加载当前 tile 各行的 p，一行一个值，广播到该行全部特征。无 clipping 时先用 FP32 计算 SiLU(G)×U，再转 BF16；重新提升到 FP32 乘 BF16 p，最后再舍入 BF16。p 在 GMM2 之前使用，后面的 Combine 不再乘一次。
+AIV0 从本地 packed p 表批量加载当前 tile 各行的 p，一行一个值，广播到该行全部特征。SiLU(G)、H=SiLU(G)×U 和乘 p 连续使用 FP32 寄存器中间量，最后一次舍入形成 BF16 Hp，交给 GMM2。p 在 GMM2 之前使用，后面的 Combine 不再乘一次。
 
 - **执行位置**：AIV0：保存 / SwiGLU
 - **读取**：Gate / Up tile；packed p [tileRows] BF16
@@ -715,10 +769,11 @@ AIV0 从本地 packed p 表批量加载当前 tile 各行的 p，一行一个值
 - **等待**：p GM→UB 完成；原始 Gate/Up 保存完成
 
 ```text
-H=BF16(SiLU(G)⊙U)；Hp=BF16(FP32(H)·FP32(p))
+H = SiLU_FP32(G) × FP32(U)
+Hp = BF16(H × FP32(p))
 ```
 
-源码：[block_epilogue_swiglu_forward_bf16.hpp:231](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L231) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
+源码：[block_epilogue_swiglu_forward_bf16.hpp:232](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L232) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
 
 ### f_publish_hp · 写 GMM2 输入并发布本专家计数
 
@@ -729,7 +784,7 @@ Hp 按专家 packed 行、F 列写入临时 GM ptrA2。MTE3 写入完成后，�
 - **写入**：ptrA2 [R,F] BF16；SwiGLU→GMM2 task counter；AIV0→AIC 槽释放信号
 - **等待**：Hp MTE3 写完成再发布计数
 
-源码：[block_epilogue_swiglu_forward_bf16.hpp:124](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L124) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
+源码：[block_epilogue_swiglu_forward_bf16.hpp:125](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L125) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
 
 ### f_release_dispatch_ub · AIV1 释放 Dispatch 的 UB
 
@@ -740,7 +795,7 @@ AIV1 跑完自己的专家 Dispatch 循环，排空管线并销毁 firstPipe，�
 - **写入**：GMM2_UB_READY_FLAG
 - **等待**：本核 Dispatch 的所有 UB 读写退休
 
-源码：[mega_moe_bf16_forward.hpp:1245](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1245) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1198](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1198) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### f_gmm2_wait · 等当前专家全部 Hp 可见
 
@@ -750,9 +805,9 @@ AIC 先消费本核 UB 释放信号；进入某专家首个 GMM2 任务时，再
 - **读取**：本核 GMM2_UB_READY_FLAG；本专家 swigluFlags
 - **等待**：本核 Dispatch UB 已释放；当前专家全部 Hp task 已完成
 
-源码：[mega_moe_bf16_forward.hpp:1271](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1271) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1224](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1224) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:675](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L675) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:676](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L676) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### f_gmm2 · GMM2 输出到 AIV1 的双 UB 槽
 
@@ -764,10 +819,11 @@ AIC 先消费本核 UB 释放信号；进入某专家首个 GMM2 任务时，再
 - **等待**：当前专家 Hp ready；目标 UB 槽已被 Combine 归还
 
 ```text
-Yroute=BF16(Hp·W2ᵀ)
+Yroute = R(Hp · W2ᵀ)
+GEMM 用 FP32 累加，R(x) 表示将结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:683](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L683) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:684](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L684) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### f_combine · 将专家 tile 拆片回传源 rank
 
@@ -778,22 +834,31 @@ AIV1 WaitForCube 后，按当前专家 packed 接收行与各源 rank 行段求�
 - **写入**：各源 rank ptrD：排序 route 输出；UB 槽释放通知
 - **等待**：GMM2 tile ready；MTE3 完成后才 NotifyCube
 
-源码：[mega_moe_combine_send.hpp:75](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_combine_send.hpp#L75) · [仓内文件](../../csrc/kernels/bf16/routing/mega_moe_combine_send.hpp)
+源码：[mega_moe_combine_send.hpp:68](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_combine_send.hpp#L68) · [仓内文件](../../csrc/kernels/bf16/routing/mega_moe_combine_send.hpp)
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:701](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L701) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:702](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L702) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### f_unpermute · 源 rank 按 token 累加各 route
 
-排空 GMM2/Combine 尾部并建立跨 rank 完成边界后，所有 AIV 负责本 rank 的不同 token。使用 expandedRowIdxGather[token×TopK+slot] 找到 ptrD 返回矩阵的 route 行，按 TopK 槽顺序 BF16 累加成 Y。该索引属于源 rank 的排序 route 布局，不是专家卡跨源拼接后的接收行号。
+排空 GMM2/Combine 尾部并建立跨 rank 完成边界后，所有 AIV 负责本 rank 的不同 token。使用 expandedRowIdxGather[token×TopK+slot] 找到 ptrD 返回矩阵的 route 行，将回传的 BF16 route 值提升到 FP32，按 TopK 槽顺序累加，最后一次舍入成 BF16 Y。该索引属于源 rank 的排序 route 布局，不是专家卡跨源拼接后的接收行号。
 
 - **执行位置**：全核协调 / 所有 AIV
 - **读取**：本 rank ptrD [M×TopK,H]；expandedRowIdxGather
 - **写入**：Y [M,H] BF16
 - **等待**：所有本地 Combine 管线退休；跨 rank 确认各 route 输出已送达
 
-源码：[mega_moe_bf16_forward.hpp:1302](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1302) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+```text
+acc[0] = FP32(Yroute[slot 0])
+acc[j] = acc[j−1] + FP32(Yroute[slot j])，j = 1…TopK−1
+Y = R(acc[TopK−1])
+R(x) 表示将总和舍入到 BF16
+```
 
-源码：[mega_moe_unpermute.hpp:75](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_unpermute.hpp#L75) · [仓内文件](../../csrc/kernels/bf16/routing/mega_moe_unpermute.hpp)
+源码：[mega_moe_bf16_forward.hpp:1255](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1255) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+
+源码：[mega_moe_unpermute.hpp:93](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_unpermute.hpp#L93) · [仓内文件](../../csrc/kernels/bf16/routing/mega_moe_unpermute.hpp)
+
+源码：[mega_moe_bf16_forward.hpp:1248](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1248) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### f_exit · 所有源 rank 读完 ptrD 才退出
 
@@ -804,7 +869,7 @@ Unpermute 的最后一次读取及输出写入排空后，再进行一次跨 ran
 - **写入**：安全复用通信窗口的退出边界
 - **等待**：所有 rank 的 Unpermute 已完成
 
-源码：[mega_moe_bf16_forward.hpp:1305](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1305) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1258](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1258) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 <a id="06-backward-kernel"></a>
 
@@ -819,9 +884,9 @@ Unpermute 的最后一次读取及输出写入排空后，再进行一次跨 ran
 - **写入**：本轮 backward scratch 地址视图
 - **等待**：匹配前向完成且保存张量仍存活
 
-源码：[mega_moe_layout.hpp:160](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L160) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:164](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L164) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1358](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1358) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1281](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1281) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_gather · 按排序 route 复制原始 dY
 
@@ -832,20 +897,20 @@ Unpermute 的最后一次读取及输出写入排空后，再进行一次跨 ran
 - **写入**：SHMEM ptrA0：排序 raw dY
 - **等待**：入口跨 rank 边界；gather 双 staging 槽复用依赖
 
-源码：[mega_moe_bf16_backward.hpp:368](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L368) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:354](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L354) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:409](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L409) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:396](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L396) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_restore_counts · 恢复前向计数与 source 分段
 
-先核间及跨 rank 同步，保证每个源 rank 的排序 dY 可见；再从持久快照恢复计数表与前缀。支持细分时准备 producer phase 元数据，在 expert0 DHp ready cacheline 的 word1 发布元数据完成。元数据就绪不代表 dY payload 已搬到专家卡，后者仍由真实 row-ready 控制。
+先核间及跨 rank 同步，保证各源 rank 的排序 dY 可见。AIV0 和 AIV1 随后按源 rank 分工，从持久快照恢复计数并准备符合条件的 producer 元数据。expert0 的 dHpReady cacheline word1 发布元数据完成，dY 搬运进度另由 row-ready 发布。
 
 - **执行位置**：所有 AIV / rank 边界
 - **读取**：保存的计数表与源段前缀
 - **写入**：本轮计数视图；producer phase 元数据与完成 word
 - **等待**：所有源 rank GatherRoutes 完成；元数据读写的核间同步
 
-源码：[mega_moe_bf16_backward.hpp:1300](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1300) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1227](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1227) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dispatch_do · 专家卡拉取各源 rank 的 dY
 
@@ -856,9 +921,9 @@ AIV0 按 source/core 分工，将远端 ptrA0 的原始 dY 拉入本地 ptrDO。
 - **写入**：本专家 ptrDO [M_e,H] BF16
 - **等待**：本 source 的排序 dY 可见；Dispatch staging 槽可复用
 
-源码：[mega_moe_bf16_backward.hpp:572](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L572) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:537](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L537) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1322](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1322) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1249](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1249) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_do_ready · 发布真实 dO 行进度与专家完成
 
@@ -869,9 +934,9 @@ AIV0 按 source/core 分工，将远端 ptrA0 的原始 dY 拉入本地 ptrDO。
 - **写入**：producer 行进度；本专家 Dispatch 完成计数
 - **等待**：MTE3→Scalar 发布顺序
 
-源码：[mega_moe_bf16_backward.hpp:607](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L607) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:574](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L574) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:628](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L628) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:593](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L593) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dhp · 计算 dHp，写到临时借用的 Hp 平面
 
@@ -883,12 +948,13 @@ AIC 按实际 row-ready 或整专家 ready 等输入，再用 BF16 dO 与 W2 计
 - **等待**：本任务需要的 dO 行已到达；必要的 producer phase 元数据 ready
 
 ```text
-dHp=BF16(dO·W2)
+dHp = R(dO · W2)
+GEMM 用 FP32 累加，R(x) 表示将结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:314](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:304](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L304) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:875](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L875) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:826](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L826) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dhp_retire · 本专家所有 dHp 写退休
 
@@ -899,39 +965,55 @@ dHp=BF16(dO·W2)
 - **写入**：dHpReadyFlag，每 AIC 一次 arrival
 - **等待**：PipeBarrier 保证 Fixpipe GM 写退休
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:336](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L336) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:326](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L326) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:296](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L296) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:286](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L286) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-### b_epi0 · AIV0 分领自己的 P1 tile
+### b_epi0 · AIV0 执行 SwiGLU Grad
 
-同一逻辑 tile 的 AIV owner 由 nextTargetAiv&1 决定，AIV0只处理分给自己的 tile。先将完整 BF16 dHp tile 从 ptrHp 载入私有 UB，再读取前向 Gate/Up 和 packed p。完整128×256 tile使用融合分支，尾 tile 使用分步路径；两者保留同样的数值边界。
+反向每个 tile 要重建 Hp、计算 dGate 和 dUp，并归约 dp partial。相同专家行数 Mₑ 下，前向 GMM1 从 H 维算出 Gate 和 Up 共 2F 列，反向 dHp 从 H 维只算出 F 列，GEMM 计算量是前向 GMM1 的一半。dHp 的 AIC 计算通常更短，较难掩盖 SwiGLU Grad。当前专家的 dHp 写完 GM 后，两路 AIV 可以各读各的 tile，并行执行同一个 SwiGLU Grad。
+
+同一核组按本地任务序号 nextTargetAiv & 1U 分配 tile。AIV0 处理 0、2、4…，AIV1 处理 1、3、5…。计数跨专家延续。
+
+AIV0 先做完自己的 Dispatch 循环，再从 ptrHp 把分到的 dHp tile 读入私有 UB，并读取前向 Gate/Up 和 packed p。满足完整 128×256 tile 条件时走融合分支，尾 tile 走分步路径。
+
+本路输出退休后给当前专家的 DZReady 加 1，AIC 等计数达到 2 × blockNum 再算 dW2。
 
 - **执行位置**：AIV0：Dispatch / P1 / 回传
 - **读取**：ptrHp 当前仍为 dHp 的 tile；saved Gate/Up；packed p
 - **写入**：本 owner 的 UB 工作区
 - **等待**：本专家所有 AIC dHp 写完成；AIV0 自身 P0-B 执行流完成
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:323](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L323) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:314](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[block_epilogue_swiglu_backward_bf16.hpp:174](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L174) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+源码：[block_epilogue_swiglu_backward_bf16.hpp:164](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L164) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
 
-### b_epi1 · AIV1 处理交替分配的 P1 tile
+### b_epi1 · AIV1 执行 SwiGLU Grad
 
-AIV1 使用同一套 epilogue，但只消费轮转中属于 lane1 的 tile。它没有 P0-B Dispatch任务，可先进入等待；这不代表能越过 dHpReady。两个 owner 写入不重叠的 dZ/Hp/partial 区域，避免为每个输出元素做跨核原子归约。
+AIV1 完成 Gather 和计数恢复后先进入 P1。当前专家的 dHpReady 达到 blockNum 后，它可以在 AIV0 搬运后续专家期间先做本专家的 SwiGLU Grad。AIV0 进入 P1 后，两路各从 GM 读取自己的 tile，分担重建 Hp、计算 dZ 和归约 dp partial 的工作。
+
+nextTargetAiv & 1U 按同一核组的本地任务序号轮转，AIV1 处理 1、3、5…，AIV0 处理 0、2、4…。序号跨专家延续，所以新专家的第一个 tile 也可能分给 AIV1。
+
+两路各写各的 dZ、Hp 和 dp partial。本路输出退休后给当前专家的 DZReady 加 1，AIC 等计数达到 2 × blockNum 再算 dW2。
 
 - **执行位置**：AIV1：P1 激活梯度
 - **读取**：本 owner 的 BF16 dHp tile；saved Gate/Up 与 packed p
 - **写入**：独占 tile 的 Hp、dGate/dUp、dp partial
 - **等待**：整专家 dHpReady 计数达到 blockNum
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:299](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L299) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:289](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L289) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[block_epilogue_swiglu_backward_bf16.hpp:944](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L944) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:314](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+
+源码：[block_epilogue_swiglu_backward_bf16.hpp:771](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L771) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
 
 ### b_numeric · 产出 Hp、dZ 与 FP32 dp partial
 
-由原始 Gate/Up 重建前向 H，先舍入BF16。再分别形成 BF16 Hp=H×p 与 BF16 dH=dHp×p；用 dH 的FP32提升值计算激活导数，dGate/dUp最终分别舍入BF16并拼成dZ。dp先逐元素形成BF16(dHp×H)，再FP32求每行每256列partial；不能把它讲成未经舍入的全FP32点积。
+由保存的 Gate/Up 重建与前向相同的 FP32 H，乘 p 后一次舍入写出 BF16 Hp。dH=FP32(dHp)×FP32(p) 留在寄存器中，参与激活导数计算；最后将 dGate/dUp 分别舍入 BF16，拼成 dZ。
+
+dp 使用 FP32(dHp)×H，每行每 256 列生成一个 FP32 partial，跨 tile 继续用 FP32 归约，最终路由权重梯度舍入为 BF16。
+
+完整 128×256 tile 在一次读取中融合处理。尾块先产出 Hp/partial，再重读 Gate/Up 计算导数，两条路径使用相同的 FP32 H、dH 与 dp 乘积规则。
 
 - **执行位置**：GM 中间量与精度边界
 - **读取**：Gate、Up、dHp、p 的 BF16 值
@@ -939,48 +1021,66 @@ AIV1 使用同一套 epilogue，但只消费轮转中属于 lane1 的 tile。它
 - **等待**：dHp tile 读入完成后才覆盖同地址 Hp
 
 ```text
-R=BF16舍入；H=R(SiLU(G)·U)；Hp=R(H·p)；dH=R(dHp·p)；dp_tile=Σ FP32(R(dHp·H))
+R = BF16舍入；G、U、p、dHp 先提升到 FP32
+s = sigmoid(G)，S = SiLU(G)
+H = S × U                         # FP32
+Hp = R(H × p)
+dH = dHp × p                      # FP32
+dGate = R((dH × U) × (s × (1 + G × (1 - s))))
+dUp = R(dH × S)
+dZ = (dGate, dUp)
+dp_tile = Σ_FP32(dHp × H)
+dp = R(Σ_FP32 dp_tile)
 ```
 
-源码：[block_epilogue_swiglu_backward_bf16.hpp:893](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L893) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+源码：[block_epilogue_swiglu_backward_bf16.hpp:735](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L735) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
 
-源码：[block_epilogue_swiglu_backward_bf16.hpp:962](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L962) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+源码：[block_epilogue_swiglu_backward_bf16.hpp:724](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L724) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+
+源码：[block_epilogue_swiglu_backward_bf16.hpp:789](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L789) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+
+源码：[block_epilogue_swiglu_backward_bf16.hpp:442](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L442) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
 
 ### b_dz_ready · 两路 AIV 退休本专家全部 P1 输出
 
-每个 AIV lane 完成本专家 P1 后排空 MTE3，给 DZReady 加1。计数达到2×blockNum意味着 dZ、Hp、dp partial 的所有生产者都已完成，也隐含此前 dHp 生产阶段已经结束。这里的 DZReady 不只保护名字里的 dZ。
+每个核组的 AIV0 和 AIV1 在本专家的 dZ、Hp 和 dp partial 写入退休后，各给本专家的 DZReady 加 1。分到零个 tile 的 AIV 也到达一次。计数达到 2 × blockNum 时，本专家的 P1 输出齐全，AIC 可读取 Hp 计算 dW2。
 
 - **执行位置**：所有 AIV / rank 边界
 - **读取**：dZ/Hp/partial MTE3 退休状态
 - **写入**：本专家 DZReady arrival
 - **等待**：所有当前 lane 的 P1 输出退休
 
-源码：[mega_moe_bf16_backward.hpp:882](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L882) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:834](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L834) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-### b_wait_dz · 逐专家进入 dO 复用流程
+### b_wait_dz · 等待 DZReady 后算 dW2
 
-saved-bf16 的 P2 入口实际进入 GMM1GradReuseDOPhase。AIC逐专家等 DZReady 达到2×blockNum，再使用重建 Hp 和原始 dO 计算 dW2。不能按注释阶段编号把 dW2 一律放到 dX 和 dW1 之后。
+saved-BF16 的 AIC 在 GMM1GradReuseDOPhase 里逐专家读取 DZReady。等所有核组的两路 AIV 都发布完成，即 DZReady >= 2 × blockNum，再用重建的 Hp 和原始 dO 计算 dW2。完成 dW2 后，另有 doReleased 确认 dO 的读者全部退出，才允许写 dX。
 
 - **执行位置**：AIC：dHp、dW2、dX、dW1
 - **读取**：DZReady；本专家 dO 与 Hp
 - **等待**：该专家两路 AIV 全部输出退休
 
-源码：[mega_moe_bf16_backward.hpp:957](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L957) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:905](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L905) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dw2 · 提前计算并保存专家 dW2
 
-对canonical W2，使用 dOᵀ×Hp 得到 [H,F] 的 dW2，归约维是该专家实际接收行数 M_e。结果留在专家 rank 的权重梯度张量，不回送每个源 token rank。只有所有 AIC 都完成本专家 dW2 读写，才允许覆盖这段 dO。框架外层的DP/FSDP梯度同步另行执行。
+canonical W2 的梯度形状是 [H,F]。dO 和 Hp 都是 BF16，AIC 沿该专家实际接收行数 M_e 做 FP32 累加，Fixpipe 写回 GM 时舍入成 BF16。梯度留在专家 rank，框架外层的 DP/FSDP 梯度同步另行执行。
+
+所有 AIC 完成本专家 dW2 读写后，这段 dO 才能复用为 dX。
 
 - **执行位置**：AIC：dHp、dW2、dX、dW1
 - **读取**：原始 ptrDO [M_e,H]；重建 ptrHp [M_e,F]
-- **写入**：本地 grad_weight2 [E_local,H,F]
-- **等待**：DZReady 已齐
+- **写入**：本地 grad_weight2 [E_local,H,F] BF16
+- **等待**：当前专家 DZReady >= 2 × blockNum
 
 ```text
-dW2=dOᵀ·Hp
+dW2 = R(dOᵀ · Hp)
+GEMM 用 FP32 累加，R(x) 表示将结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_backward.hpp:970](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L970) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:917](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L917) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:607](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L607) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
 ### b_do_release · 所有 AIC 共同释放 dO 行段
 
@@ -991,7 +1091,7 @@ dW2=dOᵀ·Hp
 - **写入**：本专家 DOReleased 计数
 - **等待**：全部 AIC 的 dW2 读者完成
 
-源码：[mega_moe_bf16_backward.hpp:976](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L976) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:922](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L922) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dx · 计算 dX 并覆盖已释放的 dO
 
@@ -1003,12 +1103,13 @@ AIC计算 [M_e,2F]×[2F,H]，FP32累加后输出BF16到ptrDX；saved-bf16中ptrD
 - **等待**：DOReleased 达到 blockNum
 
 ```text
-dXpacked=BF16(dZ·W1)
+dXpacked = R(dZ · W1)
+GEMM 用 FP32 累加，R(x) 表示将结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:450](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L450) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:423](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L423) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:503](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L503) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:475](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L475) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
 ### b_dx_send · 将 dX route 贡献送回源 rank
 
@@ -1019,24 +1120,27 @@ AIV0等本专家DXReady达到blockNum，按计算tile从GM加载BF16 dX，经UB�
 - **写入**：源 rank SHMEM ptrD：BF16 routed dX
 - **等待**：本专家全部 AIC dX GM 写退休；UB 上一发送读者退休再加载
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:495](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L495) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:467](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L467) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:436](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L436) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
 ### b_dw1 · 计算专家 dW1，留在专家 rank
 
-saved-bf16各专家的dW2与dX路径走完后，AIC再执行dW1=dZᵀ×Xpacked，得到canonical [2F,H]梯度。dZ和packed X都必须保留到此处读完。空专家的权重梯度由AIV补零，避免为零行GEMM构造无效工作。
+saved-BF16 各专家的 dW2 和 dX 路径走完后，AIC 用 BF16 dZ 和 Xpacked 计算 canonical [2F,H] 的 dW1。沿专家接收行做 FP32 累加，Fixpipe 写回 GM 时舍入到 BF16。dZ 和 Xpacked 保留到此处读完，空专家的权重梯度由 AIV 补零。
 
 - **执行位置**：AIC：dHp、dW2、dX、dW1
 - **读取**：ptrGradZ [M_e,2F]；前向 dispatch_output 的 Xpacked [M_e,H]
-- **写入**：本地 grad_weight1 [E_local,2F,H]
+- **写入**：本地 grad_weight1 [E_local,2F,H] BF16
 - **等待**：该专家 P1 dZ 写退休
 
 ```text
-dW1=dZᵀ·Xpacked
+dW1 = R(dZᵀ · Xpacked)
+GEMM 用 FP32 累加，R(x) 表示将结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_backward.hpp:993](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L993) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:939](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L939) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1466](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1466) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1378](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1378) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dx_arrived · 所有 rank 确认 dX 回传结束
 
@@ -1047,11 +1151,11 @@ dW1=dZᵀ·Xpacked
 - **写入**：P5 可读取 ptrD 的跨 rank 边界
 - **等待**：全部本地 AIV 排空并到达；跨 rank 完成
 
-源码：[mega_moe_bf16_backward.hpp:1467](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1467) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1379](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1379) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_unpermute_dx · 源 rank 用 FP32 累加 route dX
 
-各AIV负责不同token，按expandedRowIdxGather读回TopK条BF16 dX贡献，提升到FP32按槽顺序累加，最后一次舍入BF16写grad_x。这与前向Unpermute按BF16逐次加法的边界不同，也不保证逐位复现框架BF16原子scatter_add的并行归约树。
+各AIV负责不同token，按expandedRowIdxGather读回TopK条BF16 dX贡献，提升到FP32按槽顺序累加，最后一次舍入BF16写grad_x。前向 Y 的归并也采用同样的 FP32 累加和最终 BF16 舍入。
 
 - **执行位置**：所有 AIV / rank 边界
 - **读取**：ptrD 排序 routed dX；原 route→排序行逆置换
@@ -1059,12 +1163,13 @@ dW1=dZᵀ·Xpacked
 - **等待**：P5 dX 全部到达；结果 UB 的旧 MTE3 读者退出
 
 ```text
-grad_x=BF16(Σ_topk FP32(dXroute))
+grad_x = R(Σ_FP32 dXroute)
+沿 TopK 槽顺序累加，R(x) 表示将最终结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_backward.hpp:1079](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1079) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1018](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1018) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1103](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1103) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1040](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1040) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_reuse_ptrd · 所有 dX 读者结束后才能复用 ptrD
 
@@ -1075,11 +1180,11 @@ grad_x=BF16(Σ_topk FP32(dXroute))
 - **写入**：ptrD 用途切换边界
 - **等待**：本地读者退出；P5 后的跨 rank 同步
 
-源码：[mega_moe_bf16_backward.hpp:1484](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1484) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1402](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1402) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_reduce_dp · 归约 dp partial，再批量回送
 
-P1已将每行每256列产品约成FP32 partial。P6按source/expert分段把这些partial批量搬入UB，用FP32完成最终F维归约，再舍入BF16，一次MTE3发送一批route标量到源rank的ptrD。没有再次乘p；dp是对独立路由权重输入求导。
+P1 已将每行每 256 列的 FP32 乘积归约成 FP32 partial。P6按source/expert分段把这些partial批量搬入UB，用FP32完成最终F维归约，再舍入BF16，一次MTE3发送一批route标量到源rank的ptrD。没有再次乘p；dp是对独立路由权重输入求导。
 
 - **执行位置**：所有 AIV / rank 边界
 - **读取**：ptrDpProducts FP32 partials；source/expert 前缀
@@ -1087,12 +1192,13 @@ P1已将每行每256列产品约成FP32 partial。P6按source/expert分段把这
 - **等待**：ptrD 的 dX 生命周期已结束；routeBuf 上次发送完成
 
 ```text
-dp_route=BF16(Σ_Ftiles dp_partial)
+dp_route = R(Σ_FP32 dp_partial)
+跨 F tile 累加，R(x) 表示将最终结果舍入到 BF16
 ```
 
-源码：[mega_moe_bf16_backward.hpp:1159](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1159) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1091](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1091) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1249](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1249) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1177](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1177) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### b_dp_output · 恢复 dtopk_weights，清理后退出
 
@@ -1103,9 +1209,9 @@ dp_route=BF16(Σ_Ftiles dp_partial)
 - **写入**：grad_topk_weights [M,TopK] BF16；下一次调用可用的通信表
 - **等待**：dp 回传完成的跨 rank 边界；最终表读者退休
 
-源码：[mega_moe_bf16_backward.hpp:1260](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1260) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1189](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1189) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1498](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1498) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1413](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1413) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 <a id="07-memory"></a>
 
@@ -1119,9 +1225,9 @@ Host按max_recv_tokens=R、hidden=H、中间宽F及保存模式预留张量空�
 - **读取**：R、H、F、TopK、EP、E_local；resolved savedMode
 - **写入**：对齐后的各平面偏移和总字节数
 
-源码：[mega_moe_layout.hpp:246](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L246) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:248](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L248) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
-源码：[mega_moe_layout.hpp:264](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L264) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:266](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L266) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
 ### m_dispatch_persist · 独立 dispatch_output 保留 packed X/p
 
@@ -1132,7 +1238,7 @@ Host按max_recv_tokens=R、hidden=H、中间宽F及保存模式预留张量空�
 - **写入**：ptrA [R,H] BF16；ptrDispatchedTopkWeights [R] BF16
 - **等待**：匹配反向读完之前保存该张量
 
-源码：[mega_moe_workspace_view.hpp:182](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L182) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
+源码：[mega_moe_workspace_view.hpp:175](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L175) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
 
 ### m_saved_state · training_saved_state 保存数值与路由状态
 
@@ -1143,9 +1249,9 @@ saved-bf16将原始Gate/Up保存在持久GM，保留源计数、前缀、置换�
 - **写入**：BF16 savedGate/savedUp [R,F]；当前调用的路由与计数快照
 - **等待**：Gate/Up Fixpipe 完成；保存读者结束后才覆盖 UB
 
-源码：[block_epilogue_swiglu_forward_bf16.hpp:163](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L163) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
+源码：[block_epilogue_swiglu_forward_bf16.hpp:164](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L164) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)
 
-源码：[mega_moe_bf16_forward.hpp:436](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L436) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:425](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L425) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### m_forward_transient · 前向 Hp 与 ready flags 属于临时 GM
 
@@ -1156,9 +1262,9 @@ saved-bf16将原始Gate/Up保存在持久GM，保留源计数、前缀、置换�
 - **写入**：ptrA2 [R,F] BF16；forward ready counters
 - **等待**：本次 forward 对临时区的使用退休后才能释放
 
-源码：[mega_moe_workspace_view.hpp:199](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L199) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
+源码：[mega_moe_workspace_view.hpp:192](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L192) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
 
-源码：[mega_moe_layout.hpp:337](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L337) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
+源码：[mega_moe_layout.hpp:337](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L337) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_layout.hpp)
 
 ### m_peer_input · SHMEM ptrA0 保存源端排序 payload
 
@@ -1169,9 +1275,9 @@ saved-bf16将原始Gate/Up保存在持久GM，保留源计数、前缀、置换�
 - **写入**：ptrA0；ptrRoutedTopkWeights
 - **等待**：前一用途的远端读者结束；本轮 gather 完成后再允许 peer 消费
 
-源码：[mega_moe_workspace_view.hpp:300](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L300) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
+源码：[mega_moe_workspace_view.hpp:293](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L293) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:380](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L380) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:366](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L366) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### m_fwd_ub · GMM1 的两块 UB 是 Gate 与 Up
 
@@ -1182,7 +1288,7 @@ H7168 saved-bf16走UB交接：AIC把同一逻辑tile的Gate和Up写到两块AIV0
 - **写入**：AIV0 Gate UB；AIV0 Up UB
 - **等待**：旧 Gate/Up 消费者归还存储
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:384](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L384) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:385](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L385) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### m_dispatch_buffers · token 与 p 使用不同 staging 事件
 
@@ -1193,7 +1299,7 @@ AIV1 token staging使用事件0/1交替；p staging用事件2，保留4KiB。p�
 - **写入**：本地 packed X/p
 - **等待**：MTE3 旧读者完成后才能 MTE2 重填槽
 
-源码：[mega_moe_bf16_forward.hpp:771](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L771) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:760](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L760) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
 ### m_ub_handoff · Dispatch 退出后 GMM2 才占 AIV1 UB
 
@@ -1204,9 +1310,9 @@ AIV1销毁Dispatch firstPipe后发本核释放信号，AIC才能将GMM2 Fixpipe�
 - **写入**：GMM2 AIV1 ping-pong UB
 - **等待**：本核 GMM2_UB_READY_FLAG；某输出槽旧发送读者退休
 
-源码：[mega_moe_bf16_forward.hpp:1245](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1245) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
+源码：[mega_moe_bf16_forward.hpp:1198](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1198) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_forward.hpp)
 
-源码：[mega_moe_bf16_forward_catlass_impl.hpp:683](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L683) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
+源码：[mega_moe_bf16_forward_catlass_impl.hpp:684](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L684) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp)
 
 ### m_backward_planes · 反向按 R 预留 dO、dZ、Hp、partial
 
@@ -1216,22 +1322,22 @@ AIV1销毁Dispatch firstPipe后发本核释放信号，AIC才能将GMM2 Fixpipe�
 - **读取**：R、H、2F、savedMode
 - **写入**：backward scratch offsets；各专家 ready/retirement flags
 
-源码：[mega_moe_workspace_view.hpp:238](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L238) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
+源码：[mega_moe_workspace_view.hpp:231](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L231) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
 
-源码：[mega_moe_workspace_view.hpp:260](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L260) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
+源码：[mega_moe_workspace_view.hpp:253](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L253) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
 
 ### m_dhp_alias · ptrHp 第一生命期：dHp GM 输出
 
-AIC暂借Hp平面写dHp=BF16(dO×W2)。每个专家所有AIC完成该平面写入并发布dHpReady后，AIV才开始消费它。专家行段互不重叠，按专家完成比等待全调用更细；但在同专家内部并不是逐tile发布dHp给AIV。
+AIC 暂借 Hp 平面写入 dHp = R(dO · W2)，先用 FP32 累加，再舍入到 BF16。各专家的行段独立，本专家所有 AIC 完成写入并发布 dHpReady 后，AIV 才开始消费。
 
 - **执行位置**：调用临时 GM
 - **读取**：dO 与 W2
 - **写入**：ptrHp 当前内容=dHp BF16
 - **等待**：真实 dO 行就绪；dHpReady 达到 blockNum 才开始消费
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:255](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L255) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:246](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L246) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:336](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L336) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:326](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L326) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
 ### m_hp_overwrite · ptrHp 第二生命期：重建的前向 Hp
 
@@ -1242,31 +1348,31 @@ AIC暂借Hp平面写dHp=BF16(dO×W2)。每个专家所有AIC完成该平面写�
 - **写入**：相同 ptrHp 地址上的 BF16 Hp
 - **等待**：该 tile dHp GM→UB 完成；本专家 dHp 所有生产者退休
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:324](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L324) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:315](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L315) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[block_epilogue_swiglu_backward_bf16.hpp:962](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L962) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+源码：[block_epilogue_swiglu_backward_bf16.hpp:789](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L789) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
 
 ### m_dz_partials · dZ 与 dp partial 保持独立平面
 
-dGate和dUp分别以BF16落入dZ行的前F列和后F列，供dX及dW1读取。dp按256列先归约为FP32标量，每个tile写独占位置，P6才跨tile求最终route梯度。ptrDpProducts这个历史名字当前存的是partial，不是完整[R,F]乘积矩阵。
+dGate和dUp分别以BF16落入dZ行的前F列和后F列，供dX及dW1读取。dp 用 FP32 乘积按 256 列归约为 FP32 标量，每个tile写独占位置，P6才跨tile求最终route梯度。ptrDpProducts这个历史名字当前存的是partial，不是完整[R,F]乘积矩阵。
 
 - **执行位置**：调用临时 GM
-- **读取**：dGate/dUp UB；BF16(dHp×H) 的局部归约
+- **读取**：dGate/dUp UB；每个 F tile 的 FP32 dp partial，乘积和求和都用 FP32
 - **写入**：ptrGradZ [R,2F] BF16；ptrDpProducts [R,ceil(F/256)] FP32
 - **等待**：MTE3写退休后发布DZReady
 
-源码：[block_epilogue_swiglu_backward_bf16.hpp:955](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L955) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
+源码：[block_epilogue_swiglu_backward_bf16.hpp:782](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L782) · [仓内文件](../../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)
 
 ### m_do_last_reader · 先完成 dW2 对原始 dO 的读取
 
-P1的dHp GEMM读过dO后，原始dO仍被dW2=dOᵀ×Hp使用。AIC等P1的Hp/dZ写完成，再提前计算本专家dW2。全部AIC排空dO读者和dW2写入并汇合DOReleased，才允许dX覆盖该专家行段。
+P1 的 dHp GEMM 读过 dO 后，原始 dO 还供 dW2 = R(dOᵀ · Hp) 使用。AIC 等 P1 写完 Hp 和 dZ，再算本专家的 dW2，以 FP32 累加并舍入到 BF16。全部 AIC 排空 dO 读取和 dW2 写入并发布 DOReleased 后，才允许 dX 覆盖该专家行段。
 
 - **执行位置**：调用临时 GM
 - **读取**：原始 ptrDO；重建 ptrHp
 - **写入**：grad_weight2；DOReleased
 - **等待**：DZReady 达到2×blockNum；DOReleased 达到blockNum
 
-源码：[mega_moe_bf16_backward.hpp:970](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L970) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:917](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L917) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### m_dx_alias · ptrDX=ptrDO：切换为 dX 平面
 
@@ -1277,9 +1383,9 @@ saved模式直接将ptrDX设为ptrDO，少分配一个[R,H] BF16平面。完成D
 - **写入**：原 dO 地址上的 BF16 dX
 - **等待**：全部 AIC 的 dW2 原始 dO 读者退休；AIV0等DXReady后读取GM dX
 
-源码：[mega_moe_workspace_view.hpp:273](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L273) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
+源码：[mega_moe_workspace_view.hpp:266](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L266) · [仓内文件](../../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:984](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L984) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:930](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L930) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### m_return_dx · ptrD 在 P5 存 routed dX 矩阵
 
@@ -1290,9 +1396,9 @@ saved模式直接将ptrDX设为ptrDO，少分配一个[R,H] BF16平面。完成D
 - **写入**：源 ptrD [M×TopK,H] BF16；grad_x
 - **等待**：整专家 DXReady；本地排空、核间到达、跨rank回传完成
 
-源码：[mega_moe_bf16_backward_catlass_impl.hpp:497](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L497) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
+源码：[mega_moe_bf16_backward_catlass_impl.hpp:469](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L469) · [仓内文件](../../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1053](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1053) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:995](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L995) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### m_ptrd_switch · P5所有读者完成后ptrD才能改用途
 
@@ -1303,7 +1409,7 @@ AIV排空Unpermute最后读写，销毁UB pipe并本地汇合，再跨rank同步
 - **写入**：可覆写 ptrD 的跨 rank 边界
 - **等待**：所有 rank P5 最后读者退出
 
-源码：[mega_moe_bf16_backward.hpp:1484](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1484) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1402](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1402) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### m_ptrd_dp · P6复用ptrD开头存紧凑dp表
 
@@ -1314,9 +1420,9 @@ P6将FP32 partial归约、舍入为BF16 route标量，回写源rank ptrD连续�
 - **写入**：ptrD [M×TopK] BF16 dp；grad_topk_weights [M,TopK]
 - **等待**：P5读者全退出；P6发送完成跨rank同步
 
-源码：[mega_moe_bf16_backward.hpp:1249](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1249) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1177](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1177) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
-源码：[mega_moe_bf16_backward.hpp:1269](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1269) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1198](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1198) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
 
 ### m_window_exit · 表清理和退出同步保护下一轮
 
@@ -1327,4 +1433,4 @@ P6将FP32 partial归约、舍入为BF16 route标量，回写源rank ptrD连续�
 - **写入**：清零token表；下一轮窗口复用边界
 - **等待**：最终MTE/Scalar访问退休；所有rank退出边界
 
-源码：[mega_moe_bf16_backward.hpp:1507](https://github.com/xixing-321/DeepEP/blob/155d5e8734ab2641fecc95c2bfebefd996cb3007/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1507) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)
+源码：[mega_moe_bf16_backward.hpp:1419](https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1419) · [仓内文件](../../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)

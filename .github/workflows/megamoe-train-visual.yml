@@ -66,6 +66,13 @@ jobs:
         run: npm run test:browser
       - name: Package optional VS Code source guide
         run: python tools/package-editor.py --site
+      - name: Preserve pull request site preview
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: megamoe-train-visual-preview
+          path: experiments/megamoe_train/docs/visual/site/
+          retention-days: 7
       - name: Preserve failed-check evidence
         if: failure()
         uses: actions/upload-artifact@v4

@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by xixing 2026
+
 """No-Timer paired full operator Events. All validation is outside Events."""
 
 from pathlib import Path

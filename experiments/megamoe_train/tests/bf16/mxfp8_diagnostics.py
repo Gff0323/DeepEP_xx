@@ -79,9 +79,9 @@ def replay_saved_state(inputs, trace, device, planes, limit):
         dim=-1,
     )
     h = _swiglu_fp32(z, limit, raw_z)
-    hp = h * p
+    hp = (h * p.float()).to(torch.bfloat16)
     dp = (dhp.float() * h.float()).sum(-1).to(torch.bfloat16)
-    dz = _swiglu_backward_fp32(dhp * p, z, limit, raw_z)
+    dz = _swiglu_backward_fp32(dhp.float() * p.float(), z, limit, raw_z)
     weight1 = tensor(inputs["w1"].transpose(1, 2))
     dx = _grouped_matmul(dz, weight1.transpose(1, 2).contiguous(), counts)
     dw1 = _grouped_wgrad(x, dz, counts).reshape_as(weight1).transpose(1, 2).contiguous()

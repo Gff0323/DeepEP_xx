@@ -15,6 +15,7 @@ from pathlib import Path
 import torch
 
 from precision_metrics import OUTPUTS
+from npu_baseline import BIGOP_REFERENCE_VERSION
 
 
 STANDARD = "cv_fused_double_benchmark"
@@ -46,13 +47,17 @@ def require_atk():
     }
 
 
-def compare_with_atk(actual, baseline, truth, directory, ratios):
-    """ATK local=actual, remote=raw BigOp, bm_path=CPU FP64 golden.
+def compare_with_atk(actual, baseline, truth, directory, ratios, *, outputs=OUTPUTS):
+    """ATK local=actual, remote=FP32-boundary BigOp, bm_path=CPU FP64 golden.
 
     This is CompareExecutor's three-role contract, called separately for the
-    five files in one rank. Keep the golden tensor in FP64 and actual/benchmark
-    in their original BF16 dtype. Retain failing triples for later diagnosis.
+    five files in one rank, or the selected cached outputs. Keep the golden
+    tensor in FP64 and actual/benchmark in their original BF16 dtype.
+    Retain failing triples for later diagnosis.
     """
+    outputs = tuple(outputs)
+    if not outputs or len(set(outputs)) != len(outputs) or any(name not in OUTPUTS for name in outputs):
+        raise ValueError(f"Expected distinct output names from {OUTPUTS}, got {outputs}")
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=False)
     os.environ["ATK_TASK_OUTPUT_PATH"] = str(directory)
@@ -91,8 +96,16 @@ def compare_with_atk(actual, baseline, truth, directory, ratios):
     # still needs its normal local-node context, without a distributed rank_0
     # directory rewrite or an HTTP connection to another executor.
     comparator.remote_manager = RemoteManager(case, main_node, baseline_node)
-    report = {**identity, "thresholds": thresholds, "passed": True, "outputs": {}}
-    for index, name in enumerate(OUTPUTS):
+    report = {
+        **identity,
+        "benchmark_reference_version": BIGOP_REFERENCE_VERSION,
+        "compared_outputs": list(outputs),
+        "thresholds": thresholds,
+        "passed": True,
+        "outputs": {},
+    }
+    for name in outputs:
+        index = OUTPUTS.index(name)
         a, b, g = (group[name].detach().cpu().contiguous() for group in (actual, baseline, truth))
         if a.shape != b.shape or a.shape != g.shape or a.dtype != b.dtype or g.dtype != torch.float64:
             raise ValueError(f"ATK {name}: shapes must match, actual/BigOp dtypes must match, golden must be FP64")

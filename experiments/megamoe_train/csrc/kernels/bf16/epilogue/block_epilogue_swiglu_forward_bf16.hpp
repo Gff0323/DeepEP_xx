@@ -1,12 +1,13 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * BF16 SwiGLU epilogue for the DeepEP MegaMoe pipeline. At entry, BF16
  * Gate/Up occupy two UB tiles: the UB handoff path waits for GMM1 Fixpipe,
  * while the GM staging path first fills them through LoadRawTile().
  * With R denoting BF16 rounding and Gate/Up clipped as configured,
- * h = R(SiLU(gate) * up); the weighted variant produces
- * Hp = R(FP32(h) * p) before GMM2. Internal arithmetic stays FP32,
+ * H = SiLU_FP32(gate) * up; the weighted variant produces
+ * Hp = R(H * p) before GMM2. Internal arithmetic stays FP32,
  * and dispatched BF16 route weights are prefetched from GM.
  */
 #ifndef DEEPEP_BLOCK_EPILOGUE_SWIGLU_FORWARD_BF16_HPP
@@ -193,7 +194,7 @@ private:
         }
         auto* weights = (__ubuf__ bfloat16_t*)weightUb.GetPhyAddr();
         // Direct B16 unpack follows the reference implementation. Arithmetic,
-        // accurate division, clipping and both BF16 roundings remain ours.
+        // accurate division and clipping remain in FP32 until the output cast.
         __VEC_SCOPE__
         {
             AscendC::Reg::RegTensor<float> lim, negLim;
@@ -230,14 +231,11 @@ private:
                     AscendC::Reg::Adds(denom, exp, 1.0F, mask);
                     AscendC::Reg::Div<float, &kDivMode>(silu, gf, denom, mask);
                     AscendC::Reg::Mul(value, silu, uf, mask);
-                    AscendC::Reg::Cast<bfloat16_t, float, kCastFP32ToBF16>(output, value, mask);
                     if constexpr (ApplyTopkWeight_) {
-                        // Preserve two BF16 boundaries: h = R(SiLU(gate) * up),
-                        // then Hp = R(FP32(h) * p); do not fuse away the first R.
-                        AscendC::Reg::Cast<float, bfloat16_t, kCastBF16ToFP32>(value, output, mask);
                         AscendC::Reg::Mul(value, value, weightFp, mask);
-                        AscendC::Reg::Cast<bfloat16_t, float, kCastFP32ToBF16>(output, value, mask);
                     }
+                    // Keep H in FP32 through route weighting; only the GEMM input Hp is BF16.
+                    AscendC::Reg::Cast<bfloat16_t, float, kCastFP32ToBF16>(output, value, mask);
                     AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
                         gate + row * stride + col, output, mask);
                 }

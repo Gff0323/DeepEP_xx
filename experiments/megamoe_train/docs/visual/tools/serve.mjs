@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 // Optional HTTP preview. The generated index.html also works with file://.
 import http from 'node:http';
 import fs from 'node:fs';

@@ -337,7 +337,7 @@
       "subtitle": "所有 AIC 写完，AIV 才能读取",
       "symbol": "GMM2GradSwiGLUGradGM",
       "description": [
-        "AIC暂借Hp平面写dHp=BF16(dO×W2)。每个专家所有AIC完成该平面写入并发布dHpReady后，AIV才开始消费它。专家行段互不重叠，按专家完成比等待全调用更细；但在同专家内部并不是逐tile发布dHp给AIV。"
+        "AIC 暂借 Hp 平面写入 dHp = R(dO · W2)，先用 FP32 累加，再舍入到 BF16。各专家的行段独立，本专家所有 AIC 完成写入并发布 dHpReady 后，AIV 才开始消费。"
       ],
       "reads": [
         "dO 与 W2"
@@ -408,11 +408,11 @@
       "subtitle": "dZ给GEMM，partial留到P6",
       "symbol": "RunFusedFullTile：gradZGm_ / dpPartialsGm_",
       "description": [
-        "dGate和dUp分别以BF16落入dZ行的前F列和后F列，供dX及dW1读取。dp按256列先归约为FP32标量，每个tile写独占位置，P6才跨tile求最终route梯度。ptrDpProducts这个历史名字当前存的是partial，不是完整[R,F]乘积矩阵。"
+        "dGate和dUp分别以BF16落入dZ行的前F列和后F列，供dX及dW1读取。dp 用 FP32 乘积按 256 列归约为 FP32 标量，每个tile写独占位置，P6才跨tile求最终route梯度。ptrDpProducts这个历史名字当前存的是partial，不是完整[R,F]乘积矩阵。"
       ],
       "reads": [
         "dGate/dUp UB",
-        "BF16(dHp×H) 的局部归约"
+        "每个 F tile 的 FP32 dp partial，乘积和求和都用 FP32"
       ],
       "writes": [
         "ptrGradZ [R,2F] BF16",
@@ -438,7 +438,7 @@
       "subtitle": "dHp完成后仍不能立即覆盖dO",
       "symbol": "GMM1GradReuseDOPhase：GMM2DW",
       "description": [
-        "P1的dHp GEMM读过dO后，原始dO仍被dW2=dOᵀ×Hp使用。AIC等P1的Hp/dZ写完成，再提前计算本专家dW2。全部AIC排空dO读者和dW2写入并汇合DOReleased，才允许dX覆盖该专家行段。"
+        "P1 的 dHp GEMM 读过 dO 后，原始 dO 还供 dW2 = R(dOᵀ · Hp) 使用。AIC 等 P1 写完 Hp 和 dZ，再算本专家的 dW2，以 FP32 累加并舍入到 BF16。全部 AIC 排空 dO 读取和 dW2 写入并发布 DOReleased 后，才允许 dX 覆盖该专家行段。"
       ],
       "reads": [
         "原始 ptrDO",
@@ -484,7 +484,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp",
-          "anchor": "        ptrDX = MegaMoeBF16Training::UseGmForBackwardDataGrad(savedMode) ? ptrDO : nullptr;",
+          "anchor": "(savedMode) ? ptrDO : nullptr;",
           "before": 3,
           "after": 3
         },
@@ -556,8 +556,8 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // All ranks must finish reading dX before ptrD is reused for dp.",
-          "before": 4,
+          "anchor": "        TopkGradBuffInit(&topkGradPipe);",
+          "before": 6,
           "after": 8
         }
       ]
@@ -623,7 +623,7 @@
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp",
-          "anchor": "        // The exit barrier protects the next forward from this rank's count-table reset.",
+          "anchor": "        ResetTokenPerExpert();",
           "before": 1,
           "after": 17
         }

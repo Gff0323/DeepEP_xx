@@ -1,3 +1,7 @@
+/* Copyright (c) 2026, Lu Lu
+ * Modified by xixing 2026
+ */
+
 [hidden]{display:none!important}
 .masthead,.intro,.page-footer{max-width:2048px;padding-left:24px;padding-right:24px}
 .reader-layout{max-width:2048px;margin:0 auto;display:grid;grid-template-columns:210px minmax(0,1fr);gap:18px;padding:0 24px}

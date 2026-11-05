@@ -31,10 +31,12 @@
       "lane": "python",
       "step": 0,
       "title": "公开 Module 与 autograd",
-      "subtitle": "bf16.py",
+      "subtitle": "Module / Function 分工",
       "symbol": "MegaMoeBF16Train",
       "description": [
-        "公开 Module 验证调用参数并进入自定义 autograd.Function；Function 管理前向保存 Tensor 和四项梯度的返回对应关系。Python 不直接执行设备 .cpp，而是调用安装的训练扩展。"
+        "MegaMoeBF16Train 继承 nn.Module，管理通信窗口、执行器和参数检查。调用 op(...) 时，PyTorch 先进入这个 Module 的 forward，再由它调用 _MegaMoeBF16TrainFunction.apply(...)。",
+        "_MegaMoeBF16TrainFunction 继承 autograd.Function，分别定义前向和反向如何调用自定义 kernel。启用梯度且有浮点输入需要求导时，apply 把这个 Function 记录为计算图节点，并将输出 y 与该节点关联。",
+        "训练代码执行 loss.backward() 后，autograd 沿计算图传回 grad_y，并调度 Function.backward。反向接口由 Function 提供，Module 负责公开调用和资源管理。"
       ],
       "reads": [
         "Tensor 输入、保存模式、EP group"
@@ -48,8 +50,20 @@
           "path": "experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py",
           "anchor": "class MegaMoeBF16Train(torch.nn.Module):",
           "after": 15
+        },
+        {
+          "path": "experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py",
+          "anchor": "class _MegaMoeBF16TrainFunction(torch.autograd.Function):",
+          "after": 29
+        },
+        {
+          "path": "experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py",
+          "anchor": "        return _MegaMoeBF16TrainFunction.apply(",
+          "before": 1,
+          "after": 2
         }
-      ]
+      ],
+      "formula": "op(...) → MegaMoeBF16Train.forward\n        → Function.apply → Function.forward\n        → op._executor.forward → 前向 kernel\n\nloss.backward() → autograd 引擎传回 grad_y\n                → Function.backward\n                → op._executor.backward → 反向 kernel"
     },
     {
       "id": "m_runtime",

@@ -180,7 +180,7 @@ See the [test plan (中文)](tests/bf16/TEST_PLAN.md) for the rationale and know
 There is one entry, `tests/bf16/test_mega_moe.py`, with these helpers:
 
 - `cpu_reference.py`: independent Torch CPU FP64 forward and autograd truth.
-- `npu_baseline.py`: original NPU BF16 BigOp and an auxiliary numerical-contract reference.
+- `npu_baseline.py`: FP32-boundary NPU BigOp and the auxiliary numerical-contract reference.
 - `atk_compare.py`: the private ATK CV double-benchmark comparator.
 - `precision_metrics.py`: exact counts and mixed-tolerance reports.
 - `mxfp8_diagnostics.py`: optional diagnosis for explicitly configured inputs;
@@ -227,7 +227,7 @@ SHMEM uses the supplied port and Gloo uses port+2; both must be available.
 ### Precision decisions and reports
 
 Precision uses ATK cv_fused_double_benchmark by default. The fused output is actual,
-original BF16 BigOp is benchmark, and unchanged CPU FP64 is golden. Every rank and
+FP32-boundary BigOp (`fp32-boundaries-v2`) is benchmark, and unchanged CPU FP64 is golden. Every rank and
 each of y, dx, dtopk_weights, dw1 and dw2 are compared separately. Explicit limits
 are max/mean/RMSE=5/1.5/1.5 and number_count_radio=2. ATK and the internal plugin
 must be installed in the same Python as the DeepEP wheel; missing or invalid
@@ -235,8 +235,10 @@ comparators fail the run rather than falling back to a substitute formula.
 
 Mixed tolerance remains an auxiliary check against the MegaMoE numerical contract:
 FP32 activation/derivatives, BF16 tensor boundaries, FP32 dp products/reduction,
-and FP32 y/dx combine with a final BF16 cast. The original BigOp retains its
-independent BF16 small-op path and scatter-add. Passing the auxiliary contract
+and ordered FP32 y/dx combine with a final BF16 cast. BigOp uses the same numerical
+boundaries and shared activation/derivative helpers; BF16 saved mode reuses its
+result for both checks. Gate/Up are reused from forward when saved, and recomputed
+for save=none. Passing the auxiliary contract
 check does not override an ATK failure. Counts must match exactly.
 
 Each run creates a new output directory; --output selects a new location.

@@ -17,7 +17,7 @@ npm run test:browser
 
 阅读时直接打开 [index.html](index.html)，无需启动服务。仓库网页入口是 [README.md](README.md)，保留图文说明和源码链接。
 
-在 VS Code 中推荐使用[源码导览扩展](vscode/README.md)。安装一次后，运行 **MegaMoE: 打开训练源码导览**；点击图内节点，即可在右侧编辑器中定位到对应源码，多处来源可在详情中分别点 **打开源码**。图解和源码保持并排，扩展直接读取本仓库的页面与映射。
+在 VS Code 中推荐使用[源码导览扩展](vscode/README.md)。安装一次后，运行 **MegaMoE: 打开训练源码导览**。点击节点、阶段或等待只查看讲解；点击 **打开源码** 或 **查看对应源码**，再在旁边的编辑器中定位到文件和行号。扩展直接读取当前工作区的页面与映射。
 
 本地构建安装包的命令：
 
@@ -30,7 +30,13 @@ code --install-extension .artifacts/megamoe-train-source-guide-0.2.0.vsix
 
 修改 `data/*.json` 中对应节点的标题、讲解、输入、输出、等待和连线。`sources` 使用文件路径与源码锚点定位函数或控制点；函数移动或改名时同步修改锚点。节点 ID 保持稳定，便于页面链接和跨图下钻。
 
-三个阅读场景由 `data/learning-case.json` 与 `tools/learning-scenes.mjs` 生成。输入规则、聚合计数和所选 token 的数据共同驱动路由图、保存桥和流水示意；修改案例后同时检查路由守恒和数值结果。教学路由与依赖泳道用于解释代码，实测时间及性能记录单独维护。
+三个阅读场景由 `data/learning-case.json` 与 `tools/learning-scenes.mjs` 生成。默认 EP8、每源 M4096、TopK6、每 rank 4 个专家，流水总览固定看 rank0，按专家展示。`assets/full-pipeline.js` 维护前反向总览，`assets/gmm2-pipeline.js` 维护独立双槽练习。输入规则、聚合计数和所选 token 的数据共同驱动路由图、保存桥和流水示意；修改案例后同时检查路由守恒和数值结果。时间轴 tick 表示可调的教学耗时，实测时间及性能记录单独维护。
+
+H、dH 和 dp 乘积保持 FP32；Hp、dGate/dUp 写出时转回 BF16，Y、dX、dp 在 FP32 归约后最终舍入。修改数值边界时，同时更新 L5 节点、教学计算和表格；流水详情从 L5 读取同一份公式。
+
+[数值契约](../BF16_SWIGLU_NUMERICS.md)也用于 NPU BigOp 与契约参考，CPU FP64 真值独立计算。修改测试参考时，核对导览中的公式和源码引用；原始设备报告与临时验证脚本继续存放在仓库外。
+
+浏览器检查覆盖仓内 HTTP 预览、`file://` 离线页面、VS Code 消息桥，以及 `site/` 发布产物的 HTTP 模式。打包站点后仍使用同一份页面和源码映射。
 
 训练代码更新后：
 
@@ -47,7 +53,7 @@ code --install-extension .artifacts/megamoe-train-source-guide-0.2.0.vsix
 
 工作流位于仓库根目录的 `.github/workflows/megamoe-train-visual.yml`。向 `feat/megamoe-train-bf16` 推送相关修改后，自动执行依赖安装、生成、源码检查与浏览器检查，通过后发布 `site/`。也可从 Actions 页手动选择该分支运行。
 
-PR 执行文档检查，合入发布分支后再部署。检查失败时，Actions 保存 `.artifacts/` 中已有的报告和截图，供查看问题。
+PR 执行文档检查，并在 Actions 附件中提供 `megamoe-train-visual-preview`，包含站点页面和 VS Code 安装包。下载解压后，可在该目录运行 `python -m http.server 8000`，从浏览器打开 `http://localhost:8000` 预览。正式站点在合入发布分支后部署。检查失败时，Actions 保存 `.artifacts/` 中已有的报告和截图，供查看问题。
 
 首次启用时，仓库维护者在 **Settings → Pages → Source** 选择 **GitHub Actions**，并让 `github-pages` 环境允许 `feat/megamoe-train-bf16` 部署。工作流通过当前仓库上下文生成和发布，未绑定个人账号。
 

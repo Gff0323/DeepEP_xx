@@ -1,6 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * DeepEP-native BF16 grouped GEMM stages for MegaMoe. BF16 x BF16 MMAD
  * accumulates in L0C/FP32. GMM1 delivers BF16 Gate/Up either through paired
  * UB tiles with a per-tile handshake or through raw GM planes. On the GM

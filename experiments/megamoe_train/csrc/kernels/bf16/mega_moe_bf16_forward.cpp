@@ -1,6 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * Standalone DeepEP MegaMoe BF16 entry.  The implementation uses DeepEP's
  * routing/dispatch/combine pipeline and only references CATLASS primitives
  * for BF16 MMAD; it does not call the CATCCOS DispatchFFNCombine operator.

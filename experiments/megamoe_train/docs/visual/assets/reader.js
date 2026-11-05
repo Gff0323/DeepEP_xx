@@ -1,4 +1,6 @@
-// Copyright (c) 2026, DeepEP contributors.
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 (() => {
   'use strict';
   const editorBridge = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
@@ -6,6 +8,8 @@
   const learning = data.learning || { case: { focusTokens: [] }, scenes: [] };
   const initial = new URLSearchParams(location.hash.slice(1));
   const learningState = { token: initial.get('token') || learning.case.focusTokens[0]?.id, phase: initial.get('phase') === 'backward' ? 'backward' : 'forward', resource: initial.get('resource') || '' };
+  const pipelineInputs = { computeTicks: 3, combineTicks: 5 };
+  const fullPipelineState = { direction: 'forward', inputs: { forward: {}, backward: {} } };
   const $ = id => document.getElementById(id);
   const esc = s => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
   const groups = [ ['L1', '项目架构'], ['L2', '模块关系'], ['L3', '执行生命周期'], ['L4', '函数调用链'], ['L5', '核内与内存'] ];
@@ -55,22 +59,34 @@
     for (const element of canvas.querySelectorAll('[data-learning-resource]')) element.classList.toggle('learning-resource-active', element.dataset.learningResource === learningState.resource);
     updateHash();
   }
-  function inspectLearningNode(id, open = false) {
+  function inspectLearningNode(id, open = false, sourceIndex = 0) {
     const owner = data.graphs.find(candidate => candidate.nodes.some(node => node.id === id));
     if (!owner) return;
-    graph = owner; select(id);
+    graph = owner; select(id, false, sourceIndex);
     for (const element of canvas.querySelectorAll('[data-learning-node]')) element.classList.toggle('learning-selected', element.dataset.learningNode === id);
-    if (open && editorBridge) editorBridge.postMessage({ type: 'openSource', nodeId: id, sourceIndex: 0 });
+    if (open && editorBridge) editorBridge.postMessage({ type: 'openSource', nodeId: id, sourceIndex });
   }
   function showLearning(scene, node) {
     activeScene = scene; document.body.classList.add('learning-mode');
     $('view-title').textContent = scene.title; $('view-layer').textContent = '学习案例 · H7168 / F3072';
-    $('view-summary').textContent = scene.summary; $('node-count').textContent = '固定输入 · 跨图追踪';
-    $('learning-controls').hidden = false; $('graph-toolbar').hidden = true; $('graph-exports').hidden = true;
+    const isPipeline = scene.id === 'learn-pipeline';
+    $('view-summary').textContent = scene.summary; $('node-count').textContent = isPipeline ? 'rank0 · 专家时间轴' : '固定输入 · 跨图追踪';
+    $('learning-controls').hidden = isPipeline; $('graph-toolbar').hidden = true; $('graph-exports').hidden = true;
     $('case-phase-control').hidden = scene.id !== 'learn-token';
     viewport.classList.add('learning-mode'); canvas.classList.add('learning-canvas'); canvas.innerHTML = scene.html;
     viewport.scrollTo(0, 0); activateNavigation(scene.id);
     inspectLearningNode(node || scene.phaseSources?.[learningState.phase] || scene.sourceNode); applyLearningState();
+    const inspectPipelineSource = (source, reveal = false) => {
+      inspectLearningNode(source.node, reveal, source.index);
+      if (reveal && !editorBridge) $('inspector').scrollIntoView({ block: 'start' });
+    };
+    const pipeline = canvas.querySelector('[data-gmm2-pipeline]');
+    if (pipeline) mountGmm2Pipeline(pipeline, pipelineInputs, inspectPipelineSource);
+    const overview = canvas.querySelector('[data-full-pipeline]');
+    if (overview) {
+      const formulas = new Map(data.graphs.flatMap(item => item.nodes.map(node => [node.id, node.formula])));
+      mountFullPipeline(overview, fullPipelineState, data.learning.case.shape, inspectPipelineSource, formulas);
+    }
     $('search-status').textContent = '点击图中的数据或阶段，右侧查看对应源码。';
   }
   function localFile(source) {
@@ -90,18 +106,18 @@
     const file = local ? decodeURIComponent(new URL(local).pathname).replace(/^\/([A-Za-z]:\/)/, '$1') : source.path;
     return `${file}:${source.line}`;
   }
-  function details(node) {
+  function details(node, sourceIndex) {
     const lane = graph.lanes.find(l => l.id === node.lane);
     const list = [['读', node.reads], ['写', node.writes], ['等', node.waits]];
     const sourceBlocks = node.sources.map((source, index) => {
       const open = editorBridge ? `<button type="button" data-open-source="${index}">打开源码</button>` : '<button type="button" data-copy-location>复制定位路径</button>';
       const locator = editorBridge ? '' : `<div class="source-locator"><input class="source-location" aria-label="源码定位路径" readonly value="${esc(sourceLocation(source))}"><span class="copy-status" role="status">复制后，在 VS Code 按 Ctrl+P 粘贴并回车。</span></div>`;
       const protocolLink = !editorBridge && localFile(source) ? `<a href="${esc(editorFile(source))}" title="在 Edge、Chrome 等外部浏览器中使用；VS Code 内置浏览器请复制定位路径">用 VS Code 打开</a>` : '';
-      return `<details class="source-block" ${index === 0 ? 'open' : ''}><summary>${esc(source.path.split('/').at(-1))}:${source.line}</summary><div class="source-links">${open}<a target="_blank" rel="noopener" href="${esc(source.url)}">在线源码 ↗</a>${protocolLink}</div>${locator}<div class="source-path">${esc(source.path)}</div><div class="code-lines">${source.excerpt.map(row => `<div class="code-line ${row.line === source.line ? 'anchor-line' : ''}"><span class="ln">${row.line}</span><code>${esc(row.text)}</code></div>`).join('')}</div></details>`;
+      return `<details class="source-block" ${index === sourceIndex ? 'open' : ''}><summary>${esc(source.path.split('/').at(-1))}:${source.line}</summary><div class="source-links">${open}<a target="_blank" rel="noopener" href="${esc(source.url)}">在线源码 ↗</a>${protocolLink}</div>${locator}<div class="source-path">${esc(source.path)}</div><div class="code-lines">${source.excerpt.map(row => `<div class="code-line ${row.line === source.line ? 'anchor-line' : ''}"><span class="ln">${row.line}</span><code>${esc(row.text)}</code></div>`).join('')}</div></details>`;
     }).join('');
     return `<div class="detail-kicker"><span class="pill">${esc(lane.label)}</span><span>${node.ordinal} / ${graph.nodes.length}</span></div><h3>${esc(node.title)}</h3>${node.symbol ? `<code class="function-name">${esc(node.symbol)}</code>` : ''}${(node.description || []).map(p => `<p>${esc(p)}</p>`).join('')}<dl class="detail-list">${list.filter(([, values]) => values?.length).map(([title, values]) => `<div><dt>${title}</dt><dd>${values.map(esc).join('<br>')}</dd></div>`).join('')}</dl>${node.formula ? `<pre class="formula">${esc(node.formula)}</pre>` : ''}${node.drilldown ? `<button type="button" class="drilldown" data-drill-view="${esc(node.drilldown.view)}" data-drill-node="${esc(node.drilldown.node || '')}">继续深入 → ${esc(data.graphs.find(g => g.id === node.drilldown.view).title)}</button>` : ''}<div class="detail-nav"><button type="button" id="previous" ${node.ordinal === 1 ? 'disabled' : ''}>← 上一步</button><button type="button" id="next" ${node.ordinal === graph.nodes.length ? 'disabled' : ''}>下一步 →</button></div><div class="sources-title">对应源码</div>${sourceBlocks}`;
   }
-  function select(id, scroll = false) {
+  function select(id, scroll = false, sourceIndex = 0) {
     selected = graph.nodes.find(n => n.id === id) || graph.nodes[0];
     for (const node of canvas.querySelectorAll('[data-node]')) node.classList.toggle('selected', node.dataset.node === selected.id);
     for (const edge of canvas.querySelectorAll('.edge')) {
@@ -109,7 +125,7 @@
       edge.classList.toggle('related', related);
       edge.classList.toggle('dimmed', !related);
     }
-    $('inspector').innerHTML = details(selected);
+    $('inspector').innerHTML = details(selected, sourceIndex);
     for (const button of $('inspector').querySelectorAll('[data-open-source]')) button.onclick = () => {
       editorBridge.postMessage({ type: 'openSource', nodeId: selected.id, sourceIndex: Number(button.dataset.openSource) });
     };
@@ -161,12 +177,9 @@
     $('query').value = '';
     fit(); search(); select(node);
     for (const element of canvas.querySelectorAll('[data-node]')) {
-      const openNode = () => {
-        select(element.dataset.node);
-        if (editorBridge) editorBridge.postMessage({ type: 'openSource', nodeId: selected.id, sourceIndex: 0 });
-      };
-      element.onclick = openNode;
-      element.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); openNode(); } };
+      const selectNode = () => select(element.dataset.node);
+      element.onclick = selectNode;
+      element.onkeydown = event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); selectNode(); } };
     }
   }
   function download(content, type, name) {
@@ -187,7 +200,7 @@
     if (activeScene && target) {
       const resource = target.closest('[data-learning-resource]');
       if (resource) learningState.resource = resource.dataset.learningResource;
-      inspectLearningNode(target.dataset.learningNode, true); applyLearningState();
+      inspectLearningNode(target.dataset.learningNode); applyLearningState();
     }
   });
   canvas.addEventListener('keydown', event => {

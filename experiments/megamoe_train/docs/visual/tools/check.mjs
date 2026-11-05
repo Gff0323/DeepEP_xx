@@ -1,4 +1,6 @@
-// Copyright (c) 2026, DeepEP contributors.
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';

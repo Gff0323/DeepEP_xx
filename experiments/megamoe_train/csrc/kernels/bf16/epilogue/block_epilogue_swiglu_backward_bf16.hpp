@@ -4,18 +4,17 @@
 /*
  * SwiGLU backward epilogues for MegaMoe BF16.
  *
- * For clamped Gate/Up, h=BF16(SiLU_FP32(gate)*up) uses FP32 SiLU and Mul.
- * Hp = BF16(h*p) and dh = BF16(p*dHp) have separate BF16 boundaries;
- * derivative intermediates remain FP32 until dZ is cast to BF16.
- * Do not insert a standalone F.silu(BF16) rounding.
+ * H=SiLU_FP32(gate)*up and dH=p*dHp stay in FP32 registers.
+ * Hp is rounded to BF16 for GMM2/dW2, while activation derivatives
+ * stay in FP32 until dGate/dUp are written as BF16 dZ.
  *
  * SwiGLUGrad enters with dHp in the first UB tile: saved GM callers load
  * it with LoadDHpFromGM; save=none callers wait for the AIC Fixpipe tile.
  * Gate/Up and p produce Hp, FP32 row partials of dHp*h, and dZ.
  *
- * FP32 activation arithmetic and explicit BF16 casts preserve the forward
- * rounding and derivative boundaries. Saved MXFP8 reconstructs h from
- * decoded Gate/Up and need not reproduce the original forward h.
+ * Backward reconstructs the same FP32 H used for forward route weighting.
+ * Saved MXFP8 reconstructs H from decoded Gate/Up, so it may differ from
+ * the activation computed from the original forward Gate/Up.
  *
  * Tile addressing convention (matches the forward GMM1 epilogue): the caller
  * passes a single flattened block offset `mLoc * F + nLoc` (rows * plane
@@ -150,8 +149,7 @@ public:
         const uint32_t rowStrideInPlane = Ops::Base::CeilAlign(
             static_cast<uint32_t>(singleN), static_cast<uint32_t>(AscendC::ONE_BLK_SIZE / sizeof(bfloat16_t)));
 
-        // One contiguous BF16 p load feeds the separately rounded products
-        // Hp=BF16(h*p) and dh=BF16(p*dHp).
+        // One contiguous BF16 p load feeds FP32 H*p and dHp*p.
         LoadPackedWeights(singleM, mLoc);
 
         // In save=none, the caller's PIPE_V WaitForCube protects Fixpipe dHp;
@@ -168,13 +166,6 @@ public:
             return;
         }
         ComputeForwardAux(singleM, singleN, rowStrideInPlane);
-        AscendC::PipeBarrier<PIPE_V>();
-        // Use the reconstructed BF16 h and accumulate dHp*h in FP32.
-        ComputeDpPartials(singleM, singleN, rowStrideInPlane);
-        AscendC::PipeBarrier<PIPE_V>();
-        // Form Hp=BF16(h*p) with the prefetched per-row weights, separately
-        // from the later dh=BF16(p*dHp) input to the derivative.
-        ApplyPackedWeight(extraA_, singleM, singleN, rowStrideInPlane, mLoc);
 
         // tile1 holds FP32 partials and tile2 holds Hp until MTE3 consumes both.
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
@@ -197,9 +188,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(0);
         LoadGateUpTiles(rowBase_ + mLoc, nLoc, singleM, singleN, l0cOutUbSecond_, extraA_);
 
-        // Form dh=BF16(p*dHp) before the SwiGLU derivative.
-        ApplyPackedWeight(l0cOutUbFirst_, singleM, singleN, rowStrideInPlane, mLoc);
-        AscendC::PipeBarrier<PIPE_V>();
+        // Read raw dHp and apply p in FP32 inside the derivative.
         ComputeSwigluGrad(singleM, singleN, rowStrideInPlane);
 
         // Retire V's up-tile reads before the next MTE2 refill.
@@ -450,143 +439,73 @@ private:
         SyncFunc<AscendC::HardEvent::MTE2_V>();
     }
 
-    __aicore__ inline void ApplyPackedWeight(AscendC::LocalTensor<bfloat16_t>& tile, uint16_t mSize, uint16_t nSize,
-                                             uint32_t rowStride, uint32_t mLoc)
-    {
-        auto* values = (__ubuf__ bfloat16_t*)tile.GetPhyAddr();
-        auto* weights = (__ubuf__ bfloat16_t*)packedWeightUb_.GetPhyAddr();
-        constexpr uint16_t lanes = 256U / sizeof(float);
-        __VEC_SCOPE__
-        {
-            for (uint16_t row = 0; row < mSize; ++row) {
-                AscendC::Reg::RegTensor<bfloat16_t> pBf;
-                AscendC::Reg::RegTensor<float> pFp;
-                auto all = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
-                AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_BRC_B16>(pBf, weights + row);
-                AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(pFp, pBf, all);
-                uint32_t remaining = nSize;
-                for (uint16_t col = 0; col < nSize; col += lanes) {
-                    auto mask = AscendC::Reg::UpdateMask<float>(remaining);
-                    AscendC::Reg::RegTensor<bfloat16_t> valueBf, outBf;
-                    AscendC::Reg::RegTensor<float> valueFp, outFp;
-                    const uint32_t offset = static_cast<uint32_t>(row) * rowStride + col;
-                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(valueBf,
-                                                                                                values + offset);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(valueFp, valueBf, mask);
-                    AscendC::Reg::Mul(outFp, valueFp, pFp, mask);
-                    AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(outBf, outFp, mask);
-                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(values + offset, outBf,
-                                                                                               mask);
-                }
-            }
-        }
-    }
-
-    // Reduce FP32 products of the two BF16 inputs. Store one FP32 partial
-    // at the start of each row in the now-dead Gate/Up scratch tile.
-    __aicore__ inline void ComputeDpPartials(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
+    // Tail tiles reconstruct H in FP32, producing BF16 Hp and FP32 dp partials.
+    // Gate is dead after its row is consumed, so its first FP32 slot stores the partial.
+    __aicore__ inline void ComputeForwardAux(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
         constexpr uint16_t lanes = 256U / sizeof(float);
+        const float limit = params_.swigluLimit;
+        const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
         auto* dHp = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
-        auto* h = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
+        auto* gate = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
+        auto* up = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
+        auto* weights = (__ubuf__ bfloat16_t*)packedWeightUb_.GetPhyAddr();
         auto* partials = (__ubuf__ float*)l0cOutUbSecond_.GetPhyAddr();
 
         __VEC_SCOPE__
         {
             for (uint16_t row = 0; row < mSize; ++row) {
-                AscendC::Reg::RegTensor<float> accumulated;
                 auto oneLane = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
+                auto all = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+                AscendC::Reg::RegTensor<float> accumulated, pFp, limitFp, negLimitFp;
+                AscendC::Reg::RegTensor<bfloat16_t> pBf;
                 AscendC::Reg::Duplicate(accumulated, 0.0F, oneLane);
+                AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_BRC_B16>(pBf, weights + row);
+                AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(pFp, pBf, all);
+                if (limitEnabled) {
+                    AscendC::Reg::Duplicate(limitFp, limit, all);
+                    AscendC::Reg::Duplicate(negLimitFp, -limit, all);
+                }
                 uint32_t remaining = nSize;
                 for (uint16_t col = 0; col < nSize; col += lanes) {
                     auto mask = AscendC::Reg::UpdateMask<float>(remaining);
                     const uint32_t offset = static_cast<uint32_t>(row) * rowStride + col;
-                    AscendC::Reg::RegTensor<bfloat16_t> dHpBf, hBf;
-                    AscendC::Reg::RegTensor<float> dHpFp, hFp, product, rowSum;
+                    AscendC::Reg::RegTensor<bfloat16_t> gateBf, upBf, dHpBf, hpBf;
+                    AscendC::Reg::RegTensor<float> gateFp, upFp, dHpFp, neg, exp, denom, silu;
+                    AscendC::Reg::RegTensor<float> hFp, hpFp, productFp, rowSum;
+                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(gateBf, gate + offset);
+                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(upBf, up + offset);
                     AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(dHpBf, dHp + offset);
-                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hBf, h + offset);
+                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(gateFp, gateBf, mask);
+                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(upFp, upBf, mask);
                     AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(dHpFp, dHpBf, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(hFp, hBf, mask);
-                    AscendC::Reg::Mul(product, dHpFp, hFp, mask);
-                    AscendC::Reg::ReduceSum(rowSum, product, mask);
+                    if (limitEnabled) {
+                        AscendC::Reg::Min(gateFp, gateFp, limitFp, mask);
+                        AscendC::Reg::Max(upFp, upFp, negLimitFp, mask);
+                        AscendC::Reg::Min(upFp, upFp, limitFp, mask);
+                    }
+                    AscendC::Reg::Muls(neg, gateFp, -1.0F, mask);
+                    AscendC::Reg::Exp(exp, neg, mask);
+                    AscendC::Reg::Adds(denom, exp, 1.0F, mask);
+                    AscendC::Reg::Div<float, &kBackwardDivMode>(silu, gateFp, denom, mask);
+                    AscendC::Reg::Mul(hFp, silu, upFp, mask);
+                    AscendC::Reg::Mul(productFp, dHpFp, hFp, mask);
+                    AscendC::Reg::ReduceSum(rowSum, productFp, mask);
                     AscendC::Reg::Add(accumulated, accumulated, rowSum, oneLane);
+                    AscendC::Reg::Mul(hpFp, hFp, pFp, mask);
+                    AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hpBf, hpFp, mask);
+                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(up + offset, hpBf, mask);
                 }
                 AscendC::Reg::DataCopy(partials + static_cast<uint32_t>(row) * (rowStride / 2), accumulated, oneLane);
             }
         }
     }
 
-    // Reconstruct BF16 h for the FP32 dp partial and the BF16 Hp=BF16(h*p).
-    __aicore__ inline void ComputeForwardAux(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
-    {
-        constexpr uint16_t kElementsPerRepeat = 128U;
-        const uint16_t repeatsPerRow = static_cast<uint16_t>(
-            Ops::Base::CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(kElementsPerRepeat)));
-        constexpr float kOne = 1.0F;
-        const float limit = params_.swigluLimit;
-        const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
-        __ubuf__ bfloat16_t* gate = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
-        __ubuf__ bfloat16_t* up = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
-        __ubuf__ bfloat16_t* hp = up;
-
-        __VEC_SCOPE__
-        {
-            for (uint16_t row = 0; row < mSize; ++row) {
-                uint32_t remaining = nSize;
-                for (uint16_t repeat = 0; repeat < repeatsPerRow; ++repeat) {
-                    AscendC::Reg::MaskReg mask = AscendC::Reg::UpdateMask<bfloat16_t>(remaining);
-                    AscendC::Reg::RegTensor<float> oneReg, limitReg, negLimitReg;
-                    if (limitEnabled) {
-                        AscendC::Reg::Duplicate(oneReg, kOne, mask);
-                        AscendC::Reg::Muls(limitReg, oneReg, limit, mask);
-                        AscendC::Reg::Muls(negLimitReg, oneReg, -limit, mask);
-                    }
-                    AscendC::Reg::RegTensor<bfloat16_t> g0, g1, u0, u1;
-                    AscendC::Reg::RegTensor<float> gf0, gf1, uf0, uf1;
-                    const uint32_t offset = row * rowStride + repeat * kElementsPerRepeat;
-                    AscendC::Reg::DataCopy(g0, gate + offset);
-                    AscendC::Reg::DataCopy(u0, up + offset);
-                    AscendC::Reg::Interleave(g0, g1, g0, g1);
-                    AscendC::Reg::Interleave(u0, u1, u0, u1);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(gf0, g0, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(gf1, g1, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(uf0, u0, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(uf1, u1, mask);
-                    constexpr uint16_t kParts = 2U;
-                    constexpr uint16_t kPartSize = kElementsPerRepeat / kParts;
-                    for (uint16_t part = 0; part < kParts; ++part) {
-                        auto gf = part == 0 ? gf0 : gf1;
-                        auto uf = part == 0 ? uf0 : uf1;
-                        AscendC::Reg::RegTensor<float> neg, ex, den, silu;
-                        AscendC::Reg::RegTensor<float> h;
-                        AscendC::Reg::RegTensor<bfloat16_t> hOut;
-                        // dsv4 swiglu_limit clamp, mirroring the forward
-                        // epilogue so reconstructed h follows forward's BF16 boundary.
-                        // Skipped entirely when the limit is disabled.
-                        if (limitEnabled) {
-                            AscendC::Reg::Min(gf, gf, limitReg, mask);
-                            AscendC::Reg::Max(uf, uf, negLimitReg, mask);
-                            AscendC::Reg::Min(uf, uf, limitReg, mask);
-                        }
-                        AscendC::Reg::Muls(neg, gf, -kOne, mask);
-                        AscendC::Reg::Exp(ex, neg, mask);
-                        AscendC::Reg::Adds(den, ex, kOne, mask);
-                        AscendC::Reg::Div<float, &kBackwardDivMode>(silu, gf, den, mask);
-                        AscendC::Reg::Mul(h, silu, uf, mask);
-                        AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hOut, h, mask);
-                        AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::StoreDist::DIST_PACK_B32>(
-                            hp + offset + part * kPartSize, hOut, mask);
-                    }
-                }
-            }
-        }
-    }
-
-    // Tail derivative: dh=BF16(p*dHp); local variable dH holds this tile.
+    // Tail derivative: dH=p*dHp remains FP32 until dGate/dUp are cast.
     // With s=sigmoid(clamped gate), before applying clipping masks:
     //   dUp   = dh * SiLU_FP32(gate)
     //   dGate = dh * up * s * (1 + gate * (1 - s))
-    // dGate overwrites the first UB dh tile; dUp overwrites the Gate tile.
+    // dGate overwrites the first UB dHp tile; dUp overwrites the Gate tile.
     // Gate/Up chunks are read before the same offsets are overwritten.
     // Forward clipping decisions zero the corresponding gradient lanes.
     __aicore__ inline void ComputeSwigluGrad(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
@@ -611,22 +530,29 @@ private:
         constexpr float kOne = 1.0F;
         const float limit = params_.swigluLimit;
         const bool limitEnabled = limit != kMegaMoeSwigluLimitDisabled;
-        __ubuf__ bfloat16_t* dH = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
+        __ubuf__ bfloat16_t* dHp = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
         __ubuf__ bfloat16_t* gate = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
         __ubuf__ bfloat16_t* up = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
-        __ubuf__ bfloat16_t* dGate = dH;  // reuse dh tile (local dH)
+        __ubuf__ bfloat16_t* dGate = dHp;
         __ubuf__ bfloat16_t* dUp = gate;  // reuse gate tile
+
+        auto* weights = (__ubuf__ bfloat16_t*)packedWeightUb_.GetPhyAddr();
 
         __VEC_SCOPE__
         {
             for (uint16_t row = 0; row < vectorRows; ++row) {
+                AscendC::Reg::RegTensor<bfloat16_t> pBf;
+                AscendC::Reg::RegTensor<float> pFp;
+                auto all = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::ALL>();
+                AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_BRC_B16>(pBf, weights + row);
+                AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(pFp, pBf, all);
                 uint32_t remaining = vectorColumns;
                 for (uint16_t repeat = 0; repeat < repeatsPerRow; ++repeat) {
                     AscendC::Reg::MaskReg mask = AscendC::Reg::UpdateMask<bfloat16_t>(remaining);
                     AscendC::Reg::RegTensor<bfloat16_t> dH0, dH1, gate0, gate1, up0, up1;
                     AscendC::Reg::RegTensor<float> dHFp0, dHFp1, gateFp0, gateFp1, upFp0, upFp1;
                     const uint32_t offset = row * vectorStride + repeat * kElementsPerRepeat;
-                    AscendC::Reg::DataCopy(dH0, dH + offset);
+                    AscendC::Reg::DataCopy(dH0, dHp + offset);
                     AscendC::Reg::DataCopy(gate0, gate + offset);
                     AscendC::Reg::DataCopy(up0, up + offset);
                     AscendC::Reg::Interleave(dH0, dH1, dH0, dH1);
@@ -684,6 +610,7 @@ private:
                         AscendC::Reg::Adds(denom, exp, kOne, mask);
                         AscendC::Reg::Div<float, &kBackwardDivMode>(sig, oneFp, denom, mask);
                         AscendC::Reg::Div<float, &kBackwardDivMode>(silu, gateC, denom, mask);
+                        AscendC::Reg::Mul(dHFp, dHFp, pFp, mask);
                         AscendC::Reg::Mul(dUpFp, dHFp, silu, mask);
                         if (limitEnabled) {
                             AscendC::Reg::Mul(dUpFp, dUpFp, upInd, mask);
@@ -790,22 +717,18 @@ private:
                     AscendC::Reg::Adds(denom, exp, kOne, mask);
                     // h reconstruction uses gate/den, while the derivative
                     // retains (1/den)*gate. These are separate accurate Divs.
-                    AscendC::Reg::RegTensor<float> auxSilu, hFp, hRounded;
-                    AscendC::Reg::RegTensor<float> hpFp, productFp, rowSum, dhFp;
-                    AscendC::Reg::RegTensor<bfloat16_t> hBf, hpBf, dhBf;
+                    AscendC::Reg::RegTensor<float> auxSilu, hFp;
+                    AscendC::Reg::RegTensor<float> hpFp, productFp, rowSum;
+                    AscendC::Reg::RegTensor<bfloat16_t> hpBf;
                     AscendC::Reg::Div<float, &kBackwardDivMode>(auxSilu, gateC, denom, mask);
-                    // Reconstruct BF16 h without an intermediate BF16 SiLU.
+                    // Match forward's FP32 H for dp and Hp reconstruction.
                     AscendC::Reg::Mul(hFp, auxSilu, upC, mask);
-                    AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hBf, hFp, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(hRounded, hBf, mask);
-                    AscendC::Reg::Mul(productFp, dHpFp, hRounded, mask);
+                    AscendC::Reg::Mul(productFp, dHpFp, hFp, mask);
                     AscendC::Reg::ReduceSum(rowSum, productFp, mask);
                     AscendC::Reg::Add(accumulated, accumulated, rowSum, oneLane);
-                    AscendC::Reg::Mul(hpFp, hRounded, pFp, mask);
+                    AscendC::Reg::Mul(hpFp, hFp, pFp, mask);
                     AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hpBf, hpFp, mask);
-                    AscendC::Reg::Mul(dhFp, dHpFp, pFp, mask);
-                    AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(dhBf, dhFp, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(dHFp, dhBf, mask);
+                    AscendC::Reg::Mul(dHFp, dHpFp, pFp, mask);
 
                     AscendC::Reg::Div<float, &kBackwardDivMode>(sig, oneFp, denom, mask);
                     // Reuse the FP32 SiLU used to reconstruct forward h.

@@ -123,10 +123,12 @@ python -u "$entry" "$MEGAMOE_TEST_DEVICES" \
 ATK 对每个 rank 的 `y`、`dx`、`dtopk_weights`、`dw1`、`dw2` 分别比较：
 
 - actual：融合 MegaMoE 的结果。
-- benchmark：原始 BF16 NPU BigOp。
+- benchmark：`fp32-boundaries-v2` NPU BigOp，BF16 GMM 输入输出与 FP32 激活、导数、dp 及有序 Y/dX 归并。
 - golden：独立 Torch CPU FP64 真值。
 
-显式最大/平均相对误差及 RMSE 比例门限为 5/1.5/1.5，`number_count_radio=2`。ATK 是唯一双标杆；另外仍须通过 `megamoe_contract` 混合容差与精确 counts。不要合并不同输出或 rank 的数据后判定，不恢复已删除的自写双标杆，也不为得到 PASS 修改真值、标杆、融合结果或门限。
+显式最大/平均相对误差及 RMSE 比例门限为 5/1.5/1.5，`number_count_radio=2`。ATK 是唯一双标杆；另外仍须通过 `megamoe_contract` 混合容差与精确 counts。BF16 保存时，BigOp 与混合容差共用同一份小算子结果。不要合并不同输出或 rank 的数据后判定，不恢复已删除的自写双标杆，也不为得到 PASS 修改真值、融合结果或门限。参考数值规则升级须记录新版本，保留旧报告。
+
+只修改 BigOp 参考而融合算子与 CPU FP64 真值均未改变时，可复用已有 actual/golden 缓存，仅重算 BigOp 后调用同一 ATK 比较器。核对输入哈希、case、dtype/布局、融合产物及真值来源；新输出目录记录缓存来源和参考版本。缓存只覆盖部分输出时，报告按实际覆盖记录，不记为完整套件通过。
 
 依次检查：
 

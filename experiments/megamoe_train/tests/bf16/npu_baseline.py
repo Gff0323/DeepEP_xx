@@ -1,15 +1,17 @@
 # Copyright (c) 2026, Lu Lu
 # Modified by guofanfeng 2026
 
-"""Independent NPU references using BigOp's grouped-GEMM building blocks.
+"""NPU small-op reference with MegaMoE's declared numerical boundaries.
 
-The MegaMoE reference follows its declared FP32 activation and ordered combine
-boundaries. Original BigOp BF16 activation/scatter-add remains the independent
-ATK error baseline. Both use the same public input snapshots.
+BigOp and the auxiliary contract reference share FP32 activation/derivative
+arithmetic and ordered FP32 route sums, with BF16 GEMM inputs and outputs.
+CPU FP64 mathematical truth is implemented independently in cpu_reference.py.
 """
 
 import torch
-import torch.nn.functional as F
+
+
+BIGOP_REFERENCE_VERSION = "fp32-boundaries-v2"
 
 
 def _grouped_matmul(input_tokens, weight, tokens_per_expert):
@@ -72,22 +74,6 @@ def _mxfp8_saved_roundtrip(value):
     return (_round_to_e4m3fn(normalized) * scale).to(torch.bfloat16).reshape(value.shape)
 
 
-def _swiglu(gate_up, limit, raw=None):
-    """BigOp BF16 small-op graph; raw forward values supply MXFP8 clip decisions."""
-    gate, up = gate_up.chunk(2, dim=-1)
-    # Larger limits cannot clip finite BF16 operands. This also handles the
-    # native FLT_MAX disabled sentinel without overflowing a BF16 scalar cast.
-    if 0 < limit < torch.finfo(torch.bfloat16).max:
-        if raw is None:
-            gate, up = gate.clamp_max(limit), up.clamp(-limit, limit)
-        else:
-            raw_gate, raw_up = raw.chunk(2, dim=-1)
-            gate = torch.where(raw_gate > limit, limit, gate)
-            up = torch.where(raw_up < -limit, -limit, up)
-            up = torch.where(raw_up > limit, limit, up)
-    return F.silu(gate) * up
-
-
 def _activation_operands(gate_up, limit, raw=None):
     """Clip FP32 operands; MXFP8 derivative masks use raw forward decisions."""
     gate, up = gate_up.float().chunk(2, dim=-1)
@@ -108,11 +94,11 @@ def _activation_operands(gate_up, limit, raw=None):
 def _swiglu_fp32(gate_up, limit, raw=None):
     gate, up, _, _ = _activation_operands(gate_up, limit, raw)
     silu = gate / (1.0 + torch.exp(-gate))
-    return (silu * up).to(gate_up.dtype)
+    return silu * up
 
 
 def _swiglu_backward_fp32(grad_h, gate_up, limit, raw=None):
-    """Differentiate FP32 SiLU/Up; keep dH and final dGate/dUp BF16 boundaries."""
+    """Keep dH and the derivative in FP32; only dGate/dUp are BF16 outputs."""
     gate, up, gate_mask, up_mask = _activation_operands(gate_up, limit, raw)
     denominator = 1.0 + torch.exp(-gate)
     silu = gate / denominator
@@ -127,16 +113,14 @@ def _swiglu_backward_fp32(grad_h, gate_up, limit, raw=None):
 def run_baseline(inputs, device, expert_start, save_mode="bf16", swiglu_limit=0.0, *, reference="megamoe", trace=None):
     """Run the selected reference with public w1=[E,2F,H], w2=[E,H,F].
 
-    Pack expert-major, then source-rank/token order, as BigOp's second
-    permutation does. MegaMoE uses FP32 activation/derivatives; BigOp retains
-    its BF16 small-op graph and autograd activation backward. Forward stays
-    uncompressed in every save mode. Backward optionally rounds saved Gate/Up.
+    Pack expert-major, then source-rank/token order. The reference names select
+    reporting roles, not different rounding rules. Forward stays uncompressed;
+    backward reuses saved Gate/Up or recomputes them for save=none.
     """
     if save_mode not in ("none", "bf16", "mxfp8"):
         raise ValueError(f"Unresolved save mode: {save_mode}")
     if reference not in ("megamoe", "bigop"):
         raise ValueError(f"Unknown NPU reference: {reference}")
-    activation = _swiglu_fp32 if reference == "megamoe" else _swiglu
     ids = inputs["ids"]
     indices = [(ids == expert_start + expert).nonzero(as_tuple=True) for expert in range(len(inputs["w1"]))]
     counts = torch.tensor([rows.numel() for rows, _ in indices], dtype=torch.int64, device="cpu")
@@ -164,27 +148,20 @@ def run_baseline(inputs, device, expert_start, save_mode="bf16", swiglu_limit=0.
     weight1 = tensor(inputs["w1"].transpose(1, 2))
     weight2 = tensor(inputs["w2"].transpose(1, 2))
     forward_z = _grouped_matmul(x, weight1, counts)
-    forward_hp = activation(forward_z, swiglu_limit) * p
+    forward_h = _swiglu_fp32(forward_z, swiglu_limit)
+    forward_hp = (forward_h * p.float()).to(forward_z.dtype)
     y = _grouped_matmul(forward_hp, weight2, counts)
 
-    raw_z = _grouped_matmul(x, weight1, counts)
+    raw_z = _grouped_matmul(x, weight1, counts) if save_mode == "none" else forward_z
     z = _mxfp8_saved_roundtrip(raw_z) if save_mode == "mxfp8" else raw_z
     raw = raw_z if save_mode == "mxfp8" else None
-    h = activation(z, swiglu_limit, raw)
-    hp = h * p
+    h = _swiglu_fp32(z, swiglu_limit, raw)
+    hp = (h * p.float()).to(z.dtype)
     dhp = _grouped_matmul(dy, weight2.transpose(1, 2).contiguous(), counts)
     dw2 = _grouped_wgrad(hp, dy, counts).reshape_as(weight2).transpose(1, 2).contiguous()
-    # MegaMoE keeps the dot product in FP32, using the BF16 H from forward.
-    # Original BigOp retains its independent BF16 elementwise product.
-    dp = (dhp.float() * h.float()).sum(dim=-1).to(dhp.dtype) if reference == "megamoe" else (dhp * h).sum(dim=-1)
-    grad_swiglu = dhp * p
-    if reference == "megamoe":
-        dz = _swiglu_backward_fp32(grad_swiglu, z, swiglu_limit, raw)
-    else:
-        with torch.enable_grad():
-            replay_z = z.detach().requires_grad_(True)
-            replay_output = _swiglu(replay_z, swiglu_limit, raw)
-            (dz,) = torch.autograd.grad(replay_output, replay_z, grad_swiglu)
+    dp = (dhp.float() * h).sum(dim=-1).to(dhp.dtype)
+    grad_swiglu = dhp.float() * p.float()
+    dz = _swiglu_backward_fp32(grad_swiglu, z, swiglu_limit, raw)
     dx = _grouped_matmul(dz, weight1.transpose(1, 2).contiguous(), counts)
     dw1 = _grouped_wgrad(x, dz, counts).reshape_as(weight1).transpose(1, 2).contiguous()
     if trace is not None:
@@ -215,39 +192,22 @@ def run_baseline(inputs, device, expert_start, save_mode="bf16", swiglu_limit=0.
     return result
 
 
-def _unpermute(tokens, rows, token_count):
-    """BigOp unpermute: scatter_add into the output tensor's own dtype."""
-    output = torch.zeros((token_count, tokens.shape[-1]), dtype=tokens.dtype, device=tokens.device)
-    output.scatter_add_(0, rows[:, None].expand(-1, tokens.shape[-1]), tokens)
-    return output
-
-
 @torch.no_grad()
 def unpermute_routes(buffer, ids, device, *, reference="megamoe"):
     """Combine transported routes using the selected numerical contract.
 
     buffer=[M,TopK,2H+1] contains exact BF16 y/dx/dp values carried as FP32.
-    MegaMoE combines y and dx in TopK order in FP32, with one final BF16 cast. BigOp retains NPU BF16 scatter_add.
+    Both reference roles combine y and dx in TopK order in FP32, then cast once.
     """
+    if reference not in ("megamoe", "bigop"):
+        raise ValueError(f"Unknown NPU reference: {reference}")
     m, topk = ids.shape
     hidden = (buffer.shape[-1] - 1) // 2
     result = {"dtopk_weights": buffer[:, :, -1].to(torch.bfloat16).clone()}
-    if reference == "megamoe":
-        routes = buffer[:, :, : 2 * hidden].to(device=device, dtype=torch.bfloat16)
-        y = torch.zeros((m, hidden), dtype=torch.float32, device=device)
-        dx = torch.zeros((m, hidden), dtype=torch.float32, device=device)
-        for slot in range(topk):
-            y += routes[:, slot, :hidden].float()
-            dx += routes[:, slot, hidden:].float()
-        return {**result, "y": y.to(torch.bfloat16).cpu(), "dx": dx.to(torch.bfloat16).cpu()}
-    if reference != "bigop":
-        raise ValueError(f"Unknown NPU reference: {reference}")
-    order = ids.reshape(-1).argsort(stable=True)
-    rows = torch.arange(m, device="cpu").repeat_interleave(topk)[order].to(device)
-    packed = buffer.reshape(m * topk, -1)[order].to(device=device, dtype=torch.bfloat16)
-    route_y, route_dx = packed[:, :hidden].contiguous(), packed[:, hidden : 2 * hidden].contiguous()
-    return {
-        **result,
-        "y": _unpermute(route_y, rows, m).cpu(),
-        "dx": _unpermute(route_dx, rows, m).cpu(),
-    }
+    routes = buffer[:, :, : 2 * hidden].to(device=device, dtype=torch.bfloat16)
+    y = torch.zeros((m, hidden), dtype=torch.float32, device=device)
+    dx = torch.zeros((m, hidden), dtype=torch.float32, device=device)
+    for slot in range(topk):
+        y += routes[:, slot, :hidden].float()
+        dx += routes[:, slot, hidden:].float()
+    return {**result, "y": y.to(torch.bfloat16).cpu(), "dx": dx.to(torch.bfloat16).cpu()}

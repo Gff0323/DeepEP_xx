@@ -1,4 +1,6 @@
-// Copyright (c) 2026, DeepEP contributors.
+// Copyright (c) 2026, Lu Lu
+// Modified by xixing 2026
+
 // Generate the offline reader, source map and repository documentation together.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -144,17 +146,18 @@ fs.writeFileSync(path.join(visual, 'source-map.json'), JSON.stringify(manifest, 
 const bundle = { sourceCommit, sourceRepository: repoUrl, scenario: manifest.scenario, graphs, learning };
 const payload = JSON.stringify(bundle).replaceAll('<', '\\u003c').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029');
 const html = fs.readFileSync(path.join(visual, 'assets', 'page.html'), 'utf8')
-  .replace('/*__STYLE__*/', ['reader.css', 'layout.css', 'learning.css'].map(file => fs.readFileSync(path.join(visual, 'assets', file), 'utf8')).join('\n'))
+  .replace('/*__STYLE__*/', ['reader.css', 'layout.css', 'learning.css', 'gmm2-pipeline.css'].map(file => fs.readFileSync(path.join(visual, 'assets', file), 'utf8')).join('\n'))
   .replace('/*__DATA__*/', payload)
-  .replace('/*__APP__*/', fs.readFileSync(path.join(visual, 'assets', 'reader.js'), 'utf8'));
+  .replace('/*__APP__*/', () => ['gmm2-pipeline.js', 'full-pipeline.js', 'reader.js'].map(file => fs.readFileSync(path.join(visual, 'assets', file), 'utf8')).join('\n'));
 fs.writeFileSync(path.join(visual, 'index.html'), html);
 let markdown = `# MegaMoE BF16 训练源码图解\n\n按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H7168/F3072、关闭 clipping。\n\n`;
 markdown += `源码快照：[${sourceCommit.slice(0, 7)}](${repoUrl}/tree/${sourceCommit})。\n\n[离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)\n\n`;
 if (siteUrl) markdown += `[在线交互导览](${siteUrl})\n\n`;
-markdown += '**VS Code 一键定位**：按[扩展安装说明](vscode/README.md)安装一次，运行 **MegaMoE: 打开训练源码导览**。点击图内节点，即可在旁边的编辑器中查看对应文件和行号；多处来源可在详情中分别打开。\n\n';
+markdown += '**VS Code 一键定位**：按[扩展安装说明](vscode/README.md)安装一次，运行 **MegaMoE: 打开训练源码导览**。点击节点、阶段或等待查看讲解，点击 **打开源码** 或 **查看对应源码**，再在旁边的编辑器中定位到文件和行号。\n\n';
 if (siteUrl) markdown += `[下载 VS Code 导览扩展](${siteUrl}downloads/megamoe-train-source-guide.vsix)\n\n`;
 markdown += '本地用浏览器打开 index.html，即可点击节点查看读写、等待和带行号源码。仓库网页可以直接阅读下方图文，通过调用点表跳转源码。\n\n';
 markdown += '普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。\n\n';
+markdown += '数值与验证：[BF16/FP32 舍入规则](../BF16_SWIGLU_NUMERICS.md) · [测试参考与验收](../../tests/bf16/TEST_PLAN.md)。BigOp 与契约参考共用 FP32 激活、导数及归并规则，CPU FP64 真值独立计算。\n\n';
 markdown += '## 三个阅读场景\n\n固定侧栏可以随时回到章节。三个场景共用同一份教学路由，切换后保留所选 token 和前反向阶段；点击数据或阶段可查看真实源码。\n\n';
 for (const scene of learning.scenes) {
   markdown += `### ${scene.title}\n\n${scene.summary}\n\n![${scene.title}](diagrams/${scene.id}.png)\n\n`;

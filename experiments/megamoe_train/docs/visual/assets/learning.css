@@ -1,3 +1,7 @@
+/* Copyright (c) 2026, Lu Lu
+ * Modified by xixing 2026
+ */
+
 /* These rules style only the three learning scenes, not the existing graphs. */
 .learning-canvas .learning-scene{max-width:1220px;margin:0 auto;padding:20px 22px 30px;color:#263750;line-height:1.65}
 .learning-canvas [hidden]{display:none!important}
@@ -48,6 +52,8 @@
 .learning-canvas .learning-table strong{color:#2f5b8c;font-weight:650}
 .learning-canvas .learning-numeric .learning-table{font-family:"Cascadia Code",Consolas,"Microsoft YaHei",monospace;font-size:11px}
 .learning-canvas .learning-numeric .learning-table th{font-family:Inter,"Microsoft YaHei",sans-serif;font-size:11px}
+.learning-canvas .learning-backward-numeric .learning-table th{white-space:pre-line}
+.learning-canvas .learning-backward-numeric .learning-table td{white-space:normal}
 .learning-canvas .learning-weights-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:25px;margin:12px 0 18px}
 .learning-canvas .learning-weight-set{min-width:0;padding-bottom:6px;border-bottom:1px solid #dde6f0}
 .learning-canvas .learning-weight-set h4{font-size:13px;margin:0 0 10px;font-weight:650;color:#3f5877}

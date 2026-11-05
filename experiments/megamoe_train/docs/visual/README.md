@@ -2,13 +2,13 @@
 
 按项目结构、调用链、三核流水和内存复用逐层阅读。默认场景为 Ascend950、save=bf16、H7168/F3072、关闭 clipping。
 
-源码快照：[155d5e8](https://github.com/xixing-321/DeepEP/tree/155d5e8734ab2641fecc95c2bfebefd996cb3007)。
+源码快照：[8199e73](https://github.com/xixing-321/DeepEP/tree/8199e73324a52f069216749795bda8df105703e5)。
 
 [离线交互页面](index.html) · [完整调用点与源码](CALLPOINTS.md) · [维护方法](MAINTAINING.md)
 
 [在线交互导览](https://xixing-321.github.io/DeepEP/)
 
-**VS Code 一键定位**：按[扩展安装说明](vscode/README.md)安装一次，运行 **MegaMoE: 打开训练源码导览**。点击图内节点，即可在旁边的编辑器中查看对应文件和行号；多处来源可在详情中分别打开。
+**VS Code 一键定位**：按[扩展安装说明](vscode/README.md)安装一次，运行 **MegaMoE: 打开训练源码导览**。点击节点、阶段或等待查看讲解，点击 **打开源码** 或 **查看对应源码**，再在旁边的编辑器中定位到文件和行号。
 
 [下载 VS Code 导览扩展](https://xixing-321.github.io/DeepEP/downloads/megamoe-train-source-guide.vsix)
 
@@ -16,15 +16,17 @@
 
 普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。
 
+数值与验证：[BF16/FP32 舍入规则](../BF16_SWIGLU_NUMERICS.md) · [测试参考与验收](../../tests/bf16/TEST_PLAN.md)。BigOp 与契约参考共用 FP32 激活、导数及归并规则，CPU FP64 真值独立计算。
+
 ## 三个阅读场景
 
 固定侧栏可以随时回到章节。三个场景共用同一份教学路由，切换后保留所选 token 和前反向阶段；点击数据或阶段可查看真实源码。
 
-### 追踪一个 token 的前后向
+### 追踪一个 token 的前反向
 
 同一份固定输入：看 route 行号、关键数值、矩阵 tile 和四项梯度最终归属。
 
-![追踪一个 token 的前后向](diagrams/learn-token.png)
+![追踪一个 token 的前反向](diagrams/learn-token.png)
 
 ### 前向保存的数据，反向怎样使用
 
@@ -32,11 +34,11 @@
 
 ![前向保存的数据，反向怎样使用](diagrams/learn-saved.png)
 
-### 三核交接与缓冲复用
+### 前后向流水与缓冲复用
 
-按 tile0/1/2 展开协议依赖；横向位置表达先后与可并行关系，不表示实测时间。
+在 rank0 的前后向专家时间轴上调节耗时、点等待查看源码，再用独立练习展开 GMM2 双槽。
 
-![三核交接与缓冲复用](diagrams/learn-pipeline.png)
+![前后向流水与缓冲复用](diagrams/learn-pipeline.png)
 
 ## L1 · MegaMoE BF16 训练做什么
 

@@ -1,6 +1,6 @@
 flowchart TB
   subgraph lane_python["Python / autograd"]
-    bc_autograd["autograd传入最终输出的梯度"]
+    bc_autograd["loss.backward() 触发反向"]
     bc_return["按原输入顺序返回梯度"]
   end
   subgraph lane_host["绑定 / Host"]

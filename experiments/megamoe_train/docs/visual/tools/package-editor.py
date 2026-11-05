@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by xixing 2026
+
 """Build the optional local editor extension as a VSIX with Python stdlib.
 
 Package layout and VSIX metadata follow Microsoft's vsce implementation:

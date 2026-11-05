@@ -3,7 +3,7 @@
 更新日期：2026-11-05。当前 [cases.json](cases.json) 仅发布 12 条典型模型尺寸用例：
 Flash、Pro、GLM 各取每 rank M=512、2048、4096、8192。
 其他通用边界、数据分布、保存模式和历史矩阵用例已在仓库外本地归档，不属于当前发布清单。
-本轮不运行 NPU、精度、性能或完整 CPU 测试；清单存在不代表设备验收通过。
+清单与设备验收分开记录；设备精度、性能结果对应具体源码提交与构建产物。
 
 ## 1. 范围与模型参数
 
@@ -21,7 +21,7 @@ Flash、Pro、GLM 各取每 rank M=512、2048、4096、8192。
 | --- | ---: | --- | ---: | ---: |
 | `m512` | 512 | 最小典型 token 档位，覆盖多块计算 | 768 | 512 |
 | `m2048` | 2048 | 2K token 的完整前后向验证 | 3072 | 2048 |
-| `m4096` | 4096 | 4K token，增加权重梯度归约长度；保留已知失败形状 | 6144 | 4096 |
+| `m4096` | 4096 | 4K token，增加权重梯度归约长度；保留历史失败形状 | 6144 | 4096 |
 | `m8192` | 8192 | 8K token，覆盖持续多块执行与较大参考数据 | 12288 | 8192 |
 
 前缀与后缀组合即 12 个唯一 ID，例如 `flash_m512`、`pro_m4096`、`glm_m8192`。
@@ -47,8 +47,10 @@ sum(y*dy)。随机的是反向输入，dx、dtopk_weights、dw1、dw2 都由实�
 ## 3. 参考与验收
 
 - [cpu_reference.py](cpu_reference.py)：Torch CPU FP64 前向和 autograd 真值，不插入 BF16 中间舍入。
-- [npu_baseline.py](npu_baseline.py)：原始 NPU BF16 BigOp 作为 ATK 误差基线；
-  另有匹配当前融合精度边界的契约参考，仅用于辅助混合容差检查。
+- [npu_baseline.py](npu_baseline.py)：`fp32-boundaries-v2` NPU BigOp 作为 ATK 误差基线，
+  使用 FP32 激活、导数、dp 乘积/归约和按 TopK slot 顺序的 FP32 Y/dX 归并，最终张量写回 BF16。
+  两个参考角色复用公共数值实现；BF16 保存模式下，ATK 和混合容差直接复用同一份小算子结果。
+  保存模式仅决定 Gate/Up 的保存、重算或解码，不选择不同的舍入规则。
 - [atk_compare.py](atk_compare.py)：使用 ATK 26.9.8/private 0.1.0 的
   cv_fused_double_benchmark，逐 rank、逐输出执行，不混合不同输出。
 - [precision_metrics.py](precision_metrics.py)：精确 counts 和现有混合容差报告。
@@ -60,6 +62,10 @@ BF16 辅助混合容差为 atol=rtol=2^-7、匹配比例>=99%，
 辅助参考不是独立 CPU 真值，混合容差通过不能覆盖 ATK 失败。
 
 ## 4. 执行方式
+
+辅助参考的 CPU 回归使用 `python -m unittest discover -s experiments/megamoe_train/tests/bf16 -p test_reference_contract.py -v`。
+它需要 CPU Torch，检查公共 FP32 H/dH、dp、BF16 输出边界、clipping、按 slot 归并、保存复用，
+以及原有 FP64 真值和 MXFP8 诊断重放；不启动 NPU 或 ATK。
 
 `priority`、`model`、`all` 当前均选择这 12 条，不再提供已归档的 smoke/core/extended 套件。
 `--case-id` 可重复指定，仅选择清单内的 ID。套件参数由 JSON 决定，不被单例 shape 参数覆盖。
@@ -97,5 +103,13 @@ GLM M512 尚无完整设备数值结果。该最坏点 CPU=0.0101755898675151、
 融合=-3.09375、BigOp=-0.45703125。
 
 这只是具名旧快照的证据，不是当前目标分支新二进制的资格验证。
-收敛清单不会修复历史失败，也不允许修改原始 BigOp 或阈值来改判。
+该历史记录沿用当时的原始 BF16 BigOp。`fp32-boundaries-v2` 升级激活及归并精度后，
+结果应另起报告并标注参考版本，保留旧记录；CPU FP64 真值、输入和精度阈值保持不变。
 当前不声称已覆盖其他路由、数据分布、保存模式、完整专家数、多机、并发、生命周期或真实训练收敛。
+
+2026-11-05 对 PR #18 的同输入缓存复核：GLM 四个 M 档位的 dp 在
+`fp32-boundaries-v2` BigOp 下通过 ATK（4×8=32 个 rank-output），复用原有融合结果与
+CPU FP64 真值，仅重算 BigOp。其余四项输出没有在这轮缓存复核中重测。另以仓库外临时
+脚本完成 EP2、H7168 的 BF16/none/MXFP8 完整块、尾块及 clipping 前后向对照，18 个
+rank-case 全部通过现有混合容差和精确 counts；此轮未执行 CPU FP64 或 ATK。
+原始结果与临时脚本保存在仓库外，PR 说明记录各轮的版本与具体覆盖。

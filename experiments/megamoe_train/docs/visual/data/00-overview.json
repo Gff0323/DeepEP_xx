@@ -134,7 +134,7 @@
         "当前输入 ready",
         "UB 复用与通信读写边界"
       ],
-      "formula": "G=XWgᵀ; U=XWuᵀ; Hp=p·(SiLU(G)⊙U); O=HpW2ᵀ",
+      "formula": "R(x) 表示将 x 舍入到 BF16。GEMM 使用 FP32 累加。\nG = R(Xpacked · Wgᵀ)\nU = R(Xpacked · Wuᵀ)\nH = SiLU_FP32(G) × FP32(U)\nHp = R(H × FP32(p))\nYroute = R(Hp · W2ᵀ)\nY = R(Σ_FP32 Yroute)  # 按 TopK 槽求和后写回 BF16",
       "sources": [
         {
           "path": "experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp",

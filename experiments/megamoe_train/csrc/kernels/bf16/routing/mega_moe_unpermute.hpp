@@ -1,3 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+// Modified by xixing 2026
+
 #pragma once
 
 #include "kernel_operator.h"
@@ -16,10 +20,8 @@ __aicore__ inline void LoadUnpermuteInput(AscendC::LocalTensor<bfloat16_t> input
     SetFlag<HardEvent::MTE2_V>(event);
 }
 
-__aicore__ inline void AccumulateUnpermuteRoute(AscendC::LocalTensor<float> sum,
-                                               AscendC::LocalTensor<float> converted,
-                                               AscendC::LocalTensor<bfloat16_t> input, uint32_t length,
-                                               bool first)
+__aicore__ inline void AccumulateUnpermuteRoute(AscendC::LocalTensor<float> sum, AscendC::LocalTensor<float> converted,
+                                                AscendC::LocalTensor<bfloat16_t> input, uint32_t length, bool first)
 {
     using namespace AscendC;
     if (first) {
@@ -121,8 +123,7 @@ __aicore__ inline bool TryUnpermute(GM_ADDR indicesAddr, GM_ADDR expandedXAddr, 
 }
 
 __aicore__ inline void UnpermuteByHiddenChunk(GM_ADDR indicesAddr, GM_ADDR expandedXAddr, GM_ADDR outputAddr,
-                                             uint32_t hidden, uint32_t topK, uint32_t tokenBegin,
-                                             uint32_t tokenCount)
+                                              uint32_t hidden, uint32_t topK, uint32_t tokenBegin, uint32_t tokenCount)
 {
     using namespace AscendC;
     if (tokenCount == 0) {
