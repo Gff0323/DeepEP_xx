@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """Torch CPU FP64 truth at the public x/ids/weights/w1/w2 boundary.
 
 Each expert chunk builds a CPU forward graph and uses autograd for all four

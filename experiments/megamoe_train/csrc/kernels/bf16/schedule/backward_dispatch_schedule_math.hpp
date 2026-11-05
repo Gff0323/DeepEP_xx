@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 #pragma once
 #include <cstdint>
 #if defined(PRODUCER_PHASE_HOST_TEST)

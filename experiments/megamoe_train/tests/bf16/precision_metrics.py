@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """Mixed tolerance, exact counts and JSON reports; ATK owns double benchmarking."""
 
 import json

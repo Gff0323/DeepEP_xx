@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 # BF16 training is an independent optional component; root owns the SDKs.
 option(DEEPEP_BF16_FORCE_EXPERT_READY "Wait for whole-expert Dispatch in training forward and backward" OFF)
 if(DEEPEP_BF16_FORCE_EXPERT_READY)
@@ -80,5 +83,5 @@ target_link_libraries(megamoe_train_ext PRIVATE ${TORCH_LIBRARIES} "${TRAIN_TORC
 target_link_options(megamoe_train_ext PRIVATE -Wl,-z,relro,-z,now,-z,noexecstack)
 add_dependencies(megamoe_train_ext megamoe_train_device)
 install(TARGETS megamoe_train_ext LIBRARY DESTINATION ../deep_ep_experimental/megamoe_train)
-install(FILES "${train_library}" LICENSE NOTICE.md upstream.json
+install(FILES "${train_library}"
     DESTINATION ../deep_ep_experimental/megamoe_train)

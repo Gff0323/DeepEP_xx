@@ -1,6 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * DeepEP MegaMoe BF16 training backward kernel.
  *
  * Notation: R rounds to BF16; h is the unweighted BF16 SwiGLU activation

@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 // Backward-only, Host-zeroed progress suffix: one cacheline per producer.
 #ifndef MEGA_MOE_BF16_BACKWARD_DISPATCH_READY_HPP
 #define MEGA_MOE_BF16_BACKWARD_DISPATCH_READY_HPP

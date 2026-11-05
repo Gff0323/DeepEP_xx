@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """ATK CV double-benchmark comparison of every rank/output.
 
 Use ATK's registered implementation, without flattening different gradients or

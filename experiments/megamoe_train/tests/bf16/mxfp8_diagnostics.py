@@ -1,3 +1,6 @@
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """Opt-in MXFP8 diagnosis; reference replays do not change the precision verdict."""
 
 import hashlib

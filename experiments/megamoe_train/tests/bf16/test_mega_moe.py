@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026, Lu Lu
+# Modified by guofanfeng 2026
+
 """MegaMoE BF16: one entry for full forward/backward precision and timing."""
 
 from __future__ import annotations

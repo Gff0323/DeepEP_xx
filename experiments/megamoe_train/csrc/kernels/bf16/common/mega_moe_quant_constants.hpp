@@ -1,3 +1,6 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 #ifndef MEGA_MOE_QUANT_CONSTANTS_HPP
 #define MEGA_MOE_QUANT_CONSTANTS_HPP
 

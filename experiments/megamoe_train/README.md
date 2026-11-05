@@ -5,8 +5,9 @@ GMM1, SwiGLU, GMM2 and combine, with an autograd backward for `x`, routing
 weights, `w1` and `w2`. Integer expert IDs and expert counts are not differentiable.
 It is designed for **Ascend950**. Other Ascend generations are unsupported.
 
-The initial BF16 implementation derives from **b8cff148**. See
-[provenance](NOTICE.md) for attribution and
+The initial BF16 implementation derives from
+[fft__/ascend_deepep_hkq](https://gitcode.com/fft__/ascend_deepep_hkq), branch
+`ascend_megamoe_bf16`, commit **b8cff148**. See
 [numerical semantics](docs/BF16_SWIGLU_NUMERICS.md) for the computation contract.
 The API, code architecture, autograd bridge and resource lifetime are described
 in the [framework design (中文)](docs/BF16_FRAMEWORK_DESIGN_ZH.md).
@@ -253,4 +254,6 @@ completed. Those are historical results for a different kernel, not qualificatio
 of this branch's installed binary. Keeping only typical cases does not fix or
 reclassify any earlier failure. No NPU test was run for this manifest reduction.
 
-Reference provenance and source hashes are recorded in upstream.json and NOTICE.md.
+The precision references are adapted from
+[fft__/ascend_deepep_hkq](https://gitcode.com/fft__/ascend_deepep_hkq), commit
+`568ac7c07e2e669582f7ce684bf5dd27f503efad`.

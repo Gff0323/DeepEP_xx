@@ -1,6 +1,7 @@
+// Copyright (c) 2026, Lu Lu
+// Modified by guofanfeng 2026
+
 /*
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- *
  * SwiGLU backward epilogues for MegaMoe BF16.
  *
  * For clamped Gate/Up, h=BF16(SiLU_FP32(gate)*up) uses FP32 SiLU and Mul.
