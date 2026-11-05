@@ -101,7 +101,7 @@ def reference_packed_intermediates(
         d_hp = bf16_round(d_o @ w2[expert].astype(np.float32))
         # Reconstructed H must be the same BF16 activation as forward H.
         # Keep dH's BF16 tensor boundary, but no standalone BF16 SiLU/dS.
-        dp_products = bf16_round(d_hp * h)
+        dp_products = d_hp * h
         d_h = bf16_round(p[:, None] * d_hp)
         d_up = d_h * silu * up_ind
         d_gate = d_h * up * (sigmoid * (1.0 + gate * (1.0 - sigmoid))) * gate_ind

@@ -313,7 +313,12 @@ def generate(
     for route in range(topk):
         route_value = bf16_bits_to_float32(route_outputs[:, route, :])
         contribution = route_value if early_topk_weight else bf16_round(route_value * topk_weights[:, route, None])
-        combined = contribution if route == 0 else bf16_round(combined + contribution)
+        if route == 0:
+            combined = contribution
+        elif early_topk_weight:
+            combined += contribution
+        else:
+            combined = bf16_round(combined + contribution)
 
     for rank in range(ep):
         rank_slice = slice(rank * m, (rank + 1) * m)

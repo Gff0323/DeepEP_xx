@@ -75,6 +75,11 @@ class SwiGLUBackwardNumerics(unittest.TestCase):
                         self.assertTrue(np.all(actual_g[g > limit] == 0))
                         self.assertTrue(np.all(actual_u[(u < -limit) | (u > limit)] == 0))
 
+    def test_dp_partial_keeps_fp32_product(self):
+        got = packed([1.0], [1.3125], [0.75], [1.0])
+        # The exact FP32 product 0.720703125 would round to 0.71875 in BF16.
+        self.assertEqual(float(got["dpPartials"][0, 0]), 256 * 0.720703125)
+
     def test_dh_bf16_boundary_is_retained(self):
         g, u, p, dhp = [1.0], [1.3125], [0.10009765625], [0.75]
         got = packed(g, u, dhp, p)

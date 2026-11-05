@@ -10,7 +10,7 @@
  *
  * SwiGLUGrad enters with dHp in the first UB tile: saved GM callers load
  * it with LoadDHpFromGM; save=none callers wait for the AIC Fixpipe tile.
- * Gate/Up and p produce Hp, FP32 row partials of BF16(dHp*h), and dZ.
+ * Gate/Up and p produce Hp, FP32 row partials of dHp*h, and dZ.
  *
  * FP32 activation arithmetic and explicit BF16 casts preserve the forward
  * rounding and derivative boundaries. Saved MXFP8 reconstructs h from
@@ -168,14 +168,9 @@ public:
         }
         ComputeForwardAux(singleM, singleN, rowStrideInPlane);
         AscendC::PipeBarrier<PIPE_V>();
-        // dP uses reconstructed BF16 h at the forward rounding boundary,
-        // not the pre-cast FP32 value. Saved MXFP8 h may differ from forward.
-        // Form BF16(dHp*h), then reduce each row to one FP32 partial in UB.
-        for (uint32_t row = 0; row < singleM; ++row) {
-            AscendC::Mul(l0cOutUbSecond_[row * rowStrideInPlane], l0cOutUbFirst_[row * rowStrideInPlane],
-                         extraA_[row * rowStrideInPlane], singleN);
-        }
+        // Use the reconstructed BF16 h and accumulate dHp*h in FP32.
         ComputeDpPartials(singleM, singleN, rowStrideInPlane);
+        AscendC::PipeBarrier<PIPE_V>();
         // Form Hp=BF16(h*p) with the prefetched per-row weights, separately
         // from the later dh=BF16(p*dHp) input to the derivative.
         ApplyPackedWeight(extraA_, singleM, singleN, rowStrideInPlane, mLoc);
@@ -486,56 +481,41 @@ private:
         }
     }
 
-    // Reduce one BF16(dHp*h) tile to one FP32 partial per row. The product
-    // tile is dead afterwards, so its first FP32 slot in every row stores the
-    // result without increasing the three-tile UB footprint.
+    // Reduce FP32 products of the two BF16 inputs. Store one FP32 partial
+    // at the start of each row in the now-dead Gate/Up scratch tile.
     __aicore__ inline void ComputeDpPartials(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
-        constexpr uint16_t kBf16PerReg = 256U / sizeof(bfloat16_t);
-        const uint16_t repeatsPerRow =
-            static_cast<uint16_t>(Ops::Base::CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(kBf16PerReg)));
-        __ubuf__ bfloat16_t* products = (__ubuf__ bfloat16_t*)l0cOutUbSecond_.GetPhyAddr();
-        __ubuf__ float* partials = reinterpret_cast<__ubuf__ float*>(products);
+        constexpr uint16_t lanes = 256U / sizeof(float);
+        auto* dHp = (__ubuf__ bfloat16_t*)l0cOutUbFirst_.GetPhyAddr();
+        auto* h = (__ubuf__ bfloat16_t*)extraA_.GetPhyAddr();
+        auto* partials = (__ubuf__ float*)l0cOutUbSecond_.GetPhyAddr();
 
         __VEC_SCOPE__
         {
             for (uint16_t row = 0; row < mSize; ++row) {
                 AscendC::Reg::RegTensor<float> accumulated;
-                AscendC::Reg::MaskReg oneLane = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
+                auto oneLane = AscendC::Reg::CreateMask<float, AscendC::Reg::MaskPattern::VL1>();
                 AscendC::Reg::Duplicate(accumulated, 0.0F, oneLane);
                 uint32_t remaining = nSize;
-                for (uint16_t repeat = 0; repeat < repeatsPerRow; ++repeat) {
-                    const uint32_t chunk = remaining > kBf16PerReg ? kBf16PerReg : remaining;
-                    uint16_t partRemaining = static_cast<uint16_t>(chunk);
-                    AscendC::Reg::RegTensor<bfloat16_t> packed0, packed1;
-                    AscendC::Reg::RegTensor<float> value0, value1;
-                    const uint32_t offset = row * rowStride + repeat * kBf16PerReg;
-                    AscendC::Reg::DataCopy(packed0, products + offset);
-                    AscendC::Reg::Interleave(packed0, packed1, packed0, packed1);
-                    const uint16_t partLanesMax = static_cast<uint16_t>(kBf16PerReg / 2);
-                    // Bisheng requires uint16_t induction and loop-condition operands in this reduction.
-                    const uint16_t partCount = partRemaining > partLanesMax ? 2U : 1U;
-                    for (uint16_t part = 0; part < partCount; ++part) {
-                        const uint16_t partLanes = partRemaining > partLanesMax ? partLanesMax : partRemaining;
-                        uint32_t partMaskLanes = partLanes;
-                        AscendC::Reg::MaskReg partMask = AscendC::Reg::UpdateMask<float>(partMaskLanes);
-                        auto packed = part == 0 ? packed0 : packed1;
-                        auto value = part == 0 ? value0 : value1;
-                        AscendC::Reg::RegTensor<float> rowSum;
-                        AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(value, packed, partMask);
-                        AscendC::Reg::ReduceSum(rowSum, value, partMask);
-                        AscendC::Reg::Add(accumulated, accumulated, rowSum, oneLane);
-                        partRemaining -= partLanes;
-                    }
-                    remaining -= chunk;
+                for (uint16_t col = 0; col < nSize; col += lanes) {
+                    auto mask = AscendC::Reg::UpdateMask<float>(remaining);
+                    const uint32_t offset = static_cast<uint32_t>(row) * rowStride + col;
+                    AscendC::Reg::RegTensor<bfloat16_t> dHpBf, hBf;
+                    AscendC::Reg::RegTensor<float> dHpFp, hFp, product, rowSum;
+                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(dHpBf, dHp + offset);
+                    AscendC::Reg::DataCopy<bfloat16_t, AscendC::Reg::LoadDist::DIST_UNPACK_B16>(hBf, h + offset);
+                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(dHpFp, dHpBf, mask);
+                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(hFp, hBf, mask);
+                    AscendC::Reg::Mul(product, dHpFp, hFp, mask);
+                    AscendC::Reg::ReduceSum(rowSum, product, mask);
+                    AscendC::Reg::Add(accumulated, accumulated, rowSum, oneLane);
                 }
                 AscendC::Reg::DataCopy(partials + static_cast<uint32_t>(row) * (rowStride / 2), accumulated, oneLane);
             }
         }
     }
 
-    // Produce BF16 h. The caller reduces BF16(dHp*h) to FP32 row partials
-    // in UB, then overwrites h with the separately rounded Hp=BF16(h*p).
+    // Reconstruct BF16 h for the FP32 dp partial and the BF16 Hp=BF16(h*p).
     __aicore__ inline void ComputeForwardAux(uint16_t mSize, uint16_t nSize, uint32_t rowStride)
     {
         constexpr uint16_t kElementsPerRepeat = 128U;
@@ -810,17 +790,15 @@ private:
                     // h reconstruction uses gate/den, while the derivative
                     // retains (1/den)*gate. These are separate accurate Divs.
                     AscendC::Reg::RegTensor<float> auxSilu, hFp, hRounded;
-                    AscendC::Reg::RegTensor<float> hpFp, productFp, productRounded, rowSum, dhFp;
-                    AscendC::Reg::RegTensor<bfloat16_t> hBf, hpBf, productBf, dhBf;
+                    AscendC::Reg::RegTensor<float> hpFp, productFp, rowSum, dhFp;
+                    AscendC::Reg::RegTensor<bfloat16_t> hBf, hpBf, dhBf;
                     AscendC::Reg::Div<float, &kBackwardDivMode>(auxSilu, gateC, denom, mask);
                     // Reconstruct BF16 h without an intermediate BF16 SiLU.
                     AscendC::Reg::Mul(hFp, auxSilu, upC, mask);
                     AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hBf, hFp, mask);
                     AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(hRounded, hBf, mask);
                     AscendC::Reg::Mul(productFp, dHpFp, hRounded, mask);
-                    AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(productBf, productFp, mask);
-                    AscendC::Reg::Cast<float, bfloat16_t, kBackwardCastBF16ToFP32>(productRounded, productBf, mask);
-                    AscendC::Reg::ReduceSum(rowSum, productRounded, mask);
+                    AscendC::Reg::ReduceSum(rowSum, productFp, mask);
                     AscendC::Reg::Add(accumulated, accumulated, rowSum, oneLane);
                     AscendC::Reg::Mul(hpFp, hRounded, pFp, mask);
                     AscendC::Reg::Cast<bfloat16_t, float, kBackwardCastFP32ToBF16>(hpBf, hpFp, mask);

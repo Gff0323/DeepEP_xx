@@ -1013,44 +1013,8 @@ __aicore__ inline void MegaMoeBF16Forward::UnpermuteV2()
                                          Catlass::Arch::Ascend950::UB_SIZE)) {
         return;
     }
-    AscendC::GlobalTensor<int32_t> expandedRowIdxGather;
-    expandedRowIdxGather.SetGlobalBuffer((__gm__ int32_t*)params_.workspaceInfo.expandedRowIdxGather);
-    AscendC::GlobalTensor<bfloat16_t> expandedX;
-    expandedX.SetGlobalBuffer((__gm__ bfloat16_t*)params_.peermemInfo.ptrD);
-    AscendC::GlobalTensor<bfloat16_t> output;
-    output.SetGlobalBuffer((__gm__ bfloat16_t*)params_.y2GmAddr);
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-    AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-    for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
-        AscendC::LocalTensor<bfloat16_t> dataRes{AscendC::TPosition::VECIN, 0, 0};
-        AscendC::LocalTensor<bfloat16_t> dataIn0 = dataRes[k_];
-        AscendC::LocalTensor<bfloat16_t> dataIn1 = dataRes[k_ * 2];
-        for (int32_t expId = 0; expId < topK_; ++expId) {
-            int32_t rowIdx = expandedRowIdxGather(tokenIdx * topK_ + expId);
-            auto event = (expId % 2 == 0) ? EVENT_ID0 : EVENT_ID1;
-            auto dataIn = (expId % 2 == 0) ? dataIn0 : dataIn1;
-            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            AscendC::DataCopy(dataIn, expandedX[rowIdx * k_], k_);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            AscendC::SetFlag<AscendC::HardEvent::S_V>(event);
-            AscendC::WaitFlag<AscendC::HardEvent::S_V>(event);
-            if (expId == 0) {
-                AscendC::Adds(dataRes, dataIn, 0.0F, k_);
-            } else {
-                AscendC::Add(dataRes, dataRes, dataIn, k_);
-                AscendC::PipeBarrier<PIPE_V>();
-            }
-            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(event);
-        }
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::DataCopy(output[tokenIdx * k_], dataRes, k_);
-    }
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-    AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+    MegaMoeBF16Routing::UnpermuteByHiddenChunk(params_.workspaceInfo.expandedRowIdxGather, params_.peermemInfo.ptrD,
+                                               params_.y2GmAddr, k_, topK_, coreOffset, coreLen);
 }
 
 __aicore__ inline void MegaMoeBF16Forward::CrossRankSyncInWorldSize()
