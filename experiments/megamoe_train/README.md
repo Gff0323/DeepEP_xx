@@ -159,16 +159,98 @@ test using `(y * grad_y).sum()`; framework short-training review remains require
 
 ## Tests
 
+The published [case manifest](tests/bf16/cases.json) contains only 12 typical
+BF16 model-dimension cases. Other boundary, data-profile, saved-mode and historical
+matrix cases are deferred and are not part of the repository manifest.
+
+| Model dimensions | H | F / GMM1 N | TopK | Experts/rank | Clip | Route-weight scale | M/rank |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| Flash | 5120 | 2304 / 4608 | 6 | 4 | 10 | 1.5 | 512 / 2048 / 4096 / 8192 |
+| Pro | 7168 | 3072 / 6144 | 6 | 4 | 10 | 2.5 | 512 / 2048 / 4096 / 8192 |
+| GLM | 6144 | 2048 / 4096 | 8 | 8 | 0 | 2.5 | 512 / 2048 / 4096 / 8192 |
+
+All cases use balanced routing, BF16 saving and seed 20260825. These are synthetic
+operator tests with reduced expert counts, not full-model or convergence validation.
+M means tokens entering the operator per rank; EP alone does not split M.
+The upstream dy is fixed-seed random input shared by all comparison paths;
+y.backward(dy) computes all four input gradients.
+See the [test plan (中文)](tests/bf16/TEST_PLAN.md) for the rationale and known limits.
+
+There is one entry, `tests/bf16/test_mega_moe.py`, with these helpers:
+
+- `cpu_reference.py`: independent Torch CPU FP64 forward and autograd truth.
+- `npu_baseline.py`: original NPU BF16 BigOp and an auxiliary numerical-contract reference.
+- `atk_compare.py`: the private ATK CV double-benchmark comparator.
+- `precision_metrics.py`: exact counts and mixed-tolerance reports.
+- `mxfp8_diagnostics.py`: optional diagnosis for explicitly configured inputs;
+  the published manifest contains no MXFP8 cases.
+
+### Run the typical cases
+
+After installing the wheel built from this branch, use the same Python containing
+ATK and atk-private-precision. Select authorized, idle physical devices explicitly.
+The launcher maps them to logical local ranks; the example uses two physical cards.
+
 ```bash
-python -m pytest -q experiments/megamoe_train/tests/bf16
-# On an otherwise idle Ascend950 node, after installing the wheel:
-python experiments/megamoe_train/tests/bf16/test_mega_moe_backward.py 0,1 \
-  --seq 129 --hidden 256 --gmm-n 1024 --topk 4 --expert-per-rank 2 \
-  --routing-mode balanced --save-gmm1-output bf16 \
+# List all 12 configurations without importing Torch/ATK or using a device.
+python experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
+  --suite priority --list-cases
+
+# Precision: forward, all four gradients and counts.
+python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
+  --suite priority --skip performance --atk-ratios 5 1.5 1.5 \
+  --shmem-ip-port tcp://127.0.0.1:29862
+
+# Select just the three M512 cases.
+python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
+  --suite priority --case-id flash_m512 --case-id pro_m512 --case-id glm_m512 \
+  --skip performance --shmem-ip-port tcp://127.0.0.1:29862
+
+# Performance only, without ATK or CPU FP64 reference computation.
+python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
+  --suite priority --skip precision --warmup 5 --loops 20 \
   --shmem-ip-port tcp://127.0.0.1:29862
 ```
 
-Repeat with `none`, `mxfp8`, `auto` and `--swiglu-limit 0.05` as appropriate.
-The precision runner applies its acceptance thresholds and reports each rank. CPU
-layout/reference tests do not qualify NPU functionality. Record the exact device
-cases, dependency versions and build artifacts before qualifying a deployment.
+`--suite model` and `--suite all` select the same 12 published cases.
+The deferred smoke/core/extended suites are no longer accepted.
+Without --skip, precision runs before performance. `--case-id` is repeatable;
+suite shapes come from the manifest. Standalone explicit shape arguments remain
+available outside suite mode. No deferred JSON files are discovered automatically.
+The default persistent mode reuses workers and one operator/runtime; inputs,
+references and gradients are recomputed per case. Use --isolate-cases for fresh
+workers/runtime per case. CPU FP64 and complete gradient tensors can require
+substantial host RAM; check actual container resources before selecting EP2/4/8.
+SHMEM uses the supplied port and Gloo uses port+2; both must be available.
+
+### Precision decisions and reports
+
+Precision uses ATK cv_fused_double_benchmark by default. The fused output is actual,
+original BF16 BigOp is benchmark, and unchanged CPU FP64 is golden. Every rank and
+each of y, dx, dtopk_weights, dw1 and dw2 are compared separately. Explicit limits
+are max/mean/RMSE=5/1.5/1.5 and number_count_radio=2. ATK and the internal plugin
+must be installed in the same Python as the DeepEP wheel; missing or invalid
+comparators fail the run rather than falling back to a substitute formula.
+
+Mixed tolerance remains an auxiliary check against the MegaMoE numerical contract:
+FP32 activation/derivatives, BF16 tensor boundaries, FP32 dp products/reduction,
+and FP32 y/dx combine with a final BF16 cast. The original BigOp retains its
+independent BF16 small-op path and scatter-add. Passing the auxiliary contract
+check does not override an ATK failure. Counts must match exactly.
+
+Each run creates a new output directory; --output selects a new location.
+The terminal prints progress, suite_summary.json records every case, and each
+case retains summary.json plus rank_<rank>.json. Failed ATK outputs keep their
+actual/benchmark/golden tensors. Numerical failures produce FAIL and a nonzero
+exit; setup/device/communication/cleanup errors stop the suite and leave remaining
+cases NOT_RUN. Restart after a device or collective error.
+The NPU Event performance timings exclude reference computation and reporting;
+case wall-clock timings are not operator performance measurements.
+
+The earlier EP8 snapshot passed the four Flash and four Pro cases, and GLM M2048
+and M8192. GLM M4096 failed the dtopk_weights maximum ATK ratio; GLM M512 was not
+completed. Those are historical results for a different kernel, not qualification
+of this branch's installed binary. Keeping only typical cases does not fix or
+reclassify any earlier failure. No NPU test was run for this manifest reduction.
+
+Reference provenance and source hashes are recorded in upstream.json and NOTICE.md.

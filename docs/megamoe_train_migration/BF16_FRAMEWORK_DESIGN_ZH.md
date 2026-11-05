@@ -128,10 +128,11 @@ experiments/megamoe_train/
 │       │   └── moe_init_routing_v3/arch35/  引入的路由初始化实现
 │       └── common/                共享 tiling 数据、常量、拷贝与 op_kernel 辅助
 ├── tests/bf16/
-│   ├── test_mega_moe.py           前向精度 / 性能入口
-│   ├── test_mega_moe_backward.py  反向精度入口
-│   ├── mega_moe_bf16_golden.py    NumPy 前向参考
-│   └── 其他辅助与回归            数据、启动、接口、布局及调度检查
+│   ├── test_mega_moe.py           前后向精度 / 性能单入口
+│   ├── cpu_reference.py          Torch CPU FP64 真值
+│   ├── npu_baseline.py           NPU 小算子参考
+│   ├── atk_compare.py            ATK 双标杆适配
+│   └── cases.json / TEST_PLAN.md 用例清单及覆盖说明
 ├── tests/integration/
 │   └── bf16_lifecycle.py          多次调用、流和关闭重建检查
 ├── benchmarks/paired.py           历史迁移性能对照工具
@@ -373,14 +374,13 @@ Host 在提交前后向后，对实际参与计算的 Tensor 调用 `NPUCachingA
 
 | 文件 | 职责 |
 | --- | --- |
-| [test_mega_moe.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe.py) | 前向精度和性能，按 CSV 配置 shape，检查输出与专家计数 |
-| [test_mega_moe_backward.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe_backward.py) | 执行公共前后向接口，使用脚本内的 NumPy reference_backward 检查四类梯度和专家计数 |
-| [mega_moe_bf16_golden.py](../../experiments/megamoe_train/tests/bf16/mega_moe_bf16_golden.py) | 前向参考计算及可见 BF16 舍入边界 |
-| [test_training_api.py](../../experiments/megamoe_train/tests/bf16/test_training_api.py) | 对外签名、参数校验和保存模式透传 |
+| [test_mega_moe.py](../../experiments/megamoe_train/tests/bf16/test_mega_moe.py) | 单入口前后向精度和性能；固定输入、全部四项梯度和 counts |
+| [cpu_reference.py](../../experiments/megamoe_train/tests/bf16/cpu_reference.py) / [npu_baseline.py](../../experiments/megamoe_train/tests/bf16/npu_baseline.py) | Torch CPU FP64 真值、原始 NPU BF16 BigOp 和契约辅助参考 |
+| [atk_compare.py](../../experiments/megamoe_train/tests/bf16/atk_compare.py) / [cases.json](../../experiments/megamoe_train/tests/bf16/cases.json) | ATK 双标杆判定及用例清单；典型尺寸从 M512 开始 |
 | [bf16_lifecycle.py](../../experiments/megamoe_train/tests/integration/bf16_lifecycle.py) | 设备上的多次调用、流约束、权重布局和关闭重建 |
 | [upstream.json](../../experiments/megamoe_train/upstream.json) / [check_source_import.py](../../experiments/megamoe_train/scripts/check_source_import.py) | 原始来源 SHA、source/target 映射和必需文件存在性检查 |
 
-当前前向脚本支持 `precision / performance / both`，反向脚本提供梯度精度验证。输入、golden 缓存、启动协调和原仓性能对照保留各自的现有辅助实现；本次结构整理只更新受影响的文件引用，不调整数据生成、误差阈值或运行模式。
+当前测试使用一个入口，默认先精度后性能；`--skip performance` 只执行精度，`--skip precision` 只执行性能。参考与融合共用固定输入快照和随机上游 dy；ATK 使用 CPU FP64 与独立 BF16 BigOp，不代表真实模型 loss 或收敛验证。
 
 来源清单保留固定算子源提交、各文件的原始 SHA 和 source/target 映射，局部命名与目录调整记录在 adaptation 中。来源检查只验证来源声明及所需文件是否存在，不比较当前源码与源版本的计算内容，也不代替构建或设备验证。
 
