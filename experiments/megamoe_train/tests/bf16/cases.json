@@ -1,0 +1,29 @@
+{
+  "defaults": {
+    "seq": 512,
+    "hidden": 256,
+    "gmm_n": 1024,
+    "topk": 4,
+    "expert_per_rank": 2,
+    "routed_scaling_factor": 1.0,
+    "routing_mode": "balanced",
+    "save_gmm1_output": "bf16",
+    "swiglu_limit": 0,
+    "seed": 20260825,
+    "data_profile": "random"
+  },
+  "cases": [
+    {"id": "flash_m512", "suites": ["priority", "model"], "seq": 512, "hidden": 5120, "gmm_n": 4608, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 1.5, "swiglu_limit": 10.0, "covers": "Flash dimensions with reduced experts: 768 balanced rows per expert and multi-block forward/backward"},
+    {"id": "flash_m2048", "suites": ["priority", "model"], "seq": 2048, "hidden": 5120, "gmm_n": 4608, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 1.5, "swiglu_limit": 10.0, "covers": "Flash dimensions with reduced experts: 2K input tokens per rank and 3072 balanced rows per expert; full five-output ATK"},
+    {"id": "flash_m4096", "suites": ["priority", "model"], "seq": 4096, "hidden": 5120, "gmm_n": 4608, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 1.5, "swiglu_limit": 10.0, "covers": "Flash dimensions with reduced experts: 4K input tokens per rank and 6144 balanced rows per expert; long weight-gradient reductions"},
+    {"id": "flash_m8192", "suites": ["priority", "model"], "seq": 8192, "hidden": 5120, "gmm_n": 4608, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 1.5, "swiglu_limit": 10.0, "covers": "Flash dimensions with reduced experts: 8K input tokens per rank and 12288 balanced rows per expert; sustained multi-block forward/backward"},
+    {"id": "pro_m512", "suites": ["priority", "model"], "seq": 512, "hidden": 7168, "gmm_n": 6144, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 2.5, "swiglu_limit": 10.0, "covers": "Pro dimensions with reduced experts: 768 balanced rows per expert and longer GEMM/dot-product reductions"},
+    {"id": "pro_m2048", "suites": ["priority", "model"], "seq": 2048, "hidden": 7168, "gmm_n": 6144, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 2.5, "swiglu_limit": 10.0, "covers": "Pro dimensions with reduced experts: 2K input tokens per rank and 3072 balanced rows per expert; full five-output ATK"},
+    {"id": "pro_m4096", "suites": ["priority", "model"], "seq": 4096, "hidden": 7168, "gmm_n": 6144, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 2.5, "swiglu_limit": 10.0, "covers": "Pro dimensions with reduced experts: 4K input tokens per rank and 6144 balanced rows per expert; long weight-gradient reductions"},
+    {"id": "pro_m8192", "suites": ["priority", "model"], "seq": 8192, "hidden": 7168, "gmm_n": 6144, "topk": 6, "expert_per_rank": 4, "routed_scaling_factor": 2.5, "swiglu_limit": 10.0, "covers": "Pro dimensions with reduced experts: 8K input tokens per rank and 12288 balanced rows per expert; sustained multi-block forward/backward"},
+    {"id": "glm_m512", "suites": ["priority", "model"], "seq": 512, "hidden": 6144, "gmm_n": 4096, "topk": 8, "expert_per_rank": 8, "routed_scaling_factor": 2.5, "covers": "GLM dimensions with reduced experts: 512 balanced rows per expert and tile-ready threshold at model H/F"},
+    {"id": "glm_m2048", "suites": ["priority", "model"], "seq": 2048, "hidden": 6144, "gmm_n": 4096, "topk": 8, "expert_per_rank": 8, "routed_scaling_factor": 2.5, "covers": "GLM dimensions with reduced experts: 2K input tokens per rank and 2048 balanced rows per expert; full five-output ATK"},
+    {"id": "glm_m4096", "suites": ["priority", "model"], "seq": 4096, "hidden": 6144, "gmm_n": 4096, "topk": 8, "expert_per_rank": 8, "routed_scaling_factor": 2.5, "covers": "GLM dimensions with reduced experts: 4K input tokens per rank and 4096 balanced rows per expert; long weight-gradient reductions"},
+    {"id": "glm_m8192", "suites": ["priority", "model"], "seq": 8192, "hidden": 6144, "gmm_n": 4096, "topk": 8, "expert_per_rank": 8, "routed_scaling_factor": 2.5, "covers": "GLM dimensions with reduced experts: 8K input tokens per rank and 8192 balanced rows per expert; sustained multi-block forward/backward"}
+  ]
+}

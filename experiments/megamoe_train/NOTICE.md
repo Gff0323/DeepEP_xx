@@ -31,3 +31,8 @@ The existing two-window TopK-weight gather implementation is retained.
 Removed BF16 backward debug stage prints, GM phase markers and their 1 KiB
 saved-state region. Dispatch-readiness flags and computational synchronization
 are retained; Host and Device must be rebuilt together for the saved-state layout.
+
+The unified BF16 test references adapt the Torch CPU FP64 and NPU BigOp
+validation approach from source revision `568ac7c07e2e669582f7ce684bf5dd27f503efad`.
+Original source test hashes and replacement adapters are recorded in
+`upstream.json`. The new tests do not change the target branch computational kernels.

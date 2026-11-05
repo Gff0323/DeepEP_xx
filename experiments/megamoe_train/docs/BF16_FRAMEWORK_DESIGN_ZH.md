@@ -177,9 +177,9 @@ Python GC 不执行集体 SHMEM 清理，不能代替显式 `close()`。发生�
 
 | 验证入口 | 能检查的内容 |
 | --- | --- |
-| [test_training_api.py](../tests/bf16/test_training_api.py) | 公开签名、参数校验和保存模式透传 |
-| [test_mega_moe.py](../tests/bf16/test_mega_moe.py) / [前向 golden](../tests/bf16/mega_moe_bf16_golden.py) | 指定shape的前向输出、计数和可见舍入语义 |
-| [test_mega_moe_backward.py](../tests/bf16/test_mega_moe_backward.py) | 公共前后向链路、四梯度及计数的reference对照；其[启动辅助](../tests/bf16/device_support.py)使用StoreGroup |
+| [test_mega_moe.py](../tests/bf16/test_mega_moe.py) | 单入口前后向精度和性能；固定输入、全部四项梯度和 counts |
+| [cpu_reference.py](../tests/bf16/cpu_reference.py) / [npu_baseline.py](../tests/bf16/npu_baseline.py) | Torch CPU FP64 真值、原始 NPU BF16 BigOp 和契约辅助参考 |
+| [atk_compare.py](../tests/bf16/atk_compare.py) / [cases.json](../tests/bf16/cases.json) | ATK 双标杆判定及用例清单；典型尺寸从 M512 开始 |
 | [bf16_lifecycle.py](../tests/integration/bf16_lifecycle.py) | ProcessGroup/gloo协调下的重复调用、排队前向、流约束、布局和关闭重建；重复结果对照不替代独立golden |
 
 测试文件存在只说明有验证入口；设备通过范围必须以相应源码、完整wheel、环境及实际执行结果为依据。框架接入还应覆盖所用ProcessGroup后端、microbatch/重计算顺序、梯度累积和关闭时机，不能把单节点小shape的精度通过等同于这些场景已经完成验证。
