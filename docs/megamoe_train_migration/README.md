@@ -8,7 +8,7 @@
 
 首次参与验证，先看 [GitHub 获取代码与协作验证指南](GitHub获取代码与协作验证指南.md)：获取训练分支、蓝区离线传输、找到验证入口，以及提交反馈/PR。
 
-理解当前代码结构和接口，参见正式的 [BF16 训练框架设计](../../experiments/megamoe_train/docs/BF16_FRAMEWORK_DESIGN_ZH.md)：Python / Host / Kernel 分层、autograd 状态、SHMEM 资源和统一测试入口。原[框架设计历史快照](BF16_FRAMEWORK_DESIGN_ZH.md)只保留迁移沿革，不作为当前接口说明。
+当前公开文档为[用户指南](../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)与[前后向设计](../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)，分别说明接入、接口、窗口容量与限制，以及代码架构、计算、状态和同步。原[框架设计历史快照](BF16_FRAMEWORK_DESIGN_ZH.md)只保留迁移沿革，不作为当前接口说明。
 
 1. [实施与分工方案](实施与分工方案.md)：固定源 b8cff148，你先整体迁移，再两人专项复核。
 2. [首轮迁移验收](首轮迁移验收.md)：构建、精度、生命周期、已知失败与尚未验证的范围。
@@ -19,6 +19,20 @@
 7. [正式文档与注释整理记录](正式文档与注释整理记录_20261031.md)：保留移出的过程说明、原文出处、正式入口及本轮检查结果。
 8. `historical_source/`：源版本的历史说明；其中旧数据不能代替当前迁移结果。
 9. `data/`：各轮结构化记录，保留输入/输出哈希、每 rank 原始时间样本与汇总。
+10. `implementation_notes/`：迁移期间的框架、数值、形状与拓扑、Dispatch 和向量搬运说明；其中必要的公开契约已整理进上述两份正式文档。
+
+## 2026-11-04 说明归档
+
+以下六份工作说明从 `experiments/megamoe_train/docs/` 移入本目录的 `implementation_notes/`，供迁移审阅追溯：
+
+- [框架说明](implementation_notes/BF16_FRAMEWORK_DESIGN_ZH.md)
+- [SwiGLU 数值说明](implementation_notes/BF16_SWIGLU_NUMERICS.md)
+- [形状与拓扑说明](implementation_notes/BF16_SHAPE_AND_TOPOLOGY_LIMITS.md)
+- [反向 Dispatch 说明](implementation_notes/BF16_BACKWARD_DISPATCH_READY.md)
+- [前反向就绪策略说明](implementation_notes/BF16_DISPATCH_READY_DEFAULTS.md)
+- [向量与路由搬运说明](implementation_notes/BF16_VECTOR_ROUTING_OPTIMIZATION.md)
+
+正式文档及模块 README 不依赖上述工作说明。上游的 `experiments/megamoe_train/docs/visual/` 继续作为公开源码导览维护；本目录的归档不移动该导览及其维护说明。
 
 硬件地址、个人机器路径、SSH 信息、完整终端日志和冻结张量不上传公开仓。原始证据
 继续保留在本地诊断目录。公开 JSON 中的哈希和时长足以复核本文的统计计算。
@@ -61,6 +75,5 @@ head 的 PR diff 中；**禁止把包含本目录的协作 PR 直接合入 main 
 
 原 `experiments/megamoe_train/docs/MIGRATION_PLAN_ZH.md`、`VALIDATION.md` 和
 `BF16_TRAIN_SYNC_20261028.md` 中的过程资料已集中到本目录。其余算法说明删除实验
-日期、旧性能表和迁移流水记录，保留长期计算/调度契约。`upstream.json` 保留被排除
-源文档的原始来源 SHA，导入文件数从首轮的 82 变为 81。当前来源检查仅验证固定
-来源声明和必需文件存在性，后续局部命名与目录调整在 adaptation 中记录。
+日期、旧性能表和迁移流水记录，保留长期计算/调度契约。原始来源映射与必需文件检查
+工具已在统一署名整理中移除，来源说明保留在模块 README；导入文件数从首轮的 82 变为 81。

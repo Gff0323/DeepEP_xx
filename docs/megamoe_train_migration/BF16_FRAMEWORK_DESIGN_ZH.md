@@ -1,12 +1,12 @@
 # 历史框架说明存档
 
-> 下文保留迁移阶段的原框架说明及其当时的来源、接口比较和验证状态，供协作追溯。当前长期维护的 API、分层与生命周期文档请阅读[正式框架设计](../../experiments/megamoe_train/docs/BF16_FRAMEWORK_DESIGN_ZH.md)。本文的“当前”“本轮”和验证结论均属于原记录时点，不作为现版本的接口或验收承诺。
+> 下文保留迁移阶段的原框架说明及其当时的来源、接口比较和验证状态，供协作追溯。当前长期维护的接口与接入文档见[用户指南](../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)，代码架构、状态与同步见[前后向设计](../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)。本文的“当前”“本轮”和验证结论均属于原记录时点，不作为现版本的接口或验收承诺。
 
 ---
 
 # MegaMoE BF16 训练框架设计
 
-更新日期：2026-10-30。本文描述 `experiments/megamoe_train` 中的 BF16 训练框架，包含对外接口、自动求导、Host / Kernel 分层及资源归属。算子来源固定在 `b8cff14854d12aef77b6ae54b5890123759b4d28`。
+更新日期：2026-10-31。本文描述 `experiments/megamoe_train` 中的 BF16 训练框架，包含对外接口、自动求导、Host / Kernel 分层及资源归属。算子来源固定在 `b8cff14854d12aef77b6ae54b5890123759b4d28`。
 
 本文主要解释对外接口、代码分层、PyTorch 自动求导桥接、通信资源和内存生命周期。设备内部的流水同步、tile 调度及数值舍入细节由对应实现和专题文档说明。以下描述以当前代码为准，历史迁移记录中的旧接口不应当作当前调用方式。
 
@@ -126,18 +126,17 @@ experiments/megamoe_train/
 │       ├── schedule/              就绪判断、生产阶段与 tile 调度
 │       ├── routing/               初始化路由、权重收集、combine 与 unpermute
 │       │   └── moe_init_routing_v3/arch35/  引入的路由初始化实现
-│       └── common/                共享 tiling 数据、常量、拷贝与 op_kernel 辅助
+│       └── common/                共享 tiling 数据、常量、saved-meta/拷贝与 op_kernel 辅助
 ├── tests/bf16/
 │   ├── test_mega_moe.py           前后向精度 / 性能单入口
 │   ├── cpu_reference.py          Torch CPU FP64 真值
 │   ├── npu_baseline.py           NPU 小算子参考
 │   ├── atk_compare.py            ATK 双标杆适配
-│   └── cases.json / TEST_PLAN.md 用例清单及覆盖说明
+│   └── cases.json / TEST_SPEC.md 用例清单及口径说明
 ├── tests/integration/
 │   └── bf16_lifecycle.py          多次调用、流和关闭重建检查
 ├── benchmarks/paired.py           历史迁移性能对照工具
 ├── CMakeLists.txt                 可选训练扩展构建
-├── upstream.json                  来源文件映射与原始 SHA
 └── docs/                          数值与调度专题说明
 ```
 
@@ -157,6 +156,8 @@ experiments/megamoe_train/
 设备实现直接放在 `kernels/bf16/` 下，按职责分组，不再增加私有 `include/` 层。根目录只保留前后向设备入口、主控类和 README；路由、调度、GEMM、epilogue 和布局进入对应子目录。项目维护的 C++ / Ascend C 头文件统一使用 `.hpp`；`common/op_kernel/` 和 `routing/moe_init_routing_v3/arch35/` 中引入的 SDK 头保留原始 `.h` 文件名。Host 专用的 tiling 内部实现放在 `csrc/bf16/tiling_impl.hpp`，Host/Device 共享的 tiling 数据仍放在设备目录的 `common/`。
 
 设备侧 `layout/mega_moe_layout.hpp` 定义 Host/Device 共用的布局公式；`layout/mega_moe_workspace_view.hpp` 将基址和布局映射为设备地址视图，包含 `ForwardWorkspaceInfo`、反向视图及 `PeermemInfo`；`layout/mega_moe_context.hpp` 保留通信 context、地址句柄和共享 Params。Host 侧同名的 `WorkspaceInfo` 是容量计算结果类型，保持原名。
+
+saved-meta 布局与复制辅助合并在 `common/mega_moe_forward_save.hpp`；TopK gather 和 unpermute 的规划类型分别与实现合并在对应 `routing/` 头文件中。共享的对齐、字节数和 SwiGLU 拆分常量由 `mega_moe_layout.hpp` 定义，各使用点保留原来的常量类型。未使用的 MGroup 声明和专用 MMAD 分支已移除。反向阶段调试打印、阶段编号写入及其 1 KiB 保存区也已移除；dispatch 就绪进度与计算同步标志保留。
 
 纯前向实现与对应反向实现采用一致的命名格式，包括 `MegaMoeBF16Forward / MegaMoeBF16Backward`、前后向 CATLASS namespace 和 SwiGLU epilogue。共享 Params、`MegaMoeBF16Impl` namespace 和整个训练模块的名称保持不变。现有阶段与调度头保留原粒度，本轮不创建 `stage/`。
 
@@ -378,7 +379,8 @@ Host 在提交前后向后，对实际参与计算的 Tensor 调用 `NPUCachingA
 | [cpu_reference.py](../../experiments/megamoe_train/tests/bf16/cpu_reference.py) / [npu_baseline.py](../../experiments/megamoe_train/tests/bf16/npu_baseline.py) | Torch CPU FP64 真值、原始 NPU BF16 BigOp 和契约辅助参考 |
 | [atk_compare.py](../../experiments/megamoe_train/tests/bf16/atk_compare.py) / [cases.json](../../experiments/megamoe_train/tests/bf16/cases.json) | ATK 双标杆判定及用例清单；典型尺寸从 M512 开始 |
 | [bf16_lifecycle.py](../../experiments/megamoe_train/tests/integration/bf16_lifecycle.py) | 设备上的多次调用、流约束、权重布局和关闭重建 |
-| [upstream.json](../../experiments/megamoe_train/upstream.json) / [check_source_import.py](../../experiments/megamoe_train/scripts/check_source_import.py) | 原始来源 SHA、source/target 映射和必需文件存在性检查 |
+
+来源映射与必需文件检查工具已在统一署名整理中移除，来源说明保留在[模块 README](../../experiments/megamoe_train/README.md)。
 
 当前测试使用一个入口，默认先精度后性能；`--skip performance` 只执行精度，`--skip precision` 只执行性能。参考与融合共用固定输入快照和随机上游 dy；ATK 使用 CPU FP64 与独立 BF16 BigOp，不代表真实模型 loss 或收敛验证。
 

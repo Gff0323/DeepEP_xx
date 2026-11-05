@@ -11,6 +11,7 @@ Flash、Pro、GLM 各取每 rank M=512、2048、4096、8192。
 范围为 Ascend950、CANN 9.2、BF16 训练公共接口的前向、四项反向梯度及独立计时。
 模型参数取自用户提供的 Flash、Pro、GLM 配置；使用合成输入和缩减专家数，
 不加载真实 checkpoint，不复现模型 router、共享专家或量化计算。
+发布清单的 12 条用例统一使用 BF16 保存；`mxfp8` 与 `auto` 保存形式未纳入本规范验收，按实验性质对待。已有的 MXFP8 运行仅为诊断对照（见第 5 节），不构成验收。
 
 | 用例前缀 | hidden H | SwiGLU F / GMM1 N | TopK | 每 rank 专家数 | clipping | 路由权重缩放 | 条数 |
 | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
@@ -61,6 +62,7 @@ ATK 最大/平均/RMSE 误差比例门限为 5/1.5/1.5，小值域数量比例�
 BF16 辅助混合容差为 atol=rtol=2^-7、匹配比例>=99%，
 最大绝对误差<=max(0.1,32*ULP)。当前测试要求混合容差、ATK 和 counts 均通过；
 辅助参考不是独立 CPU 真值，混合容差通过不能覆盖 ATK 失败。
+参考实现派生自 `fft__/ascend_deepep_hkq`（`568ac7c`），只取测试侧代码。
 
 ## 4. 执行方式
 
@@ -87,7 +89,7 @@ python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
 ```
 
 `--skip precision` 仅运行有限值、计数检查和性能计时，不依赖 ATK；不加 --skip 则先精度后性能。
-性能按源仓 `test/bigop_fused` 的口径给出三个同步 Event 区间（前向、反向、前向+反向），`--warmup`/`--loops` 各一组样本，窗口前后各同步一次，不构建也不读取设备 Timer；报告把两侧记作 `megamoe_bf16` 与 `baseline`。`--baseline on`（默认）另测移植的 dropless 小算子链（permute、dispatch、GMM1、带路由权重的 SwiGLU、GMM2、combine、加权 unpermute），与算子共用同一份路由、权重和上游梯度，GEMM 数量对齐（`none` 重算 GMM1，其余复用保存的 Gate/Up），输出各口径 speedup；`--baseline off` 只测 MegaMoE BF16。三个口径同时给 MFU（RFK 模型的 GMM FLOPs ÷ 432 TFLOPS 峰值）与 roofline（源仓 410.4 TFLOPS 分母的 floor/measured/overhead），`floor ÷ measured` 即相对该降额上限的达成率，比同口径 MFU 高约 5%，因此不再单独存百分比字段；区间内含 alltoall/permute/激活，属算子级 GMM 利用率，不是模型级 MFU。baseline 只作信息对照，不参与 PASS/FAIL，无法建立 HCCL 子组或超过 16 GiB 打包路由预算时记 `SKIPPED` 及原因。
+性能按源仓 `test/bigop_fused`（`ascend_deepep_hkq@f575fc1`，只取测试侧代码）的口径给出三个同步 Event 区间（前向、反向、前向+反向），`--warmup`/`--loops` 各一组样本，窗口前后各同步一次，不构建也不读取设备 Timer；报告把两侧记作 `megamoe_bf16` 与 `baseline`。`--baseline on`（默认）另测移植的 dropless 小算子链（permute、dispatch、GMM1、带路由权重的 SwiGLU、GMM2、combine、加权 unpermute），与算子共用同一份路由、权重和上游梯度，GEMM 数量对齐（`none` 重算 GMM1，其余复用保存的 Gate/Up），输出各口径 speedup；`--baseline off` 只测 MegaMoE BF16。三个口径同时给 MFU（RFK 模型的 GMM FLOPs ÷ 432 TFLOPS 峰值）与 roofline（源仓 410.4 TFLOPS 分母的 floor/measured/overhead），`floor ÷ measured` 即相对该降额上限的达成率，比同口径 MFU 高约 5%，因此不再单独存百分比字段；区间内含 alltoall/permute/激活，属算子级 GMM 利用率，不是模型级 MFU。baseline 只作信息对照，不参与 PASS/FAIL，无法建立 HCCL 子组或超过 16 GiB 打包路由预算时记 `SKIPPED` 及原因。日志级由 `--log` 控制，默认 `quiet`，排查阻塞时用 `rank0`（保留 rank 0 的阶段日志与 `[PERF] stage` 标记）。
 默认跨用例复用 worker/runtime，输入和参考每次重新计算；`--isolate-cases` 使用独立执行器。
 CPU FP64 参考和完整权重梯度可能占用较多主机内存，需要先核对实际容器资源。
 
@@ -135,5 +137,6 @@ CPU FP64 真值，仅重算 BigOp。其余四项输出没有在这轮缓存复�
 脚本完成 EP2、H7168 的 BF16/none/MXFP8 完整块、尾块及 clipping 前后向对照，18 个
 rank-case 全部通过现有混合容差和精确 counts；此轮未执行 CPU FP64 或 ATK。
 原始结果与临时脚本保存在仓库外，PR 说明记录各轮的版本与具体覆盖。
+H7168 的 `ptrDX` 中间量存在已知精度差异：中间量与最终梯度的验收分离，最终梯度通过不代表该中间量逐元素达标；过程数据保存在协作归档，不随公开导出发布。
 
 性能测试的实测数据不写入本文件，随每次运行的报告保存。

@@ -1,5 +1,7 @@
 # BF16前反向Dispatch就绪策略
 
+> 迁移期间的实现说明，2026-11-04 归档。当前公开接口、限制和算法说明以[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)与[前后向设计](../../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)为准；本文保留迁移审阅上下文。
+
 普通BF16的默认构建策略为`adaptive-auto`。前向使用M192计算块、Ready384行进度及静态producer元数据；反向saved路径使用M128计算块、256行进度及静态元数据。DMA每次搬运的行数与消费者等待行进度或整专家完成是两个独立选择。
 
 ## 统一整专家回退选项
@@ -47,9 +49,9 @@
 
 反向细分使用M128计算块、256行producer进度、固定N3和跨组尾块后置；整专家路径使用`3_1`。默认≥8专家及强制整专家构建不追加细分控制区。
 
-## Saved-state预留区
+## Saved-state与行进度区
 
-saved-state包含`256 × int32`的1KiB预留区，用于固定后续Gate/Up、scale和clipping mask偏移。Host和kernel不对该区执行诊断写入或逐次清零。它与`BackwardDispatchProgressLayout`的行进度后缀是不同内存区域；后者用于算法同步，必须按当前就绪策略正确初始化、发布和等待。
+`TrainingSavedStateLayout`将路由元数据及可选的Gate/Up、scale、clipping mask作为持久状态；Gate/Up从元数据末尾按512字节对齐开始。`BackwardDispatchProgressLayout`则位于反向临时workspace的行进度后缀，两者生命周期不同。行进度用于算法同步，必须按当前就绪策略正确初始化、发布和等待。
 
 ## 支持边界
 

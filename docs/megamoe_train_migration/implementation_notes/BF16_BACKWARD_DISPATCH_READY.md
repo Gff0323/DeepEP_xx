@@ -1,5 +1,7 @@
 # BF16反向Dispatch行进度与配套分核
 
+> 迁移期间的实现说明，2026-11-04 归档。当前公开接口、限制和算法说明以[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)与[前后向设计](../../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)为准；本文保留迁移审阅上下文。
+
 Dispatch producer按source搬运dO并发布已完成行数，dHp计算侧据此消费可读行块。行进度交付与静态任务映射配合，使计算侧能够消费已到达的数据，而不必等待整个专家的Dispatch完成。
 
 ## 构建与回退
@@ -35,7 +37,7 @@ Dispatch producer按source搬运dO并发布已完成行数，dHp计算侧据此�
 
 行进度控制区大小为`k × EP × P × 64B`，其中k为选择细分的专家数，P为每source的producer数。该区位于workspace后缀，payload和控制区前缀具有固定偏移。Host初始化控制区及suffix，kernel每次调用使用本次进度。以每卡4专家、P=1为例，EP64/128/256的控制区分别为16/32/64KiB。
 
-producer只能发布已完成写入的行数，consumer据此判断数据是否可读。该同步协议使用的`BackwardDispatchProgressLayout`后缀与saved-state中的1KiB预留区彼此独立：预留区固定Gate/Up等后续偏移，不承担行进度或诊断写入。
+producer只能发布已完成写入的行数，consumer据此判断数据是否可读。`BackwardDispatchProgressLayout`是本次反向workspace的临时后缀，与前向持久saved-state中的路由元数据、Gate/Up等保存内容独立，不能互相复用或省略就绪协议。
 
 ## 支持边界
 

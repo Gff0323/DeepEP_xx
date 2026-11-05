@@ -1,6 +1,6 @@
 {
-  "sourceCommit": "8199e73324a52f069216749795bda8df105703e5",
-  "sourceRepository": "https://github.com/xixing-321/DeepEP",
+  "sourceCommit": "09c1326fa71dd777a0a44b3a2e47040a0282637a",
+  "sourceRepository": "https://github.com/lueelu/DeepEP",
   "sourceBranch": "feat/megamoe-train-bf16",
   "scenario": {
     "platform": "Ascend950",
@@ -93,8 +93,8 @@
       "lines": 59
     },
     "experiments/megamoe_train/tests/bf16/test_mega_moe.py": {
-      "sha256": "f9a02072bf49d09f0fe6867dab359634f8e20164c020a3b1487f0fdb92b56425",
-      "lines": 1230
+      "sha256": "bc38858be775c56b6a4caf0378df2582201130e806c66a392d97eaf103cdb55d",
+      "lines": 1879
     },
     "experiments/megamoe_train/csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h": {
       "sha256": "4bf902f662cdfd9aaf1173f5a04749121616dedd39f371adf417035fceb67590",
@@ -139,7 +139,7 @@
           "start": 102,
           "end": 110,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L103",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L103",
           "excerpt": [
             {
               "line": 102,
@@ -194,7 +194,7 @@
           "start": 65,
           "end": 85,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L67",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L67",
           "excerpt": [
             {
               "line": 65,
@@ -297,7 +297,7 @@
           "start": 72,
           "end": 84,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L75",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L75",
           "excerpt": [
             {
               "line": 72,
@@ -368,7 +368,7 @@
           "start": 1028,
           "end": 1049,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1030",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1030",
           "excerpt": [
             {
               "line": 1028,
@@ -475,7 +475,7 @@
           "start": 26,
           "end": 31,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L29",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L29",
           "excerpt": [
             {
               "line": 26,
@@ -518,7 +518,7 @@
           "start": 1205,
           "end": 1222,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1207",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1207",
           "excerpt": [
             {
               "line": 1205,
@@ -609,7 +609,7 @@
           "start": 46,
           "end": 51,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L50",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L50",
           "excerpt": [
             {
               "line": 46,
@@ -652,7 +652,7 @@
           "start": 68,
           "end": 85,
           "sha256": "feed0de84fd9c370ec143f36a40941245dfc2f57de5e6918f31d1d50f60e432c",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/CMakeLists.txt#L70",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/CMakeLists.txt#L70",
           "excerpt": [
             {
               "line": 68,
@@ -736,7 +736,7 @@
           "start": 4,
           "end": 9,
           "sha256": "9fe15b40e949e04584997c1931da21f6bd1a3eaad1c463d915aa18bda2305092",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L5",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L5",
           "excerpt": [
             {
               "line": 4,
@@ -779,7 +779,7 @@
           "start": 51,
           "end": 68,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L53",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L53",
           "excerpt": [
             {
               "line": 51,
@@ -863,7 +863,7 @@
           "start": 19,
           "end": 50,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L21",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L21",
           "excerpt": [
             {
               "line": 19,
@@ -1003,7 +1003,7 @@
           "start": 114,
           "end": 117,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115",
           "excerpt": [
             {
               "line": 114,
@@ -1038,7 +1038,7 @@
           "start": 134,
           "end": 145,
           "sha256": "d7e4bd32957530d611684ff939e4f0c26b4bda22a043c0a58c7e3638717d04c7",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/deep_ep/_runtime.py#L136",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/deep_ep/_runtime.py#L136",
           "excerpt": [
             {
               "line": 134,
@@ -1105,7 +1105,7 @@
           "start": 6,
           "end": 26,
           "sha256": "162ffa6a61d1c0aa6fb7f451a31bdb44de80747b1fe2581d4e06b106f36880a7",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bindings.cpp#L8",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bindings.cpp#L8",
           "excerpt": [
             {
               "line": 6,
@@ -1208,7 +1208,7 @@
           "start": 334,
           "end": 342,
           "sha256": "7f5c623221de5af7913204238c7bf704fcd888356e4ce03c47230ef803eddbe1",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/runtime/session.cpp#L336",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/csrc/runtime/session.cpp#L336",
           "excerpt": [
             {
               "line": 334,
@@ -1256,7 +1256,7 @@
           "start": 63,
           "end": 71,
           "sha256": "c3d2d6a68c9b50f716698d3f8ab1a917e87d3a18e09d47e9dff67b0abdf39362",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/bindings/module.cpp#L64",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/csrc/bindings/module.cpp#L64",
           "excerpt": [
             {
               "line": 63,
@@ -1311,7 +1311,7 @@
           "start": 462,
           "end": 474,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L464",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L464",
           "excerpt": [
             {
               "line": 462,
@@ -1375,7 +1375,7 @@
           "start": 61,
           "end": 79,
           "sha256": "61328972d947d245f43fa74d4ffadb0d99f25102c05a1e5ce2b2ceadcf29cc6e",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L63",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/launcher.cpp#L63",
           "excerpt": [
             {
               "line": 61,
@@ -1470,7 +1470,7 @@
           "start": 45,
           "end": 65,
           "sha256": "30adcb573a5d9c0dd0699bb4ea648e0f836cfae3640e304c4b2a893a6770d6a5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/tiling.cpp#L47",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/tiling.cpp#L47",
           "excerpt": [
             {
               "line": 45,
@@ -1566,7 +1566,7 @@
           "start": 264,
           "end": 282,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L266",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L266",
           "excerpt": [
             {
               "line": 264,
@@ -1661,7 +1661,7 @@
           "start": 17,
           "end": 33,
           "sha256": "9fe15b40e949e04584997c1931da21f6bd1a3eaad1c463d915aa18bda2305092",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L19",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L19",
           "excerpt": [
             {
               "line": 17,
@@ -1741,7 +1741,7 @@
           "start": 15,
           "end": 29,
           "sha256": "3fb35f9a5f83f49b9002e5b8d531fac07547c083baa1b97ff3d0cb03100aa305",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L17",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L17",
           "excerpt": [
             {
               "line": 15,
@@ -1820,7 +1820,7 @@
           "start": 249,
           "end": 264,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L251",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L251",
           "excerpt": [
             {
               "line": 249,
@@ -1903,7 +1903,7 @@
           "start": 40,
           "end": 46,
           "sha256": "6c1f760870f934a9063aeba3e12bab0ac63d83b9e5118f122646ad5bdde0422b",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/CMakeLists.txt#L42",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/CMakeLists.txt#L42",
           "excerpt": [
             {
               "line": 40,
@@ -1943,7 +1943,7 @@
           "start": 49,
           "end": 67,
           "sha256": "feed0de84fd9c370ec143f36a40941245dfc2f57de5e6918f31d1d50f60e432c",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/CMakeLists.txt#L51",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/CMakeLists.txt#L51",
           "excerpt": [
             {
               "line": 49,
@@ -2038,7 +2038,7 @@
           "start": 65,
           "end": 82,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L67",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L67",
           "excerpt": [
             {
               "line": 65,
@@ -2129,7 +2129,7 @@
           "start": 73,
           "end": 83,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L75",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L75",
           "excerpt": [
             {
               "line": 73,
@@ -2185,7 +2185,7 @@
           "start": 62,
           "end": 71,
           "sha256": "c3d2d6a68c9b50f716698d3f8ab1a917e87d3a18e09d47e9dff67b0abdf39362",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/bindings/module.cpp#L64",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/csrc/bindings/module.cpp#L64",
           "excerpt": [
             {
               "line": 62,
@@ -2244,7 +2244,7 @@
           "start": 445,
           "end": 460,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L447",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L447",
           "excerpt": [
             {
               "line": 445,
@@ -2320,7 +2320,7 @@
           "start": 41,
           "end": 61,
           "sha256": "61328972d947d245f43fa74d4ffadb0d99f25102c05a1e5ce2b2ceadcf29cc6e",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L43",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/launcher.cpp#L43",
           "excerpt": [
             {
               "line": 41,
@@ -2423,7 +2423,7 @@
           "start": 21,
           "end": 32,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L23",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L23",
           "excerpt": [
             {
               "line": 21,
@@ -2490,7 +2490,7 @@
           "start": 26,
           "end": 31,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L28",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L28",
           "excerpt": [
             {
               "line": 26,
@@ -2533,7 +2533,7 @@
           "start": 276,
           "end": 285,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L284",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L284",
           "excerpt": [
             {
               "line": 276,
@@ -2592,7 +2592,7 @@
           "start": 32,
           "end": 52,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L34",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L34",
           "excerpt": [
             {
               "line": 32,
@@ -2695,7 +2695,7 @@
           "start": 117,
           "end": 128,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L119",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L119",
           "excerpt": [
             {
               "line": 117,
@@ -2762,7 +2762,7 @@
           "start": 347,
           "end": 370,
           "sha256": "7f5c623221de5af7913204238c7bf704fcd888356e4ce03c47230ef803eddbe1",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/csrc/runtime/session.cpp#L349",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/csrc/runtime/session.cpp#L349",
           "excerpt": [
             {
               "line": 347,
@@ -2877,7 +2877,7 @@
           "start": 456,
           "end": 463,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L458",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L458",
           "excerpt": [
             {
               "line": 456,
@@ -2928,7 +2928,7 @@
           "start": 108,
           "end": 118,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L115",
           "excerpt": [
             {
               "line": 108,
@@ -2991,7 +2991,7 @@
           "start": 21,
           "end": 31,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L23",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L23",
           "excerpt": [
             {
               "line": 21,
@@ -3054,7 +3054,7 @@
           "start": 21,
           "end": 26,
           "sha256": "162ffa6a61d1c0aa6fb7f451a31bdb44de80747b1fe2581d4e06b106f36880a7",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bindings.cpp#L24",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bindings.cpp#L24",
           "excerpt": [
             {
               "line": 21,
@@ -3090,7 +3090,7 @@
           "start": 462,
           "end": 475,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L464",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L464",
           "excerpt": [
             {
               "line": 462,
@@ -3165,7 +3165,7 @@
           "start": 193,
           "end": 216,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L195",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L195",
           "excerpt": [
             {
               "line": 193,
@@ -3280,7 +3280,7 @@
           "start": 45,
           "end": 65,
           "sha256": "30adcb573a5d9c0dd0699bb4ea648e0f836cfae3640e304c4b2a893a6770d6a5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/tiling.cpp#L47",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/tiling.cpp#L47",
           "excerpt": [
             {
               "line": 45,
@@ -3376,7 +3376,7 @@
           "start": 36,
           "end": 42,
           "sha256": "61328972d947d245f43fa74d4ffadb0d99f25102c05a1e5ce2b2ceadcf29cc6e",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L38",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/launcher.cpp#L38",
           "excerpt": [
             {
               "line": 36,
@@ -3423,7 +3423,7 @@
           "start": 263,
           "end": 276,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L265",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L265",
           "excerpt": [
             {
               "line": 263,
@@ -3498,7 +3498,7 @@
           "start": 75,
           "end": 88,
           "sha256": "61328972d947d245f43fa74d4ffadb0d99f25102c05a1e5ce2b2ceadcf29cc6e",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L78",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/launcher.cpp#L78",
           "excerpt": [
             {
               "line": 75,
@@ -3573,7 +3573,7 @@
           "start": 31,
           "end": 46,
           "sha256": "9fe15b40e949e04584997c1931da21f6bd1a3eaad1c463d915aa18bda2305092",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L33",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L33",
           "excerpt": [
             {
               "line": 31,
@@ -3656,7 +3656,7 @@
           "start": 17,
           "end": 33,
           "sha256": "9fe15b40e949e04584997c1931da21f6bd1a3eaad1c463d915aa18bda2305092",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L19",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp#L19",
           "excerpt": [
             {
               "line": 17,
@@ -3743,7 +3743,7 @@
           "start": 1068,
           "end": 1088,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1070",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1070",
           "excerpt": [
             {
               "line": 1068,
@@ -3846,7 +3846,7 @@
           "start": 26,
           "end": 31,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L28",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L28",
           "excerpt": [
             {
               "line": 26,
@@ -3882,7 +3882,7 @@
           "start": 277,
           "end": 285,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L284",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L284",
           "excerpt": [
             {
               "line": 277,
@@ -3937,7 +3937,7 @@
           "start": 32,
           "end": 52,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L34",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L34",
           "excerpt": [
             {
               "line": 32,
@@ -4029,54 +4029,54 @@
           "path": "experiments/megamoe_train/tests/bf16/test_mega_moe.py",
           "anchor": "    with phase(\"fused_forward_backward\"):",
           "occurrence": 1,
-          "line": 974,
-          "start": 973,
-          "end": 983,
-          "sha256": "f9a02072bf49d09f0fe6867dab359634f8e20164c020a3b1487f0fdb92b56425",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/tests/bf16/test_mega_moe.py#L974",
+          "line": 1574,
+          "start": 1573,
+          "end": 1583,
+          "sha256": "bc38858be775c56b6a4caf0378df2582201130e806c66a392d97eaf103cdb55d",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/tests/bf16/test_mega_moe.py#L1574",
           "excerpt": [
             {
-              "line": 973,
+              "line": 1573,
               "text": "    # close while peers may still be executing a different operation."
             },
             {
-              "line": 974,
+              "line": 1574,
               "text": "    with phase(\"fused_forward_backward\"):"
             },
             {
-              "line": 975,
+              "line": 1575,
               "text": "        y, counts = op("
             },
             {
-              "line": 976,
+              "line": 1576,
               "text": "            x, ids, p, w1, w2, capacity, save_gmm1_output=args.save_gmm1_output, swiglu_limit=args.swiglu_limit"
             },
             {
-              "line": 977,
+              "line": 1577,
               "text": "        )"
             },
             {
-              "line": 978,
+              "line": 1578,
               "text": "        y.backward(dy)"
             },
             {
-              "line": 979,
+              "line": 1579,
               "text": "        torch.npu.synchronize()"
             },
             {
-              "line": 980,
+              "line": 1580,
               "text": "    values = dict(y=y, dx=x.grad, dtopk_weights=p.grad, dw1=w1.grad, dw2=w2.grad, counts=counts)"
             },
             {
-              "line": 981,
+              "line": 1581,
               "text": "    if any(value is None for value in values.values()):"
             },
             {
-              "line": 982,
+              "line": 1582,
               "text": "        raise RuntimeError(\"Fused forward/backward did not produce every required result\")"
             },
             {
-              "line": 983,
+              "line": 1583,
               "text": "    if counts.dtype != torch.int32 or tuple(counts.shape) != (args.expert_per_rank,):"
             }
           ]
@@ -4096,7 +4096,7 @@
           "start": 33,
           "end": 52,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L35",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L35",
           "excerpt": [
             {
               "line": 33,
@@ -4195,7 +4195,7 @@
           "start": 23,
           "end": 26,
           "sha256": "162ffa6a61d1c0aa6fb7f451a31bdb44de80747b1fe2581d4e06b106f36880a7",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bindings.cpp#L25",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bindings.cpp#L25",
           "excerpt": [
             {
               "line": 23,
@@ -4223,7 +4223,7 @@
           "start": 472,
           "end": 486,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L474",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L474",
           "excerpt": [
             {
               "line": 472,
@@ -4302,7 +4302,7 @@
           "start": 285,
           "end": 309,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L287",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L287",
           "excerpt": [
             {
               "line": 285,
@@ -4421,7 +4421,7 @@
           "start": 134,
           "end": 157,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L136",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L136",
           "excerpt": [
             {
               "line": 134,
@@ -4529,7 +4529,7 @@
           "start": 412,
           "end": 418,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L415",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L415",
           "excerpt": [
             {
               "line": 412,
@@ -4576,7 +4576,7 @@
           "start": 417,
           "end": 430,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L422",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L422",
           "excerpt": [
             {
               "line": 417,
@@ -4651,7 +4651,7 @@
           "start": 101,
           "end": 111,
           "sha256": "61328972d947d245f43fa74d4ffadb0d99f25102c05a1e5ce2b2ceadcf29cc6e",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/launcher.cpp#L103",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/launcher.cpp#L103",
           "excerpt": [
             {
               "line": 101,
@@ -4714,7 +4714,7 @@
           "start": 27,
           "end": 41,
           "sha256": "3fb35f9a5f83f49b9002e5b8d531fac07547c083baa1b97ff3d0cb03100aa305",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L29",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L29",
           "excerpt": [
             {
               "line": 27,
@@ -4793,7 +4793,7 @@
           "start": 15,
           "end": 30,
           "sha256": "3fb35f9a5f83f49b9002e5b8d531fac07547c083baa1b97ff3d0cb03100aa305",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L17",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp#L17",
           "excerpt": [
             {
               "line": 15,
@@ -4876,7 +4876,7 @@
           "start": 1205,
           "end": 1223,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1207",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1207",
           "excerpt": [
             {
               "line": 1205,
@@ -4964,7 +4964,7 @@
           "start": 882,
           "end": 902,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L884",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L884",
           "excerpt": [
             {
               "line": 882,
@@ -5067,7 +5067,7 @@
           "start": 47,
           "end": 51,
           "sha256": "3dd5b07b4ba87ad02431460d8ab69e561df85d41de39f1075bcc99639e6ed9c5",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L50",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py#L50",
           "excerpt": [
             {
               "line": 47,
@@ -5099,7 +5099,7 @@
           "start": 432,
           "end": 441,
           "sha256": "d5192fa4d04c72ad9833b5daf356db5ee7c935c941f7b2142dba693b5c42e9d8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/bf16/training.cpp#L440",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/bf16/training.cpp#L440",
           "excerpt": [
             {
               "line": 432,
@@ -5158,7 +5158,7 @@
           "start": 1059,
           "end": 1070,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1060",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1060",
           "excerpt": [
             {
               "line": 1059,
@@ -5218,7 +5218,7 @@
           "start": 141,
           "end": 151,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L145",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L145",
           "excerpt": [
             {
               "line": 141,
@@ -5281,7 +5281,7 @@
           "start": 1078,
           "end": 1090,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1082",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1082",
           "excerpt": [
             {
               "line": 1078,
@@ -5345,7 +5345,7 @@
           "start": 125,
           "end": 131,
           "sha256": "4bf902f662cdfd9aaf1173f5a04749121616dedd39f371adf417035fceb67590",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h#L127",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/routing/moe_init_routing_v3/arch35/moe_init_routing_v3_apt.h#L127",
           "excerpt": [
             {
               "line": 125,
@@ -5392,7 +5392,7 @@
           "start": 1089,
           "end": 1098,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1092",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1092",
           "excerpt": [
             {
               "line": 1089,
@@ -5444,7 +5444,7 @@
           "start": 719,
           "end": 726,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L721",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L721",
           "excerpt": [
             {
               "line": 719,
@@ -5495,7 +5495,7 @@
           "start": 317,
           "end": 337,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L317",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L317",
           "excerpt": [
             {
               "line": 317,
@@ -5591,7 +5591,7 @@
           "start": 1110,
           "end": 1131,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1113",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1113",
           "excerpt": [
             {
               "line": 1110,
@@ -5698,7 +5698,7 @@
           "start": 1136,
           "end": 1144,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1136",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1136",
           "excerpt": [
             {
               "line": 1136,
@@ -5746,7 +5746,7 @@
           "start": 1154,
           "end": 1163,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1154",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1154",
           "excerpt": [
             {
               "line": 1154,
@@ -5798,7 +5798,7 @@
           "start": 398,
           "end": 410,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L398",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L398",
           "excerpt": [
             {
               "line": 398,
@@ -5869,7 +5869,7 @@
           "start": 781,
           "end": 797,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L782",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L782",
           "excerpt": [
             {
               "line": 781,
@@ -5949,7 +5949,7 @@
           "start": 426,
           "end": 434,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L428",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L428",
           "excerpt": [
             {
               "line": 426,
@@ -6004,7 +6004,7 @@
           "start": 760,
           "end": 781,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L760",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L760",
           "excerpt": [
             {
               "line": 760,
@@ -6111,7 +6111,7 @@
           "start": 845,
           "end": 867,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L845",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L845",
           "excerpt": [
             {
               "line": 845,
@@ -6222,7 +6222,7 @@
           "start": 323,
           "end": 345,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L323",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L323",
           "excerpt": [
             {
               "line": 323,
@@ -6333,7 +6333,7 @@
           "start": 380,
           "end": 397,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L389",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L389",
           "excerpt": [
             {
               "line": 380,
@@ -6417,7 +6417,7 @@
           "start": 380,
           "end": 383,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L381",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L381",
           "excerpt": [
             {
               "line": 380,
@@ -6452,7 +6452,7 @@
           "start": 162,
           "end": 173,
           "sha256": "3f90e9d50212cf164c7e2cc3614df30e09625d5d5e84d39412ffefa496bf6044",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L169",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L169",
           "excerpt": [
             {
               "line": 162,
@@ -6519,7 +6519,7 @@
           "start": 229,
           "end": 246,
           "sha256": "3f90e9d50212cf164c7e2cc3614df30e09625d5d5e84d39412ffefa496bf6044",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L232",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L232",
           "excerpt": [
             {
               "line": 229,
@@ -6610,7 +6610,7 @@
           "start": 112,
           "end": 127,
           "sha256": "3f90e9d50212cf164c7e2cc3614df30e09625d5d5e84d39412ffefa496bf6044",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L125",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L125",
           "excerpt": [
             {
               "line": 112,
@@ -6693,7 +6693,7 @@
           "start": 1194,
           "end": 1203,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1198",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1198",
           "excerpt": [
             {
               "line": 1194,
@@ -6752,7 +6752,7 @@
           "start": 1221,
           "end": 1226,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1224",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1224",
           "excerpt": [
             {
               "line": 1221,
@@ -6788,7 +6788,7 @@
           "start": 674,
           "end": 684,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L676",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L676",
           "excerpt": [
             {
               "line": 674,
@@ -6851,7 +6851,7 @@
           "start": 684,
           "end": 695,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L684",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L684",
           "excerpt": [
             {
               "line": 684,
@@ -6918,7 +6918,7 @@
           "start": 60,
           "end": 79,
           "sha256": "25b433fc648cf8e47f7d02d12713ba42925ee9603cd3861f8930f438416c3892",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_combine_send.hpp#L68",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_combine_send.hpp#L68",
           "excerpt": [
             {
               "line": 60,
@@ -7010,7 +7010,7 @@
           "start": 702,
           "end": 712,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L702",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L702",
           "excerpt": [
             {
               "line": 702,
@@ -7073,7 +7073,7 @@
           "start": 1251,
           "end": 1258,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1255",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1255",
           "excerpt": [
             {
               "line": 1251,
@@ -7117,7 +7117,7 @@
           "start": 91,
           "end": 108,
           "sha256": "d2053ad4b304c34d4626099a4d564ce1896d7e4aff6dab13568c181529d516e8",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_unpermute.hpp#L93",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_unpermute.hpp#L93",
           "excerpt": [
             {
               "line": 91,
@@ -7201,7 +7201,7 @@
           "start": 1247,
           "end": 1252,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1248",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1248",
           "excerpt": [
             {
               "line": 1247,
@@ -7244,7 +7244,7 @@
           "start": 1256,
           "end": 1263,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1258",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1258",
           "excerpt": [
             {
               "line": 1256,
@@ -7295,7 +7295,7 @@
           "start": 162,
           "end": 169,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L164",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L164",
           "excerpt": [
             {
               "line": 162,
@@ -7339,7 +7339,7 @@
           "start": 1281,
           "end": 1289,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1281",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1281",
           "excerpt": [
             {
               "line": 1281,
@@ -7394,7 +7394,7 @@
           "start": 354,
           "end": 367,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L354",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L354",
           "excerpt": [
             {
               "line": 354,
@@ -7462,7 +7462,7 @@
           "start": 388,
           "end": 402,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L396",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L396",
           "excerpt": [
             {
               "line": 388,
@@ -7541,7 +7541,7 @@
           "start": 1223,
           "end": 1237,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1227",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1227",
           "excerpt": [
             {
               "line": 1223,
@@ -7620,7 +7620,7 @@
           "start": 537,
           "end": 559,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L537",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L537",
           "excerpt": [
             {
               "line": 537,
@@ -7724,7 +7724,7 @@
           "start": 1241,
           "end": 1254,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1249",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1249",
           "excerpt": [
             {
               "line": 1241,
@@ -7799,7 +7799,7 @@
           "start": 572,
           "end": 588,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L574",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L574",
           "excerpt": [
             {
               "line": 572,
@@ -7879,7 +7879,7 @@
           "start": 588,
           "end": 596,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L593",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L593",
           "excerpt": [
             {
               "line": 588,
@@ -7934,7 +7934,7 @@
           "start": 302,
           "end": 314,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L304",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L304",
           "excerpt": [
             {
               "line": 302,
@@ -7998,7 +7998,7 @@
           "start": 826,
           "end": 831,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L826",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L826",
           "excerpt": [
             {
               "line": 826,
@@ -8041,7 +8041,7 @@
           "start": 322,
           "end": 329,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L326",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L326",
           "excerpt": [
             {
               "line": 322,
@@ -8085,7 +8085,7 @@
           "start": 284,
           "end": 290,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L286",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L286",
           "excerpt": [
             {
               "line": 284,
@@ -8132,7 +8132,7 @@
           "start": 314,
           "end": 322,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314",
           "excerpt": [
             {
               "line": 314,
@@ -8180,7 +8180,7 @@
           "start": 161,
           "end": 169,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L164",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L164",
           "excerpt": [
             {
               "line": 161,
@@ -8235,7 +8235,7 @@
           "start": 284,
           "end": 297,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L289",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L289",
           "excerpt": [
             {
               "line": 284,
@@ -8303,7 +8303,7 @@
           "start": 314,
           "end": 322,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L314",
           "excerpt": [
             {
               "line": 314,
@@ -8351,7 +8351,7 @@
           "start": 771,
           "end": 781,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L771",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L771",
           "excerpt": [
             {
               "line": 771,
@@ -8414,7 +8414,7 @@
           "start": 730,
           "end": 753,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L735",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L735",
           "excerpt": [
             {
               "line": 730,
@@ -8522,7 +8522,7 @@
           "start": 721,
           "end": 755,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L724",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L724",
           "excerpt": [
             {
               "line": 721,
@@ -8674,7 +8674,7 @@
           "start": 784,
           "end": 796,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L789",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L789",
           "excerpt": [
             {
               "line": 784,
@@ -8738,7 +8738,7 @@
           "start": 442,
           "end": 505,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L442",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L442",
           "excerpt": [
             {
               "line": 442,
@@ -9013,7 +9013,7 @@
           "start": 832,
           "end": 839,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L834",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L834",
           "excerpt": [
             {
               "line": 832,
@@ -9064,7 +9064,7 @@
           "start": 901,
           "end": 910,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L905",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L905",
           "excerpt": [
             {
               "line": 901,
@@ -9123,7 +9123,7 @@
           "start": 910,
           "end": 921,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L917",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L917",
           "excerpt": [
             {
               "line": 910,
@@ -9183,7 +9183,7 @@
           "start": 607,
           "end": 623,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L607",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L607",
           "excerpt": [
             {
               "line": 607,
@@ -9270,7 +9270,7 @@
           "start": 917,
           "end": 927,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L922",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L922",
           "excerpt": [
             {
               "line": 917,
@@ -9333,7 +9333,7 @@
           "start": 422,
           "end": 438,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L423",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L423",
           "excerpt": [
             {
               "line": 422,
@@ -9413,7 +9413,7 @@
           "start": 472,
           "end": 479,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L475",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L475",
           "excerpt": [
             {
               "line": 472,
@@ -9464,7 +9464,7 @@
           "start": 462,
           "end": 472,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L467",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L467",
           "excerpt": [
             {
               "line": 462,
@@ -9520,7 +9520,7 @@
           "start": 433,
           "end": 442,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L436",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L436",
           "excerpt": [
             {
               "line": 433,
@@ -9579,7 +9579,7 @@
           "start": 938,
           "end": 959,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L939",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L939",
           "excerpt": [
             {
               "line": 938,
@@ -9679,7 +9679,7 @@
           "start": 1374,
           "end": 1381,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1378",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1378",
           "excerpt": [
             {
               "line": 1374,
@@ -9730,7 +9730,7 @@
           "start": 1379,
           "end": 1389,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1379",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1379",
           "excerpt": [
             {
               "line": 1379,
@@ -9793,7 +9793,7 @@
           "start": 1017,
           "end": 1036,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1018",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1018",
           "excerpt": [
             {
               "line": 1017,
@@ -9885,7 +9885,7 @@
           "start": 1038,
           "end": 1045,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1040",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1040",
           "excerpt": [
             {
               "line": 1038,
@@ -9936,7 +9936,7 @@
           "start": 1396,
           "end": 1410,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1402",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1402",
           "excerpt": [
             {
               "line": 1396,
@@ -10015,7 +10015,7 @@
           "start": 1087,
           "end": 1103,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1091",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1091",
           "excerpt": [
             {
               "line": 1087,
@@ -10095,7 +10095,7 @@
           "start": 1169,
           "end": 1180,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1177",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1177",
           "excerpt": [
             {
               "line": 1169,
@@ -10162,7 +10162,7 @@
           "start": 1189,
           "end": 1207,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1189",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1189",
           "excerpt": [
             {
               "line": 1189,
@@ -10250,7 +10250,7 @@
           "start": 1407,
           "end": 1427,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1413",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1413",
           "excerpt": [
             {
               "line": 1407,
@@ -10353,7 +10353,7 @@
           "start": 248,
           "end": 264,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L248",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L248",
           "excerpt": [
             {
               "line": 248,
@@ -10433,7 +10433,7 @@
           "start": 266,
           "end": 286,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L266",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L266",
           "excerpt": [
             {
               "line": 266,
@@ -10536,7 +10536,7 @@
           "start": 172,
           "end": 190,
           "sha256": "ba6dea176e0f2b3c15b7f3290033a8ee4977572dce21dc58e2061e660f1d21ed",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L175",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L175",
           "excerpt": [
             {
               "line": 172,
@@ -10631,7 +10631,7 @@
           "start": 162,
           "end": 173,
           "sha256": "3f90e9d50212cf164c7e2cc3614df30e09625d5d5e84d39412ffefa496bf6044",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L164",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp#L164",
           "excerpt": [
             {
               "line": 162,
@@ -10691,7 +10691,7 @@
           "start": 425,
           "end": 443,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L425",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L425",
           "excerpt": [
             {
               "line": 425,
@@ -10786,7 +10786,7 @@
           "start": 192,
           "end": 210,
           "sha256": "ba6dea176e0f2b3c15b7f3290033a8ee4977572dce21dc58e2061e660f1d21ed",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L192",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L192",
           "excerpt": [
             {
               "line": 192,
@@ -10874,7 +10874,7 @@
           "start": 337,
           "end": 354,
           "sha256": "1294d943ccf5e89af1302632513f9637775f12e966cecfa58f96ff167a6f4fc6",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L337",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp#L337",
           "excerpt": [
             {
               "line": 337,
@@ -10965,7 +10965,7 @@
           "start": 293,
           "end": 311,
           "sha256": "ba6dea176e0f2b3c15b7f3290033a8ee4977572dce21dc58e2061e660f1d21ed",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L293",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L293",
           "excerpt": [
             {
               "line": 293,
@@ -11053,7 +11053,7 @@
           "start": 361,
           "end": 373,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L366",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L366",
           "excerpt": [
             {
               "line": 361,
@@ -11124,7 +11124,7 @@
           "start": 380,
           "end": 398,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L385",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L385",
           "excerpt": [
             {
               "line": 380,
@@ -11219,7 +11219,7 @@
           "start": 760,
           "end": 781,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L760",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L760",
           "excerpt": [
             {
               "line": 760,
@@ -11326,7 +11326,7 @@
           "start": 1194,
           "end": 1203,
           "sha256": "933f25d935174a31e92cc71144ae7a67bba0504eea71a600e52ade5182cdea0a",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1198",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.hpp#L1198",
           "excerpt": [
             {
               "line": 1194,
@@ -11378,7 +11378,7 @@
           "start": 684,
           "end": 695,
           "sha256": "f3203cbf347a288ea761606a2f535dd5f282c8d4927e9f9b2e77ccf86f5d2237",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L684",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp#L684",
           "excerpt": [
             {
               "line": 684,
@@ -11445,7 +11445,7 @@
           "start": 231,
           "end": 253,
           "sha256": "ba6dea176e0f2b3c15b7f3290033a8ee4977572dce21dc58e2061e660f1d21ed",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L231",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L231",
           "excerpt": [
             {
               "line": 231,
@@ -11549,7 +11549,7 @@
           "start": 253,
           "end": 268,
           "sha256": "ba6dea176e0f2b3c15b7f3290033a8ee4977572dce21dc58e2061e660f1d21ed",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L253",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L253",
           "excerpt": [
             {
               "line": 253,
@@ -11632,7 +11632,7 @@
           "start": 246,
           "end": 257,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L246",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L246",
           "excerpt": [
             {
               "line": 246,
@@ -11692,7 +11692,7 @@
           "start": 322,
           "end": 328,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L326",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L326",
           "excerpt": [
             {
               "line": 322,
@@ -11739,7 +11739,7 @@
           "start": 314,
           "end": 322,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L315",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L315",
           "excerpt": [
             {
               "line": 314,
@@ -11787,7 +11787,7 @@
           "start": 785,
           "end": 794,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L789",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L789",
           "excerpt": [
             {
               "line": 785,
@@ -11846,7 +11846,7 @@
           "start": 780,
           "end": 796,
           "sha256": "90a77bacd2c88ed7d60e153f9c5fc63d186368fccf6ccdf5b7da1d980e811769",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L782",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp#L782",
           "excerpt": [
             {
               "line": 780,
@@ -11933,7 +11933,7 @@
           "start": 912,
           "end": 927,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L917",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L917",
           "excerpt": [
             {
               "line": 912,
@@ -12016,7 +12016,7 @@
           "start": 263,
           "end": 269,
           "sha256": "ba6dea176e0f2b3c15b7f3290033a8ee4977572dce21dc58e2061e660f1d21ed",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L266",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp#L266",
           "excerpt": [
             {
               "line": 263,
@@ -12056,7 +12056,7 @@
           "start": 927,
           "end": 935,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L930",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L930",
           "excerpt": [
             {
               "line": 927,
@@ -12111,7 +12111,7 @@
           "start": 466,
           "end": 473,
           "sha256": "896d5c399ed41b2bf425d065ba4bccdaba6db2a2ce5c5e07a1d0ef8db733a293",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L469",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp#L469",
           "excerpt": [
             {
               "line": 466,
@@ -12155,7 +12155,7 @@
           "start": 995,
           "end": 1009,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L995",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L995",
           "excerpt": [
             {
               "line": 995,
@@ -12234,7 +12234,7 @@
           "start": 1396,
           "end": 1410,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1402",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1402",
           "excerpt": [
             {
               "line": 1396,
@@ -12313,7 +12313,7 @@
           "start": 1173,
           "end": 1180,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1177",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1177",
           "excerpt": [
             {
               "line": 1173,
@@ -12357,7 +12357,7 @@
           "start": 1196,
           "end": 1206,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1198",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1198",
           "excerpt": [
             {
               "line": 1196,
@@ -12420,7 +12420,7 @@
           "start": 1418,
           "end": 1427,
           "sha256": "55ce9c432443f040cb05ce56532ffae497b9f37b1a664321bc1b025dd301a880",
-          "url": "https://github.com/xixing-321/DeepEP/blob/8199e73324a52f069216749795bda8df105703e5/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1419",
+          "url": "https://github.com/lueelu/DeepEP/blob/09c1326fa71dd777a0a44b3a2e47040a0282637a/experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp#L1419",
           "excerpt": [
             {
               "line": 1418,

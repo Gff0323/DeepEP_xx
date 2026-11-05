@@ -1,5 +1,7 @@
 # BF16前反向SwiGLU与路由搬运
 
+> 迁移期间的实现说明，2026-11-04 归档。当前公开接口、限制和算法说明以[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)与[前后向设计](../../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)为准；本文保留迁移审阅上下文。
+
 ## 前向：批量读权重与整块计算
 
 `epilogue/block_epilogue_swiglu_forward_bf16.hpp::ComputeSwigluDirect()`将BF16 Gate/Up直接解包到FP32寄存器，以固定小块完成向量计算，按tile批量读取路由权重。计算使用准确Div和clamp，先将SwiGLU结果舍入BF16，再转回FP32乘p，最后舍入BF16。
@@ -36,7 +38,9 @@ UB握手路径无需原始Gate/Up临时GM。GM解耦路径中，`bf16`复用原�
 
 设备SO同时提供仅含hidden的查询和带savedMode的查询。前者按保存模式策略的并集返回结果，Host直接依赖后者，不执行查询回退。改变编译选项必须完整重建、重装同一次构建的Host/Device wheel，不能只替换一个SO或混装产物。
 
-该宏只控制前向交接。反向`BackwardUsesGm(savedMode)`按已解析保存模式选择路径：`none`使用UB，`bf16/mxfp8`使用GM。
+该宏只控制前向交接。反向`UseGmForBackwardDataGrad(savedMode)`按已解析保存模式选择路径：`none`使用UB，`bf16/mxfp8`使用GM。
+
+`routing/mega_moe_topk_weight_gather.hpp`对65537～131072条路由提供固定两个65536窗口。每次先生成安全的窗口内偏移，再Gather，以原始BF16位选择对应窗口结果。短第二窗只读有效GM字节。不会把越界地址先Gather后再掩码。≤65536保留原快路径，超过131072回退；UDMA默认不启用两窗。临时UB约152KiB，在Dispatch分配UB之前释放，没有新增GM或运行态遍历窗口搜索。
 
 ## Dispatch整专家回退
 
@@ -44,7 +48,7 @@ UB握手路径无需原始Gate/Up临时GM。GM解耦路径中，`bf16`复用原�
 
 该选项优先于运行时`MEGAMOE_BF16_BWD_DISPATCH_SPLIT_EXPERTS`，与SwiGLU交接、保存格式和数值边界独立。更改选项需完整重建、重装同一次构建的Host/Device wheel，所有EP rank必须使用同一构建。详细选择条件见[Dispatch就绪策略](BF16_DISPATCH_READY_DEFAULTS.md)。
 
-saved-state中的1KiB预留区用于固定后续Gate/Up、scale和clipping mask偏移，不执行诊断写入。该区与算法使用的Dispatch行进度后缀是不同内存区域。
+saved-state保存路由元数据及可选的Gate/Up、scale和clipping mask；Gate/Up从元数据末尾按512字节对齐开始。Dispatch行进度后缀位于临时workspace，两者的生命周期与用途不同。
 
 ## InitRouting与路由权重搬运
 

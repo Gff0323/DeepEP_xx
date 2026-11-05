@@ -34,7 +34,7 @@ code --install-extension .artifacts/megamoe-train-source-guide-0.2.0.vsix
 
 H、dH 和 dp 乘积保持 FP32；Hp、dGate/dUp 写出时转回 BF16，Y、dX、dp 在 FP32 归约后最终舍入。修改数值边界时，同时更新 L5 节点、教学计算和表格；流水详情从 L5 读取同一份公式。
 
-[数值契约](../BF16_SWIGLU_NUMERICS.md)也用于 NPU BigOp 与契约参考，CPU FP64 真值独立计算。修改测试参考时，核对导览中的公式和源码引用；原始设备报告与临时验证脚本继续存放在仓库外。
+[数值契约](../mega_moe_bf16_design.md#13-数学关系与舍入边界)也用于 NPU BigOp 与契约参考，CPU FP64 真值独立计算。修改测试参考时，核对导览中的公式和源码引用；原始设备报告与临时验证脚本继续存放在仓库外。
 
 浏览器检查覆盖仓内 HTTP 预览、`file://` 离线页面、VS Code 消息桥，以及 `site/` 发布产物的 HTTP 模式。打包站点后仍使用同一份页面和源码映射。
 

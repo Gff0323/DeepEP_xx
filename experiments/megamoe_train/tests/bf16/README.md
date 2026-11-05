@@ -23,14 +23,16 @@ Modified by guofanfeng 2026
 
 ## 两种用法
 
-精度和性能用同一个入口，靠 `--skip` 选择跑哪一个。下面的设备列表 `0,1,2,3,4,5,6,7` 和端口
-`tcp://127.0.0.1:29862` 都是示例，换成本轮实际分配的物理卡和未占用端口（Gloo 再用端口 +2）。
+精度和性能用同一个入口，靠 `--skip` 选择跑哪一个。下面的设备列表 `0,1,2,3,4,5,6,7`、端口
+`tcp://127.0.0.1:29862` 和用例 `flash_m512`、`pro_m2048` 都是示例，换成本轮实际分配的物理卡、未占用端口
+（Gloo 再用端口 +2）和要测的用例。示例只跑一条；去掉 `--case-id` 会跑所选套件的全部 12 条，
+耗时明显更长。
 
 ### 精度测试
 
 ```bash
 python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1,2,3,4,5,6,7 \
-  --suite priority --skip performance \
+  --suite model --case-id flash_m512 --skip performance \
   --shmem-ip-port tcp://127.0.0.1:29862 \
   --output "$PWD/runs/$(date +%Y%m%d-%H%M%S)-precision"
 ```
@@ -45,7 +47,7 @@ python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1,2,3,4,5,6,7 
 
 ```bash
 python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1,2,3,4,5,6,7 \
-  --suite priority --skip precision --log quiet \
+  --suite model --case-id pro_m2048 --skip precision --log quiet \
   --warmup 2 --loops 10 \
   --shmem-ip-port tcp://127.0.0.1:29862 \
   --output "$PWD/runs/$(date +%Y%m%d-%H%M%S)-perf"

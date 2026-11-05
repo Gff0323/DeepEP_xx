@@ -1,8 +1,13 @@
 # MegaMoE BF16 训练精度流转
 
+> 迁移期间的实现说明，2026-11-04 归档。当前公开接口、限制和算法说明以[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)与[前后向设计](../../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)为准；本文保留迁移审阅上下文。
+
+
 更新日期：2026-11-05。本文描述包含 PR18 FP32 H、dH 改动的实现，以
 `save_gmm1_output="bf16"` 为主线。GMM1 仍先产生 BF16 Gate/Up；图按数据依赖组织，
 实际 kernel 会融合、分块并重叠执行。
+
+## 前向计算
 
 蓝色表示 BF16 张量，橙色表示 FP32 计算或累加，红色表示 FP32→BF16 的舍入边界。
 虚线表示前向留给反向的数据。`D` 是 hidden size，`F` 是 SwiGLU 单路宽度，GMM1
@@ -111,35 +116,35 @@ H、dH 和 dp 乘积均不插入 BF16 中间舍入；Hp、dGate/dUp 仍写 BF16�
 
 ## 测试中的三种参考
 
-统一入口为 [test_mega_moe.py](../tests/bf16/test_mega_moe.py)。三种参考使用同一份公共输入：
+统一入口为 [test_mega_moe.py](../../../experiments/megamoe_train/tests/bf16/test_mega_moe.py)。三种参考使用同一份公共输入：
 
 | 参考 | 作用 | 实现 |
 | --- | --- | --- |
-| MegaMoE 契约参考 | 混合容差检查；匹配本文 FP32 H/dH、BF16 Hp/dZ、FP32 Y/dX/dp 归约 | [npu_baseline.py](../tests/bf16/npu_baseline.py)，`reference="megamoe"` |
-| FP32 边界 BigOp，`fp32-boundaries-v2` | ATK 的 NPU 小算子基线；与融合算子统一本文精度与舍入边界 | [npu_baseline.py](../tests/bf16/npu_baseline.py)，`reference="bigop"` |
-| CPU FP64 真值 | 从公共输入建立数学前反向图，不插入 BF16 中间边界 | [cpu_reference.py](../tests/bf16/cpu_reference.py) |
+| MegaMoE 契约参考 | 混合容差检查；匹配本文 FP32 H/dH、BF16 Hp/dZ、FP32 Y/dX/dp 归约 | [npu_baseline.py](../../../experiments/megamoe_train/tests/bf16/npu_baseline.py)，`reference="megamoe"` |
+| FP32 边界 BigOp，`fp32-boundaries-v2` | ATK 的 NPU 小算子基线；与融合算子统一本文精度与舍入边界 | [npu_baseline.py](../../../experiments/megamoe_train/tests/bf16/npu_baseline.py)，`reference="bigop"` |
+| CPU FP64 真值 | 从公共输入建立数学前反向图，不插入 BF16 中间边界 | [cpu_reference.py](../../../experiments/megamoe_train/tests/bf16/cpu_reference.py) |
 
 BigOp 与契约参考共享 FP32 激活、导数和归并实现；BF16 保存时，两项检查复用同一份结果。
 clipping 在 FP32 中进行，掩码依原始 Gate/Up 判断，边界值保留梯度。BF16 保存模式直接复用
 前向原始 Gate/Up，save=none 才重算。最终 BF16 转换采用最近偶数舍入。公共数值规则适用于
 所有已有保存模式，当前发布用例仍仅覆盖 BF16 保存。CPU FP64 真值和 ATK 门限不变，旧
 BigOp 结果保留原版本标识。MXFP8 诊断重放采用同一份 MegaMoE 契约；测试
-范围和具名历史结果见 [TEST_SPEC.md](../tests/bf16/TEST_SPEC.md)。
+范围和具名历史结果见 [TEST_SPEC.md](../../../experiments/megamoe_train/tests/bf16/TEST_SPEC.md)。
 
 ## 源码入口与回归例
 
 | 步骤 | 源码 |
 | --- | --- |
-| GMM1/GMM2 操作数与输出 | [mega_moe_bf16_forward_catlass_impl.hpp](../csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp) |
-| 前向 FP32 H、BF16 Hp，保存原始 Gate/Up | [block_epilogue_swiglu_forward_bf16.hpp](../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)：`ComputeSwigluDirect` |
-| 前向 FP32 归并 Y | [mega_moe_unpermute.hpp](../csrc/kernels/bf16/routing/mega_moe_unpermute.hpp)：`TryUnpermute`、`UnpermuteByHiddenChunk` |
-| dHp、dX、dw1、dw2 矩阵乘 | [mega_moe_bf16_backward_catlass_impl.hpp](../csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp) |
-| H/Hp 重建、FP32 dH、dZ、dp partial | [block_epilogue_swiglu_backward_bf16.hpp](../csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)：`ComputeFusedFullTile`、`ComputeForwardAux`、`ComputeSwigluGradImpl` |
-| dX 归并、dp 归约与写回 | [mega_moe_bf16_backward.hpp](../csrc/kernels/bf16/mega_moe_bf16_backward.hpp)：`UnpermuteBackward`、`ReduceAndRouteTopkGrad` |
-| 保存区与 autograd | [mega_moe_layout.hpp](../csrc/kernels/bf16/layout/mega_moe_layout.hpp)、[bf16.py](../python/deep_ep_experimental/megamoe_train/bf16.py) |
+| GMM1/GMM2 操作数与输出 | [mega_moe_bf16_forward_catlass_impl.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_forward_catlass_impl.hpp) |
+| 前向 FP32 H、BF16 Hp，保存原始 Gate/Up | [block_epilogue_swiglu_forward_bf16.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_forward_bf16.hpp)：`ComputeSwigluDirect` |
+| 前向 FP32 归并 Y | [mega_moe_unpermute.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/routing/mega_moe_unpermute.hpp)：`TryUnpermute`、`UnpermuteByHiddenChunk` |
+| dHp、dX、dw1、dw2 矩阵乘 | [mega_moe_bf16_backward_catlass_impl.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/catlass/mega_moe_bf16_backward_catlass_impl.hpp) |
+| H/Hp 重建、FP32 dH、dZ、dp partial | [block_epilogue_swiglu_backward_bf16.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/epilogue/block_epilogue_swiglu_backward_bf16.hpp)：`ComputeFusedFullTile`、`ComputeForwardAux`、`ComputeSwigluGradImpl` |
+| dX 归并、dp 归约与写回 | [mega_moe_bf16_backward.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.hpp)：`UnpermuteBackward`、`ReduceAndRouteTopkGrad` |
+| 保存区与 autograd | [mega_moe_layout.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp)、[bf16.py](../../../experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py) |
 
 取 `g=1, u=1.3125, p=0.00099945068359375`，一次写出 Hp 得到
 `0.000957489013671875`，提前舍入 H 后再乘 p 得到 `0.0009613037109375`。
 取 `dHp=0.75, p=0.10009765625`，保持 FP32 dH 时 dGate 为 `0.09130859375`，
 提前舍入 dH 则为 `0.091796875`。这些边界回归已迁到
-[test_reference_contract.py](../tests/bf16/test_reference_contract.py)，不再依赖退休的分立 golden。
+[test_reference_contract.py](../../../experiments/megamoe_train/tests/bf16/test_reference_contract.py)，不再依赖退休的分立 golden。

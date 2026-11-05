@@ -1,62 +1,16 @@
 # MegaMoE BF16 训练框架设计
 
+> 迁移期间的实现说明，2026-11-04 归档。当前公开接口、限制和算法说明以[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)与[前后向设计](../../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)为准；本文保留迁移审阅上下文。
+
 `MegaMoeBF16Train` 是面向 Ascend950 的 `torch.nn.Module`，提供融合前向和自定义自动求导。调用方提供 token、专家 ID、路由权重和本 rank 的专家参数；模块完成 routing、dispatch、GMM1、SwiGLU、GMM2 和 combine，并在反向返回输入、路由权重及两层专家参数的梯度。
 
 专家参数和优化器由训练模型持有。模块不在内部注册 `w1/w2` 参数，不执行数据并行梯度归约。门控网络可以通过 `topk_weights` 的梯度继续反向传播；离散的 `topk_ids` 和返回的专家计数不参与求导。
 
-本文说明当前接口、计算图状态和通信资源的归属。设备调度与数值细节见[就绪策略](BF16_DISPATCH_READY_DEFAULTS.md)及[SwiGLU 数值语义](BF16_SWIGLU_NUMERICS.md)，构建命令见[模块 README](../README.md)。
+本文说明当前接口、计算图状态和通信资源的归属。前后向计算、保存状态衔接与同步协议见[前后向详细设计](../../../experiments/megamoe_train/docs/mega_moe_bf16_design.md)；设备调度与数值细节见[就绪策略](BF16_DISPATCH_READY_DEFAULTS.md)及[SwiGLU 数值语义](BF16_SWIGLU_NUMERICS.md)，构建命令见[模块 README](../../../experiments/megamoe_train/README.md)。
 
 ## 对外接口与调用契约
 
-```python
-import torch
-import torch_npu
-
-from deep_ep_experimental.megamoe_train import MegaMoeBF16Train
-
-# 调用方已创建 ep_group，并设置各 rank 一致、可达的独立
-# DEEPEP_SHMEM_ENDPOINT=tcp://<host>:<unused-port>。
-torch.npu.set_device(local_device)
-op = MegaMoeBF16Train(ep_group, local_mem_size, timeout=120)
-
-y, counts = op(
-    x, topk_ids, topk_weights, w1, w2, max_recv_tokens,
-    swiglu_limit=0.0,
-    save_gmm1_output="bf16",
-)
-(y * grad_y).sum().backward()  # 示例；实际训练使用模型的 loss。
-
-# 所有 rank 完成所需 backward 后，以相同顺序关闭，再销毁 ep_group。
-op.close()
-```
-
-构造函数为 `MegaMoeBF16Train(ep_group, local_mem_size, *, timeout=120)`。计算接口为 `forward(x, topk_ids, topk_weights, w1, w2, max_recv_tokens, *, swiglu_limit=0.0, save_gmm1_output="bf16")`。
-
-令 `M` 为当前 rank 的输入 token 数，`H` 为 hidden 维，`F` 为专家中间维，`T` 为每个 token 的路由数量，`E` 为每个 rank 的本地专家数，`EP` 为进程组大小。
-
-| 参数或返回值 | 类型 / 形状 | 契约 |
-| --- | --- | --- |
-| `ep_group` | 已有 ProcessGroup 或 StoreGroup | 提供 EP 身份和初始化协调；不能为 `None`，由调用方持有 |
-| `local_mem_size` | 整数，字节 | 当前 rank 的对称窗口容量，至少 2 MiB，按 2 MiB 对齐 |
-| `timeout` | 整数，1..3600 秒 | SHMEM 初始化和控制操作超时；group 自身超时另由调用方设置 |
-| `x` | BF16 `[M,H]` | 当前源 rank 的输入 |
-| `topk_ids` | int32 `[M,T]` | 全局专家编号，按 `ep_rank * E + local_expert` 解释 |
-| `topk_weights` | BF16 `[M,T]` | 对应路由权重，可参与求导 |
-| `w1` | BF16 `[E,2F,H]` | 当前 rank 专家的第一层权重 |
-| `w2` | BF16 `[E,H,F]` | 当前 rank 专家的第二层权重 |
-| `max_recv_tokens` | 正整数，不超过 int32 上界 | 当前 rank 所有本地专家合计接收的路由行容量 |
-| `swiglu_limit` | 可表示为 float32 的有限数值 | `<=0` 关闭 clipping；正数配置截断 |
-| `save_gmm1_output` | `bf16 / none / mxfp8 / auto` | 选择供反向使用的 Gate/Up 保存形式 |
-| `y` | BF16 `[M,H]` | combine 回当前源 rank 的输出 |
-| `counts` | int32 `[E]` | 本地各专家接收的路由行数，不参与求导 |
-
-Tensor 输入必须连续并位于构造时选定的同一 NPU。也支持权重布局 `w1=[E,H,2F]`、`w2=[E,F,H]`；Host 按形状识别，返回的权重梯度保持输入布局。
-
-Host 的形状限制包括维度为正、`M<=16384`、`E<=32`、`EP*E<=2048`、`H%256==0`、`F%256==0` 及 `T<=EP*E`。训练 Runtime 的代码范围为 `2<=EP<=1024`；[StoreGroup](../../../deep_ep/_store.py) 自身还要求 `size<=128`。这些范围不代表对应拓扑都已通过设备验收。
-
-调用方保证专家 ID 合法、同一 token 的专家 ID 不重复，且接收容量足够。一条 token 路由占一行；`max_recv_tokens` 不是原始 token 数，也不是窗口字节数。对各 rank 均有 `M` 个 token、每 token 专家 ID 唯一的情况，`EP*M*min(E,T)` 是当前 rank 路由行需求的保守上界；若采用更小容量，调用方需要能保证实际路由需求。
-
-同一次集体计算要求各 rank 的形状、路由解释、保存模式和操作顺序相容。初始化时有配置协调，但每次前后向不逐项协商所有参数，也不在 Host 全量检查设备路由数据。
+安装、构造/前向参数、Tensor 布局、保存模式、容量规划和接入限制统一见[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)。框架通过公开 `MegaMoeBF16Train` 调用，autograd 返回 x、路由权重和两层专家权重的一阶梯度；本文件侧重内部调用链、状态与资源生命周期。
 
 ## 计算调用链与代码分层
 
@@ -77,16 +31,16 @@ MegaMoeBF16Train
 
 | 阅读入口 | 职责 |
 | --- | --- |
-| [bf16.py](../python/deep_ep_experimental/megamoe_train/bf16.py) | 公开 Module、自定义 autograd、流和生命周期检查 |
-| [bindings.cpp](../csrc/bindings.cpp) | 注册训练 `_C.BF16` 及命名结果类型 |
-| [training.hpp](../csrc/bf16/training.hpp) / [training.cpp](../csrc/bf16/training.cpp) | C++ 执行器、Tensor 契约、内存组织及前后向 Host 函数 |
-| [tiling.cpp](../csrc/bf16/tiling.cpp) / [tiling_impl.hpp](../csrc/bf16/tiling_impl.hpp) | 平台资源、形状、保存模式及容量计算 |
-| [launcher.cpp](../csrc/bf16/launcher.cpp) / [kernel_launch.hpp](../csrc/bf16/kernel_launch.hpp) | peer context 初始化、当前流与导出 C 入口 |
-| [前向入口](../csrc/kernels/bf16/mega_moe_bf16_forward.cpp) / [反向入口](../csrc/kernels/bf16/mega_moe_bf16_backward.cpp) | 提交对应 Ascend C 主控类 |
-| [layout](../csrc/kernels/bf16/layout) / [schedule](../csrc/kernels/bf16/schedule) / [epilogue](../csrc/kernels/bf16/epilogue) | Host/Device 布局契约、就绪调度与激活计算 |
+| [bf16.py](../../../experiments/megamoe_train/python/deep_ep_experimental/megamoe_train/bf16.py) | 公开 Module、自定义 autograd、流和生命周期检查 |
+| [bindings.cpp](../../../experiments/megamoe_train/csrc/bindings.cpp) | 注册训练 `_C.BF16` 及命名结果类型 |
+| [training.hpp](../../../experiments/megamoe_train/csrc/bf16/training.hpp) / [training.cpp](../../../experiments/megamoe_train/csrc/bf16/training.cpp) | C++ 执行器、Tensor 契约、内存组织及前后向 Host 函数 |
+| [tiling.cpp](../../../experiments/megamoe_train/csrc/bf16/tiling.cpp) / [tiling_impl.hpp](../../../experiments/megamoe_train/csrc/bf16/tiling_impl.hpp) | 平台资源、形状、保存模式及容量计算 |
+| [launcher.cpp](../../../experiments/megamoe_train/csrc/bf16/launcher.cpp) / [kernel_launch.hpp](../../../experiments/megamoe_train/csrc/bf16/kernel_launch.hpp) | peer context 初始化、当前流与导出 C 入口 |
+| [前向入口](../../../experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_forward.cpp) / [反向入口](../../../experiments/megamoe_train/csrc/kernels/bf16/mega_moe_bf16_backward.cpp) | 提交对应 Ascend C 主控类 |
+| [layout](../../../experiments/megamoe_train/csrc/kernels/bf16/layout) / [schedule](../../../experiments/megamoe_train/csrc/kernels/bf16/schedule) / [epilogue](../../../experiments/megamoe_train/csrc/kernels/bf16/epilogue) | Host/Device 布局契约、就绪调度与激活计算 |
 | [Runtime](../../../deep_ep/_runtime.py) / [根绑定](../../../csrc/bindings/module.cpp) / [Session](../../../csrc/runtime/session.cpp) | 进程级通信资源和训练工厂 |
 
-Host/Device 共用的 [mega_moe_layout.hpp](../csrc/kernels/bf16/layout/mega_moe_layout.hpp) 定义保存状态及工作区布局；[mega_moe_workspace_view.hpp](../csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp) 将基址映射为设备地址视图。Python 不另行维护布局或量化模式镜像。
+Host/Device 共用的 [mega_moe_layout.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_layout.hpp) 定义保存状态及工作区布局；[mega_moe_workspace_view.hpp](../../../experiments/megamoe_train/csrc/kernels/bf16/layout/mega_moe_workspace_view.hpp) 将基址映射为设备地址视图。Python 不另行维护布局或量化模式镜像。
 
 建议先按 `bf16.py → training.hpp → bindings.cpp → training.cpp → launcher.cpp → 设备入口` 阅读，再进入布局、调度和 epilogue。
 
@@ -146,6 +100,8 @@ C++ 计算完整四类梯度，没有根据单个输入的 `requires_grad` 选�
 
 `local_mem_size` 只表示通信窗口容量，不是总显存占用。保存状态、结果和 scratch 还需要额外显存；未完成的前向计算图越多，保留的状态越多。
 
+窗口分区、使用过程、字节容量估算及其与 `max_recv_tokens` 的区别，统一见[用户指南](../../../experiments/megamoe_train/docs/BF16_USER_GUIDE_ZH.md)。Session 申请窗口，执行器使用其地址；布局由 Host/Device 共享契约解释，每次调用依赖内核同步协议完成安全复用。
+
 ## 流、microbatch 与关闭顺序
 
 前后向都检查模块未关闭、Runtime 有效、当前 NPU 未变，并要求当前流等于构造时的 `_stream`。launcher 在当前流提交内核；Host 对参与计算的 Tensor 调用 `NPUCachingAllocator::recordStream`，包括临时 workspace，以保护异步计算期间的分配器生命周期。
@@ -169,7 +125,7 @@ Python GC 不执行集体 SHMEM 清理，不能代替显式 `close()`。发生�
 
 ## 构建边界与验收范围
 
-根 `deep_ep._C` 提供 Runtime/Session 和训练窗口工厂；`deep_ep_experimental.megamoe_train._C` 提供训练 Tensor 接口。训练 `_C` 与 `libdeepep_megamoe_train_bf16.so` 安装在同一训练包目录，使用同目录设备库。构建由[根工作流](../../../build_support.py)和[训练 CMake](../CMakeLists.txt)组织，依赖遵循[根锁文件](../../../dependencies.lock.json)。
+根 `deep_ep._C` 提供 Runtime/Session 和训练窗口工厂；`deep_ep_experimental.megamoe_train._C` 提供训练 Tensor 接口。训练 `_C` 与 `libdeepep_megamoe_train_bf16.so` 安装在同一训练包目录，使用同目录设备库。构建由[根工作流](../../../build_support.py)和[训练 CMake](../../../experiments/megamoe_train/CMakeLists.txt)组织，依赖遵循[根锁文件](../../../dependencies.lock.json)。
 
 `DEEPEP_BUILD_MEGAMOE_TRAIN=ON` 控制可选训练组件，默认关闭，与推理组件开关独立。Host 扩展、设备库和根 Runtime 必须来自匹配的完整 wheel；修改构建策略后应完整重建、重新安装，各 EP rank 使用同一构建。不要只替换一个SO。前后向整专家回退及 SwiGLU 构建策略见[就绪策略](BF16_DISPATCH_READY_DEFAULTS.md)。
 
@@ -177,9 +133,10 @@ Python GC 不执行集体 SHMEM 清理，不能代替显式 `close()`。发生�
 
 | 验证入口 | 能检查的内容 |
 | --- | --- |
-| [test_mega_moe.py](../tests/bf16/test_mega_moe.py) | 单入口前后向精度和性能；固定输入、全部四项梯度和 counts |
-| [cpu_reference.py](../tests/bf16/cpu_reference.py) / [npu_baseline.py](../tests/bf16/npu_baseline.py) | 独立 Torch CPU FP64 真值；`fp32-boundaries-v2` BigOp 与契约参考共用 FP32 中间计算、BF16 张量边界 |
-| [atk_compare.py](../tests/bf16/atk_compare.py) / [cases.json](../tests/bf16/cases.json) | ATK 双标杆判定及用例清单；典型尺寸从 M512 开始 |
-| [bf16_lifecycle.py](../tests/integration/bf16_lifecycle.py) | ProcessGroup/gloo协调下的重复调用、排队前向、流约束、布局和关闭重建；重复结果对照不替代独立golden |
+| [test_mega_moe.py](../../../experiments/megamoe_train/tests/bf16/test_mega_moe.py) | 单入口前后向精度和性能；固定输入、全部四项梯度和 counts |
+| [cpu_reference.py](../../../experiments/megamoe_train/tests/bf16/cpu_reference.py) / [npu_baseline.py](../../../experiments/megamoe_train/tests/bf16/npu_baseline.py) | 独立 Torch CPU FP64 真值；`fp32-boundaries-v2` BigOp 与契约参考共用 FP32 中间计算、BF16 张量边界 |
+| [atk_compare.py](../../../experiments/megamoe_train/tests/bf16/atk_compare.py) / [cases.json](../../../experiments/megamoe_train/tests/bf16/cases.json) | ATK 双标杆判定及用例清单；典型尺寸从 M512 开始 |
+| [test_reference_contract.py](../../../experiments/megamoe_train/tests/bf16/test_reference_contract.py) | CPU 侧数值边界契约；不访问设备 |
+| [bf16_lifecycle.py](../../../experiments/megamoe_train/tests/integration/bf16_lifecycle.py) | ProcessGroup/gloo协调下的重复调用、排队前向、流约束、布局和关闭重建；重复结果对照不替代独立golden |
 
 测试文件存在只说明有验证入口；设备通过范围必须以相应源码、完整wheel、环境及实际执行结果为依据。框架接入还应覆盖所用ProcessGroup后端、microbatch/重计算顺序、梯度累积和关闭时机，不能把单节点小shape的精度通过等同于这些场景已经完成验证。

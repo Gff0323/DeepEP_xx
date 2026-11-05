@@ -22,7 +22,7 @@ BF16 X -> routing/dispatch -> GMM1 -> SwiGLU + routing weight
 
 The matrix products use FP32 accumulation and BF16 tensor outputs. SwiGLU uses
 FP32 internal arithmetic with explicit BF16 boundaries; see the
-[numerical contract](../../../docs/BF16_SWIGLU_NUMERICS.md).
+[numerical contract](../../../docs/mega_moe_bf16_design.md#13-数学关系与舍入边界).
 
 The ordinary BF16 forward GMM1 uses M192, with L1 `192 x 256 x 256` and L0
 `192 x 256 x 64` tiles. GMM2 and backward retain M128. Forward dispatch copies
@@ -34,8 +34,7 @@ and available AICs. For at most seven local experts and sufficient rows and
 metadata capacity, eligible nonempty experts use Ready384. Small experts wait
 for the whole expert. Backward BF16/MXFP8 saved modes use the existing M128 /
 256-row progress policy where eligible; `none` retains recomputation. See the
-[dispatch policy](../../../docs/BF16_DISPATCH_READY_DEFAULTS.md) and
-[backward protocol](../../../docs/BF16_BACKWARD_DISPATCH_READY.md).
+[dispatch and synchronization design](../../../docs/mega_moe_bf16_design.md#37-前后向-dispatch-就绪与同步协议).
 
 The module CMake file defines the supported device configuration. Build and
 install a complete wheel using the root workflow. Device performance checks
@@ -67,5 +66,5 @@ Canonical weights are `W1 [E, 2F, H]`, `W2 [E, H, F]`; supported alternative
 layouts are `W1 [E, H, 2F]`, `W2 [E, F, H]`. The Host selects the matching
 CATLASS layout from the tensor shape.
 
-Only BF16 training is delivered here. W8A8, MGroup and UDMA-specific kernel
+Only BF16 training is delivered here. W8A8 and UDMA-specific kernel
 variants are not exposed by this module.
