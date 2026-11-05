@@ -106,7 +106,7 @@ def parse_args(argv=None):
         "--seq", type=int, default=129, help="Tokens per rank entering this operator, not model sequence length"
     )
     parser.add_argument("--hidden", type=int, default=256)
-    parser.add_argument("--gmm-n", type=int, default=1024, help="GMM1 output dimension, equal to 2*F")
+    parser.add_argument("--ffn", type=int, default=512, help="SwiGLU output width F; GMM1 output is 2*F")
     parser.add_argument("--topk", type=int, default=4)
     parser.add_argument("--expert-per-rank", type=int, default=2)
     parser.add_argument(
@@ -126,6 +126,18 @@ def parse_args(argv=None):
     parser.add_argument("--chunk-rows", type=int, default=256, help="CPU FP64 expert-row chunk size")
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--loops", type=int, default=20)
+    parser.add_argument(
+        "--log",
+        choices=("quiet", "rank0", "all"),
+        default="quiet",
+        help="quiet: results only; rank0: + phase log and perf stages for rank 0; all: every rank",
+    )
+    parser.add_argument(
+        "--baseline",
+        choices=("on", "off"),
+        default="on",
+        help="Time the small-operator baseline next to the MegaMoE BF16 operator; off skips it",
+    )
     parser.add_argument("--local-mem-size", type=int, default=None, help="SHMEM bytes; default auto, aligned to 2 MiB")
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--shmem-ip-port", default="tcp://127.0.0.1:29862")
@@ -154,7 +166,7 @@ def parse_args(argv=None):
         owned = {
             "--seq",
             "--hidden",
-            "--gmm-n",
+            "--ffn",
             "--topk",
             "--expert-per-rank",
             "--routed-scaling-factor",
@@ -173,8 +185,8 @@ def parse_args(argv=None):
     world = int(os.environ.get("WORLD_SIZE", str(len(args.devices))))
     if not 2 <= world <= 1024 or not 1 <= args.seq <= 16384 or not 1 <= args.expert_per_rank <= 32:
         parser.error("Requires EP in 2..1024, seq in 1..16384 and local experts in 1..32")
-    if args.hidden <= 0 or args.hidden % 256 or args.gmm_n <= 0 or args.gmm_n % 512:
-        parser.error("Requires hidden % 256 == 0 and gmm-n % 512 == 0, both positive")
+    if args.hidden <= 0 or args.hidden % 256 or args.ffn <= 0 or args.ffn % 256:
+        parser.error("Requires hidden % 256 == 0 and ffn % 256 == 0, both positive")
     if world * args.expert_per_rank > 2048 or not 1 <= args.topk <= world * args.expert_per_rank:
         parser.error("Requires total experts <= 2048 and 1 <= topk <= total experts")
     if args.seed < 0 or args.chunk_rows <= 0 or args.warmup < 0 or args.loops <= 0 or not 1 <= args.timeout <= 3600:
@@ -263,7 +275,7 @@ def suite_cases(args, *, include_skipped=False):
 
 def launch_options(args):
     argv = []
-    for key in ("chunk_rows", "warmup", "loops", "timeout", "skip", "local_mem_size"):
+    for key in ("chunk_rows", "warmup", "loops", "timeout", "skip", "local_mem_size", "baseline", "log"):
         value = getattr(args, key)
         if value is not None:
             argv += ["--" + key.replace("_", "-"), str(value)]
@@ -361,7 +373,7 @@ def case_progress(index, count, record, log_path):
     case = record["config"]
     print(
         f"[CASE] {index + 1}/{count} {record['id']} "
-        f"M={case['seq']} H={case['hidden']} F={case['gmm_n'] // 2} TopK={case['topk']} "
+        f"M={case['seq']} H={case['hidden']} F={case['ffn']} TopK={case['topk']} "
         f"E/rank={case['expert_per_rank']} save={case['save_gmm1_output']} data={case['data_profile']} "
         f"clip={case['swiglu_limit']} p_scale={case['routed_scaling_factor']} "
         f"log={log_path}",
@@ -458,6 +470,63 @@ def run_persistent_suite(args, cases, output, summary, save):
             case_log.close()
 
 
+def suite_performance_summary(cases, args):
+    """One row per case: the run's at-a-glance table (rank-0 medians).
+
+    Columns match the reviewed layout: shape, three latencies, speedup,
+    MFU and roofline floor/overhead for the backward and complete scopes.
+    """
+    rows = []
+    for record in cases:
+        if record.get("status") != "PASS" or not record.get("performance_run") or not record.get("report"):
+            continue
+        try:
+            result = json.loads(Path(record["report"]).read_text(encoding="utf-8"))
+            perf = result["ranks"][0]["performance"]
+        except (OSError, KeyError, IndexError, ValueError):
+            continue
+        config = record["config"]
+        speeds = perf.get("baseline", {}).get("speedup") or {}
+        mfu = perf.get("mfu", {})
+        roofline = perf.get("roofline", {})
+        speed_cell = (
+            f"{speeds['forward']:.2f}/{speeds['backward']:.2f}/{speeds['complete']:.2f}" if speeds else "--/--/--"
+        )
+        mfu_cell = "/".join(
+            f"{mfu[scope]['mfu']:.0f}" for scope in ("forward", "backward", "complete") if scope in mfu
+        )
+        floor_cell = "/".join(
+            f"{roofline[scope]['floor_ms']:.2f}"
+            for scope in ("forward", "backward", "complete")
+            if scope in roofline
+        )
+        overhead = roofline.get("complete", {}).get("overhead_ms")
+        rows.append(
+            f"[SUMMARY] {record['id']:<14}"
+            f"{config['seq']:>5}{config['hidden']:>6}{config['ffn']:>6}{config['topk']:>4}"
+            f"{config['expert_per_rank'] * len(args.devices):>5}"
+            f"{perf['forward_ms']['median']:>9.2f}"
+            f"{perf['backward_ms']['median']:>9.2f}"
+            f"{perf['complete_ms']['median']:>9.2f}  "
+            f"{speed_cell:<15} "
+            f"{mfu_cell:<12}"
+            f"{floor_cell:<20}"
+            + (f"{overhead:>+12.2f}" if overhead is not None else f"{'--':>12}")
+        )
+    if not rows:
+        return []
+    header = (
+        f"[SUMMARY] {len(rows)} shapes @ EP{len(args.devices)} save={args.save_gmm1_output} "
+        f"warmup={args.warmup} loops={args.loops} (rank 0 median)"
+    )
+    columns = (
+        f"[SUMMARY] {'case':<14}{'M':>5}{'H':>6}{'F':>6}{'tk':>4}{'E':>5}"
+        f"{'fwd_ms':>9}{'bwd_ms':>9}{'fb_ms':>9}  {'speedup f/b/fb':<15} "
+        f"{'MFU% f/b/fb':<12}{'floor f/b/fb':<20}{'fb_overhead':>12}"
+    )
+    return [header, columns, *rows]
+
+
 def run_suite(args):
     requested_cases = suite_cases(args, include_skipped=True)
     cases = suite_cases(args)
@@ -500,7 +569,7 @@ def run_suite(args):
                             len(args.devices),
                             case["seq"],
                             case["hidden"],
-                            case["gmm_n"] // 2,
+                            case["ffn"],
                             case["topk"],
                             case["expert_per_rank"],
                             case["routing_mode"],
@@ -598,7 +667,74 @@ def run_suite(args):
         f"selected={len(cases)} skipped={len(skipped)} report={summary_file}",
         flush=True,
     )
+    for line in suite_performance_summary(summary["cases"], args):
+        print(line, flush=True)
     return 1 if runtime_error else 0 if summary["passed"] else 2
+
+
+_IDENTITY = None
+
+
+def runtime_identity():
+    """Best-effort identity of the installed binary, cached for the process.
+
+    The sha256 of each loaded extension is authoritative; the git revision is
+    only a label and stays null when the wheel does not record one.
+    """
+    global _IDENTITY
+    if _IDENTITY is not None:
+        return _IDENTITY
+    import hashlib
+    import importlib.util
+    from importlib.metadata import PackageNotFoundError, version
+
+    def digest(path):
+        try:
+            return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        except OSError:
+            return None
+
+    identity = {"revision": None, "wheel": {}, "libraries": {}}
+    try:
+        identity["wheel"] = {"name": "ascend-deepep", "version": version("ascend-deepep")}
+    except PackageNotFoundError:
+        pass
+    for label, name in (
+        ("deep_ep._C", "deep_ep._C"),
+        ("megamoe_train._C", "deep_ep_experimental.megamoe_train._C"),
+    ):
+        try:
+            spec = importlib.util.find_spec(name)
+        except (ImportError, ValueError):
+            spec = None
+        if spec is None or not spec.origin:
+            continue
+        origin = Path(spec.origin)
+        identity["libraries"][label] = {"path": str(origin), "sha256": digest(origin)}
+        if label == "megamoe_train._C":
+            kernel = origin.with_name("libdeepep_megamoe_train_bf16.so")
+            if kernel.is_file():
+                identity["libraries"]["megamoe_train_kernel"] = {
+                    "path": str(kernel),
+                    "sha256": digest(kernel),
+                }
+    # A full 40-hex revision only; never guess or truncate.
+    for candidate in (os.environ.get("DEEPEP_BUILD_REVISION"),):
+        value = (candidate or "").strip().lower()
+        if re.fullmatch(r"[0-9a-f]{40}", value):
+            identity["revision"] = value
+    if identity["revision"] is None:
+        try:
+            info = json.loads((Path(sys.modules["deep_ep"].__file__).parent / "_build_info.json").read_text())
+        except (KeyError, OSError, ValueError):
+            info = {}
+        for key in ("revision", "source_revision", "git_revision", "commit"):
+            value = str(info.get(key, "")).strip().lower()
+            if re.fullmatch(r"[0-9a-f]{40}", value):
+                identity["revision"] = value
+                break
+    _IDENTITY = identity
+    return identity
 
 
 def installed_root():
@@ -689,8 +825,8 @@ def make_inputs(args, rank, world, global_tokens=True):
             upstreams.append(sample(rng(source, 3), (args.seq, args.hidden), 0.1))
     ids = torch.cat(all_ids)
     counts = torch.bincount(ids.reshape(-1).long(), minlength=total)
-    w1 = sample(rng(rank, 4), (args.expert_per_rank, args.gmm_n, args.hidden), 1.0)
-    w2 = sample(rng(rank, 5), (args.expert_per_rank, args.hidden, args.gmm_n // 2), 1.0)
+    w1 = sample(rng(rank, 4), (args.expert_per_rank, 2 * args.ffn, args.hidden), 1.0)
+    w2 = sample(rng(rank, 5), (args.expert_per_rank, args.hidden, args.ffn), 1.0)
     inputs = {
         "x": torch.cat(xs),
         "ids": ids if global_tokens else all_ids[rank],
@@ -737,7 +873,7 @@ def apply_data_profile(inputs, args, token_start=0):
         values = torch.stack((below, limit, above, -below, -limit, -above))
         # x=[1,0,...] makes GMM1 exactly select the first weight column.
         # Cartesian pairs cover Gate's upper boundary and both Up boundaries.
-        columns = torch.arange(args.gmm_n // 2)
+        columns = torch.arange(args.ffn)
         gate = values[columns.remainder(6)]
         up = values[columns.div(6, rounding_mode="floor").remainder(6)]
         inputs["x"].zero_()
@@ -785,46 +921,505 @@ def local_truth(inputs, args, rank):
     return result
 
 
-def measure(op, tensors, capacity, args):
+# ---------------------------------------------------------------------------
+# Performance protocol and the small-operator baseline.
+#
+# Ported from ascend_deepep_hkq@f575fc1 test/bigop_fused: test_speed.py owns the
+# three measurement scopes and the per-iteration synchronization, timing.py owns
+# the statistics, golden.py owns the dropless small-operator chain that is timed
+# here as the baseline. The source tree removed its kernel Timer
+# instrumentation, so nothing here builds, enables or reads a device Timer: every
+# sample is one synchronized NPU Event window.
+#
+# The source times its `BigOp.apply(x, moe_layer)` chain, which runs a router
+# before the dispatch. MegaMoE BF16 takes routing ids/weights directly and this
+# package has no router, so both paths here start at permute1: the router cost
+# that is common to both sides in the source stays outside this entry.
+# ---------------------------------------------------------------------------
+
+PEAK_TFLOPS = 432.0  # source comment: Ascend950 BF16 cube peak
+ROOFLINE_TFLOPS = round(PEAK_TFLOPS * 0.95, 1)  # 410.4: the source's derated roofline
+FORWARD_RFK = 6.0  # GMM1 (4) + GMM2 (2) per routed row
+SAVED_MODE_RFK = {"none": 16.0, "bf16": 12.0, "mxfp8": 12.0, "auto": 12.0}
+BASELINE_BUDGET_BYTES = 16 << 30  # packed-route working set the baseline may allocate
+
+
+def event_stats(samples):
+    """Sample list plus the source's mean/median/min/max summary."""
+    return {
+        "samples": list(samples),
+        "median": statistics.median(samples),
+        "mean": statistics.mean(samples),
+        "min": min(samples),
+        "max": max(samples),
+    }
+
+
+def bench_scope(body, prepare, args):
+    """warmup+loops Event windows, synchronized before and after every window.
+
+    The source synchronizes each iteration and rebuilds a forward graph for
+    every backward sample, so queued SHMEM calls never share one workspace.
+    """
     import torch
 
-    x, ids, p, w1, w2, dy = tensors
-    forward_times, backward_times = [], []
+    samples = []
     for iteration in range(args.warmup + args.loops):
-        for leaf in (x, p, w1, w2):
-            leaf.grad = None
-        start, middle, end = (torch.npu.Event(enable_timing=True) for _ in range(3))
+        torch.npu.synchronize()
+        state = prepare() if prepare is not None else None
+        if prepare is not None:
+            torch.npu.synchronize()
+        start, end = torch.npu.Event(enable_timing=True), torch.npu.Event(enable_timing=True)
         start.record()
-        y, counts = op(
-            x, ids, p, w1, w2, capacity, save_gmm1_output=args.save_gmm1_output, swiglu_limit=args.swiglu_limit
-        )
-        middle.record()
-        y.backward(dy)
+        body(state)
         end.record()
         torch.npu.synchronize()
         if iteration >= args.warmup:
-            forward_times.append(float(start.elapsed_time(middle)))
-            backward_times.append(float(middle.elapsed_time(end)))
+            samples.append(float(start.elapsed_time(end)))
+    return samples
+
+
+def exchanged_rows(group, value, receive_splits, send_splits):
+    """Blocking all_to_all_single with Megatron's split orientation.
+
+    The source keeps an asynchronous handle only to overlap a shared expert this
+    entry does not have; the blocking form moves the same bytes.
+    """
+    import torch.distributed as dist
+
+    if dist.get_world_size(group) == 1:
+        return value
+    value = value.contiguous()
+    output = value.new_empty([sum(receive_splits), *value.shape[1:]])
+    dist.all_to_all_single(
+        output, value, output_split_sizes=receive_splits, input_split_sizes=send_splits, group=group
+    )
+    return output
+
+
+def reorder_chunks(value, sizes, order, local_experts=None):
+    """Megatron sort_chunks_by_idxs; zero-row chunks keep empty experts valid.
+
+    The source skips permute2/unpermute1 entirely with one local expert, where
+    the reorder is an identity copy; keep that so neither side pays for it.
+    """
+    import torch
+
+    if local_experts == 1:
+        return value
+    chunks = torch.split(value, sizes, dim=0)
+    return torch.cat([chunks[index] for index in order], dim=0)
+
+
+def clip_gate_up(gate, up, limit):
+    """Source clip semantics: Gate one-sided, Up two-sided, disabled for limit<=0."""
+    import torch
+
+    if not 0 < limit < torch.finfo(torch.bfloat16).max:
+        return gate, up
+    return gate.clamp_max(limit), up.clamp(-limit, limit)
+
+
+class BaselinePlan:
+    """Row order, exchange splits, expert counts and weight views of one case."""
+
+    __slots__ = (
+        "group",
+        "tokens",
+        "topk",
+        "hidden",
+        "local_experts",
+        "swiglu_limit",
+        "order",
+        "route_row",
+        "counts",
+        "input_splits",
+        "output_splits",
+        "received_sizes",
+        "return_sizes",
+        "sort_index",
+        "restore_index",
+        "weight1",
+        "weight2",
+        "recompute",
+    )
+
+
+def baseline_plan(ids, w1, w2, group, args, rank, world, mode):
+    """Derive the baseline chain metadata from the shared routing ids.
+
+    Returns ``(plan, None)`` or ``(None, reason)``, so a shape the baseline
+    cannot afford prints why it is absent instead of failing the case. Every
+    value here is built once, outside all Event windows.
+    """
+    import torch
+    import torch.distributed as dist
+
+    local_experts = args.expert_per_rank
+    tokens, topk = (int(size) for size in ids.shape)
+    routes = tokens * topk
+    working_set = routes * (args.hidden + args.ffn) * 2 * 6
+    if working_set > BASELINE_BUDGET_BYTES:
+        return None, (
+            f"packed routes need ~{working_set / 2**30:.1f} GiB, above the "
+            f"{BASELINE_BUDGET_BYTES >> 30} GiB baseline budget"
+        )
+    flat = ids.detach().to(device="cpu", dtype=torch.int64).reshape(-1)
+    experts = world * local_experts
+    gathered = [None] * world
+    dist.all_gather_object(gathered, torch.bincount(flat, minlength=experts).tolist())
+    # Rows rank `source` produces for this rank, split by local expert.
+    sent_to_us = torch.tensor(gathered, dtype=torch.int64)[:, rank * local_experts : (rank + 1) * local_experts]
+    order = torch.argsort(flat, stable=True)
+    plan = BaselinePlan()
+    plan.group = group
+    plan.tokens, plan.topk, plan.hidden = tokens, topk, args.hidden
+    plan.local_experts, plan.swiglu_limit, plan.recompute = local_experts, args.swiglu_limit, mode == "none"
+    plan.order = order.to(ids.device)
+    plan.route_row = (order // topk).to(ids.device)
+    plan.counts = sent_to_us.sum(dim=0).to(ids.device)
+    plan.input_splits = torch.bincount(flat // local_experts, minlength=world).tolist()
+    plan.output_splits = sent_to_us.sum(dim=1).tolist()
+    plan.received_sizes = sent_to_us.reshape(-1).tolist()
+    plan.return_sizes = sent_to_us.T.reshape(-1).tolist()
+    plan.sort_index = torch.arange(experts).reshape(world, local_experts).T.reshape(-1).tolist()
+    plan.restore_index = torch.arange(experts).reshape(local_experts, world).T.reshape(-1).tolist()
+    # Megatron stores [H, 2F*E] and [F*E, H]; the operator takes per-expert
+    # tensors, so read both once here rather than copying inside a window.
+    plan.weight1 = w1.detach().transpose(1, 2).contiguous()
+    plan.weight2 = w2.detach().transpose(1, 2).contiguous()
+    if sum(plan.received_sizes) != sum(plan.output_splits) or int(plan.counts.sum()) != sum(plan.received_sizes):
+        return None, "inconsistent dispatch splits"
+    return plan, None
+
+
+_BASELINE_CHAIN = None
+_HCCL = {}
+
+
+def device_group():
+    """One reusable HCCL subgroup for the baseline; the default group is Gloo.
+
+    MegaMoE BF16 communicates inside its own runtime, so the baseline
+    chain needs a Torch-level device collective. Creation is cached: a suite
+    must not accumulate one communicator per case.
+    """
+    import torch.distributed as dist
+
+    if "group" not in _HCCL:
+        try:
+            _HCCL["group"] = dist.new_group(ranks=list(range(dist.get_world_size())), backend="hccl")
+            _HCCL["reason"] = None
+        except Exception as error:  # capability probe; the reason is reported, not hidden
+            _HCCL["group"] = None
+            _HCCL["reason"] = f"no HCCL subgroup for all_to_all ({type(error).__name__}: {error})"
+    return _HCCL["group"], _HCCL["reason"]
+
+
+def baseline_chain():
+    """Build the baseline autograd Function once; keeps module import Torch-free."""
+    global _BASELINE_CHAIN
+    if _BASELINE_CHAIN is not None:
+        return _BASELINE_CHAIN
+
+    import torch
+
+    class BaselineChain(torch.autograd.Function):
+        """The source's dropless small-operator chain with its hand-written backward.
+
+        permute1 -> dispatch -> permute2 -> GMM1 -> SwiGLU*probs -> GMM2 ->
+        unpermute1 -> combine -> unpermute2. ``recompute`` mirrors the source's
+        coupled regime: MegaMoE BF16 saves Gate/Up for bf16/mxfp8/auto and
+        recomputes GMM1 for none, so the baseline performs the same GEMM work
+        (12 versus 16 RFK).
+        """
+
+        @staticmethod
+        def forward(ctx, x, topk_weights, w1, w2, plan):
+            from npu_baseline import _grouped_matmul
+
+            counts = plan.counts
+            global_x = reorder_chunks(
+                exchanged_rows(
+                    plan.group, x.index_select(0, plan.route_row), plan.output_splits, plan.input_splits
+                ),
+                plan.received_sizes,
+                plan.sort_index,
+                plan.local_experts,
+            )
+            global_p = reorder_chunks(
+                exchanged_rows(
+                    plan.group,
+                    topk_weights.reshape(-1).index_select(0, plan.order),
+                    plan.output_splits,
+                    plan.input_splits,
+                ),
+                plan.received_sizes,
+                plan.sort_index,
+                plan.local_experts,
+            )
+            gate_up = _grouped_matmul(global_x, plan.weight1, counts)
+            gate, up = clip_gate_up(*torch.chunk(gate_up, 2, dim=-1), plan.swiglu_limit)
+            intermediate = (torch.nn.functional.silu(gate) * up) * global_p.unsqueeze(-1)
+            packed_y = _grouped_matmul(intermediate, plan.weight2, counts)
+            combined = exchanged_rows(
+                plan.group,
+                reorder_chunks(packed_y, plan.return_sizes, plan.restore_index, plan.local_experts),
+                plan.input_splits,
+                plan.output_splits,
+            )
+            output = torch.zeros((plan.tokens, plan.hidden), dtype=combined.dtype, device=combined.device)
+            output.scatter_add_(0, plan.route_row.unsqueeze(1).expand(-1, plan.hidden), combined)
+            ctx.plan = plan
+            saved = [global_x, global_p] if plan.recompute else [global_x, global_p, gate_up]
+            ctx.save_for_backward(*saved)
+            return output
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            from npu_baseline import _grouped_matmul, _grouped_wgrad
+
+            plan = ctx.plan
+            counts = plan.counts
+            global_x, global_p = ctx.saved_tensors[0], ctx.saved_tensors[1]
+            weight1_transposed = plan.weight1.transpose(-1, -2).contiguous()
+            weight2_transposed = plan.weight2.transpose(-1, -2).contiguous()
+            grad_packed_y = reorder_chunks(
+                exchanged_rows(
+                    plan.group,
+                    grad_output.index_select(0, plan.route_row),
+                    plan.output_splits,
+                    plan.input_splits,
+                ),
+                plan.received_sizes,
+                plan.sort_index,
+                plan.local_experts,
+            )
+            gate_up = (
+                _grouped_matmul(global_x, plan.weight1, counts) if plan.recompute else ctx.saved_tensors[2]
+            )
+            gate, up = clip_gate_up(*torch.chunk(gate_up, 2, dim=-1), plan.swiglu_limit)
+            activation = torch.nn.functional.silu(gate) * up
+            intermediate = activation * global_p.unsqueeze(-1)
+            grad_intermediate = _grouped_matmul(grad_packed_y, weight2_transposed, counts)
+            grad_w2 = _grouped_wgrad(intermediate, grad_packed_y, counts)
+            grad_w2 = grad_w2.reshape(plan.weight2.shape).transpose(1, 2).contiguous()
+            grad_activation = grad_intermediate * global_p.unsqueeze(-1)
+            grad_p = (grad_intermediate * activation).sum(dim=-1)
+            # The source differentiates the same PyTorch graph it ran in forward
+            # instead of substituting a different activation backward.
+            with torch.enable_grad():
+                replay = gate_up.detach().requires_grad_(True)
+                replay_gate, replay_up = clip_gate_up(*torch.chunk(replay, 2, dim=-1), plan.swiglu_limit)
+                (grad_gate_up,) = torch.autograd.grad(
+                    torch.nn.functional.silu(replay_gate) * replay_up, replay, grad_activation
+                )
+            grad_x = _grouped_matmul(grad_gate_up, weight1_transposed, counts)
+            grad_w1 = _grouped_wgrad(global_x, grad_gate_up, counts)
+            grad_w1 = grad_w1.reshape(plan.weight1.shape).transpose(1, 2).contiguous()
+            grad_x = reorder_chunks(grad_x, plan.return_sizes, plan.restore_index, plan.local_experts)
+            grad_p = reorder_chunks(grad_p, plan.return_sizes, plan.restore_index, plan.local_experts)
+            grad_x = exchanged_rows(plan.group, grad_x, plan.input_splits, plan.output_splits)
+            grad_p = exchanged_rows(plan.group, grad_p, plan.input_splits, plan.output_splits)
+            grad_input = torch.zeros((plan.tokens, plan.hidden), dtype=grad_x.dtype, device=grad_x.device)
+            grad_input.scatter_add_(0, plan.route_row.unsqueeze(1).expand(-1, plan.hidden), grad_x)
+            grad_weights = torch.zeros(plan.tokens * plan.topk, dtype=grad_p.dtype, device=grad_p.device)
+            grad_weights.index_copy_(0, plan.order, grad_p)
+            return grad_input, grad_weights.reshape(plan.tokens, plan.topk), grad_w1, grad_w2, None
+
+    _BASELINE_CHAIN = BaselineChain
+    return _BASELINE_CHAIN
+
+
+def measure(op, tensors, capacity, args, mode):
+    """Three Event scopes for the MegaMoE BF16 operator, optional small-operator baseline.
+
+    Ported protocol: identical warmup/loop counts for both sides, one window per
+    sample, a rebuilt forward graph for every backward sample, and the coupled
+    backward regime. The reference is informational; it never decides the case.
+    """
+    import torch
+    import torch.distributed as dist
+
+    x, ids, p, w1, w2, dy = tensors
+    leaves = (x, p, w1, w2)
+    rank = dist.get_rank()
+
+    def stage(name):
+        """Progress markers: a silent hang in this phase is otherwise invisible."""
+        if rank == 0 and _LOG_LEVEL != "quiet":
+            print(f"[PERF] stage {name}", flush=True)
+
+    def reset():
+        for leaf in leaves:
+            leaf.grad = None
+
+    def megamoe_forward():
+        reset()
+        y, counts = op(
+            x, ids, p, w1, w2, capacity, save_gmm1_output=args.save_gmm1_output, swiglu_limit=args.swiglu_limit
+        )
+        return y, counts
+
+    def megamoe_complete():
+        y, counts = megamoe_forward()
+        y.backward(dy)
+        return y, counts
+
+    stage(f"scopes start warmup={args.warmup} loops={args.loops}")
+    megamoe = {}
+    for name, body, prepare in (
+        ("forward", lambda state: megamoe_forward(), None),
+        ("backward", lambda state: state[0].backward(dy), megamoe_forward),
+        ("complete", lambda state: megamoe_complete(), None),
+    ):
+        megamoe[f"{name}_ms"] = event_stats(bench_scope(body, prepare, args))
+        stage(f"{name} scope done")
+    y, counts = megamoe_complete()
     if not all(bool(torch.isfinite(value).all().item()) for value in (y, x.grad, p.grad, w1.grad, w2.grad)):
         raise RuntimeError("Non-finite output or gradient after timing")
-    return {
-        "forward_ms": {"samples": forward_times, "median": statistics.median(forward_times)},
-        "backward_ms": {"samples": backward_times, "median": statistics.median(backward_times)},
-        "scope": "Synchronized NPU Event latency of operator forward and autograd backward; reference, reporting and loss construction excluded",
-    }, counts
+    stage("megamoe_bf16 valid")
+    report = {
+        "operator": "megamoe_bf16",
+        "warmup": args.warmup,
+        "loops": args.loops,
+        "scope": (
+            "Synchronized NPU Event latency of forward, autograd backward with the graph built outside the "
+            "window, and forward+backward; reference, reporting and loss construction excluded; no device Timer"
+        ),
+        "baseline": {"status": "OFF", "reason": "--baseline off"},
+        **megamoe,
+    }
+    route_flops = args.seq * args.topk * args.ffn * args.hidden  # FLOPs per 1 RFK
+    backward_rfk = SAVED_MODE_RFK.get(mode, 12.0)
+    scoped_rfk = {
+        "forward": FORWARD_RFK,
+        "backward": backward_rfk,
+        "complete": FORWARD_RFK + backward_rfk,
+    }
+
+    def utilization(scopes_ms):
+        """GMM-only achieved TFLOPS and its share of the BF16 cube peak.
+
+        Non-GEMM work (all-to-all, permute, activation) is inside the window, so
+        this is the operator's GMM utilization: achieved / peak, not a claim
+        about the end-to-end model.
+        """
+        result = {}
+        for name, rfk_value in scoped_rfk.items():
+            latency = scopes_ms[f"{name}_ms"]["median"]
+            flops = rfk_value * route_flops
+            throughput = flops / (latency * 1e-3) / 1e12 if latency > 0 else float("nan")
+            result[name] = {
+                "rfk": rfk_value,
+                "flops": flops,
+                "tflops": throughput,
+                "mfu": 100.0 * throughput / PEAK_TFLOPS,
+            }
+        return result
+
+    megamoe_utilization = utilization(megamoe)
+    if args.baseline == "on":
+        stage("baseline plan start")
+        group, reason = device_group()
+        plan = None
+        if group is not None:
+            plan, reason = baseline_plan(ids, w1, w2, group, args, rank, dist.get_world_size(), mode)
+        if plan is None:
+            report["baseline"] = {"status": "SKIPPED", "reason": reason}
+            stage(f"baseline skipped: {reason}")
+        else:
+            stage("baseline plan ready")
+            chain = baseline_chain()
+
+            def reference_forward():
+                reset()
+                return chain.apply(x, p, w1, w2, plan)
+
+            def reference_complete():
+                out = reference_forward()
+                out.backward(dy)
+                return out
+
+            reference = {}
+            for name, body, prepare in (
+                ("forward", lambda state: reference_forward(), None),
+                ("backward", lambda state: state.backward(dy), reference_forward),
+                ("complete", lambda state: reference_complete(), None),
+            ):
+                reference[f"{name}_ms"] = event_stats(bench_scope(body, prepare, args))
+                stage(f"baseline {name} scope done")
+            out = reference_complete()
+            if all(bool(torch.isfinite(value).all().item()) for value in (out, x.grad, p.grad, w1.grad, w2.grad)):
+                speedup = {
+                    scope: reference[f"{scope}_ms"]["median"] / max(megamoe[f"{scope}_ms"]["median"], 1e-9)
+                    for scope in ("forward", "backward", "complete")
+                }
+                reference_utilization = utilization(reference)
+                report["baseline"] = {
+                    "status": "RUN",
+                    "recompute_gmm1": plan.recompute,
+                    "speedup": speedup,
+                    "mfu": {name: value["mfu"] for name, value in reference_utilization.items()},
+                    **reference,
+                }
+            else:
+                report["baseline"] = {
+                    "status": "SKIPPED",
+                    "reason": "baseline produced non-finite values; its samples are not comparable",
+                }
+    report["mfu"] = {
+        "peak_tflops": PEAK_TFLOPS,
+        "peak_note": (
+            "432 TFLOPS is the BF16 cube peak inherited from the source harness comment; confirm it against the "
+            "official Ascend950 dense-BF16 specification before quoting an absolute utilization"
+        ),
+        "scope": (
+            "GMM-only FLOPs (RFK model) divided by the windowed latency, as a share of the BF16 cube peak; "
+            "all-to-all, permute and activation time stays inside the window, so this is not a model-level MFU"
+        ),
+        **megamoe_utilization,
+    }
+    # The source printed a backward-only roofline. Keep its derated denominator,
+    # but report every scope so the three numbers stay comparable.
+    roofline = {}
+    for name, value in megamoe_utilization.items():
+        measured_ms = megamoe[f"{name}_ms"]["median"]
+        floor_ms = value["flops"] / (ROOFLINE_TFLOPS * 1e12) * 1e3
+        roofline[name] = {
+            "rfk": value["rfk"],
+            "flops": value["flops"],
+            "measured_ms": measured_ms,
+            "floor_ms": floor_ms,
+            "overhead_ms": measured_ms - floor_ms,
+            "tflops": value["tflops"],
+        }
+    report["roofline"] = {"mode": mode, "roofline_tflops": ROOFLINE_TFLOPS, **roofline}
+    return report, counts
+
+
+_LOG_LEVEL = "all"
+
+
+def log_visible(rank):
+    """Phase logs follow --log: all ranks, rank 0 only, or silent."""
+    return _LOG_LEVEL == "all" or (_LOG_LEVEL == "rank0" and rank == 0)
 
 
 def phase_timer(rank, phase_seconds):
     @contextmanager
     def phase(name):
         started = time.perf_counter()
-        print(f"[STAGE] rank={rank} {name}", flush=True)
+        visible = log_visible(rank)
+        if visible:
+            print(f"[STAGE] rank={rank} {name}", flush=True)
         try:
             yield
         finally:
             elapsed = time.perf_counter() - started
             phase_seconds[name] = elapsed
-            print(f"[TIME] rank={rank} {name}={elapsed:.3f}s", flush=True)
+            if visible:
+                print(f"[TIME] rank={rank} {name}={elapsed:.3f}s", flush=True)
 
     return phase
 
@@ -842,7 +1437,10 @@ def prepare_worker(local_rank, args, rank, world, phase_seconds):
         import torch.distributed as dist
         import torch_npu  # noqa: F401
 
-    print(f"[STAGE] rank={rank} logical_device={local_rank} physical_device={args.devices[local_rank]}", flush=True)
+    if log_visible(rank):
+        print(
+            f"[STAGE] rank={rank} logical_device={local_rank} physical_device={args.devices[local_rank]}", flush=True
+        )
     with phase("device_setup"):
         torch.npu.set_device(local_rank)
         installed_root()
@@ -903,11 +1501,12 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
         "empty_experts": int((route_counts == 0).sum().item()),
         "zero_receive_ranks": int((route_counts.sum(dim=1) == 0).sum().item()),
     }
-    print(
-        f"[INPUT] rank={rank} profile={args.data_profile} routing={args.routing_mode} "
-        f"received_rows={routing['received_rows_per_rank']} empty_experts={routing['empty_experts']}",
-        flush=True,
-    )
+    if log_visible(rank):
+        print(
+            f"[INPUT] rank={rank} profile={args.data_profile} routing={args.routing_mode} "
+            f"received_rows={routing['received_rows_per_rank']} empty_experts={routing['empty_experts']}",
+            flush=True,
+        )
     expected = inputs["all_counts"][rank * args.expert_per_rank : (rank + 1) * args.expert_per_rank]
     capacity = (
         math.ceil(int(inputs["all_counts"].reshape(world, args.expert_per_rank).sum(dim=1).max().item()) / 128) * 128
@@ -965,10 +1564,11 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
     tensors = (x, ids, p, w1, w2, dy)
     if not args.diagnose_mxfp8:
         del inputs
-    print(
-        f"[STAGE] rank={rank} fused forward/backward; max_recv_tokens={capacity} shmem_bytes={local_mem}",
-        flush=True,
-    )
+    if log_visible(rank):
+        print(
+            f"[STAGE] rank={rank} fused forward/backward; max_recv_tokens={capacity} shmem_bytes={local_mem}",
+            flush=True,
+        )
     # On runtime/device exceptions restart the job; do not attempt a collective
     # close while peers may still be executing a different operation.
     with phase("fused_forward_backward"):
@@ -987,6 +1587,7 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
         "config": config,
         "world_size": world,
         "execution_mode": execution_mode,
+        "identity": runtime_identity(),
         "resolved_save_mode": mode,
         "max_recv_tokens": capacity,
         "shmem_bytes": local_mem,
@@ -1085,8 +1686,7 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
     failed = torch.tensor(int(not report["passed"]), dtype=torch.int32)
     dist.all_reduce(failed)
     if not int(failed.item()) and performance:
-        print(f"[STAGE] rank={rank} performance warmup/timing", flush=True)
-        report["performance"], counts = measure(op, tensors, capacity, args)
+        report["performance"], counts = measure(op, tensors, capacity, args, mode)
         report["performance_run"] = True
         counts_ok = torch.equal(counts.cpu().to(torch.int64), expected)
         report["performance"]["passed"] = counts_ok
@@ -1097,6 +1697,57 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
             "reason": "--skip performance" if not performance else "precision or smoke checks failed",
         }
     return report, output
+
+
+def performance_summary(reports):
+    """One terminal block: a line per scope with both sides, speedup and MFU.
+
+    Workers only collect data; rank 0 presents it here, after the JSON exists.
+    """
+    first = reports[0]
+    perf = first["performance"]
+    baseline = perf.get("baseline", {})
+    speeds = baseline.get("speedup") or {}
+    base_mfu = baseline.get("mfu") or {}
+    roofline = perf.get("roofline", {})
+    scopes = ("forward", "backward", "complete")
+    rfk = "/".join(f"{roofline[scope]['rfk']:.0f}" for scope in scopes if scope in roofline)
+    lines = [
+        f"[PERF] rank=0 mode={roofline.get('mode', '?')} warmup={perf['warmup']} loops={perf['loops']} "
+        f"({rfk} RFK, GMM peak {PEAK_TFLOPS:.0f} TF)"
+    ]
+    for scope in scopes:
+        row = f"[PERF] {scope:<9} megamoe_bf16={perf[f'{scope}_ms']['median']:8.3f}ms"
+        if scope in speeds:
+            row += f" baseline={baseline[f'{scope}_ms']['median']:8.3f}ms speedup={speeds[scope]:5.2f}x"
+        else:
+            row += " baseline=        --"
+        mfu = perf.get("mfu", {}).get(scope, {}).get("mfu")
+        if mfu is not None:
+            row += f" MFU={mfu:5.1f}%" + (f"/{base_mfu[scope]:.1f}%" if scope in base_mfu else "")
+        lines.append(row)
+    if roofline:
+        floor = "/".join(f"{roofline[scope]['floor_ms']:.2f}" for scope in scopes)
+        overhead = "/".join(f"{roofline[scope]['overhead_ms']:+.2f}" for scope in scopes)
+        lines.append(
+            f"[PERF] roofline floor={floor}ms overhead={overhead}ms "
+            f"@ {roofline['roofline_tflops']} TF (fwd/bwd/fb)"
+        )
+    if baseline.get("status") != "RUN":
+        lines.append(f"[PERF] baseline {str(baseline.get('status', '?')).lower()}: {baseline.get('reason', '')}")
+    for report in reports[1:]:
+        other = report["performance"]
+        other_speed = (other.get("baseline", {}).get("speedup") or {})
+        row = (
+            f"[PERF] rank={report['rank']} "
+            f"forward={other['forward_ms']['median']:.3f}ms "
+            f"backward={other['backward_ms']['median']:.3f}ms "
+            f"complete={other['complete_ms']['median']:.3f}ms"
+        )
+        if other_speed:
+            row += f" speedup={other_speed['forward']:.2f}/{other_speed['backward']:.2f}/{other_speed['complete']:.2f}x"
+        lines.append(row)
+    return lines
 
 
 def write_case_reports(args, rank, world, report, output):
@@ -1127,12 +1778,8 @@ def write_case_reports(args, rank, world, report, output):
         )
         print(f"[RESULT] {'PASS' if passed else 'FAIL'} skip={args.skip or 'none'} output={output}", flush=True)
         if passed and performance:
-            for value in reports:
-                perf = value["performance"]
-                print(
-                    f"[PERF] rank={value['rank']} forward_ms={perf['forward_ms']['median']:.6f} backward_ms={perf['backward_ms']['median']:.6f}",
-                    flush=True,
-                )
+            for line in performance_summary(reports):
+                print(line, flush=True)
     return passed
 
 
@@ -1201,7 +1848,9 @@ def run_suite_rank(local_rank, args, cases, output):
 
 
 def main(argv=None):
+    global _LOG_LEVEL
     args = parse_args(argv)
+    _LOG_LEVEL = args.log
     if args.suite:
         return run_suite(args)
     os.environ["ASCEND_RT_VISIBLE_DEVICES"] = ",".join(map(str, args.devices))

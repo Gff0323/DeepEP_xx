@@ -157,7 +157,7 @@ markdown += '**VS Code 一键定位**：按[扩展安装说明](vscode/README.md
 if (siteUrl) markdown += `[下载 VS Code 导览扩展](${siteUrl}downloads/megamoe-train-source-guide.vsix)\n\n`;
 markdown += '本地用浏览器打开 index.html，即可点击节点查看读写、等待和带行号源码。仓库网页可以直接阅读下方图文，通过调用点表跳转源码。\n\n';
 markdown += '普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。\n\n';
-markdown += '数值与验证：[BF16/FP32 舍入规则](../BF16_SWIGLU_NUMERICS.md) · [测试参考与验收](../../tests/bf16/TEST_PLAN.md)。BigOp 与契约参考共用 FP32 激活、导数及归并规则，CPU FP64 真值独立计算。\n\n';
+markdown += '数值与验证：[BF16/FP32 舍入规则](../BF16_SWIGLU_NUMERICS.md) · [测试参考与验收](../../tests/bf16/TEST_SPEC.md)。BigOp 与契约参考共用 FP32 激活、导数及归并规则，CPU FP64 真值独立计算。\n\n';
 markdown += '## 三个阅读场景\n\n固定侧栏可以随时回到章节。三个场景共用同一份教学路由，切换后保留所选 token 和前反向阶段；点击数据或阶段可查看真实源码。\n\n';
 for (const scene of learning.scenes) {
   markdown += `### ${scene.title}\n\n${scene.summary}\n\n![${scene.title}](diagrams/${scene.id}.png)\n\n`;

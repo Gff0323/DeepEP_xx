@@ -16,7 +16,7 @@
 
 普通浏览器保留 **复制定位路径**：按 **Ctrl+P** 粘贴并回车，打开对应源码和行号。
 
-数值与验证：[BF16/FP32 舍入规则](../BF16_SWIGLU_NUMERICS.md) · [测试参考与验收](../../tests/bf16/TEST_PLAN.md)。BigOp 与契约参考共用 FP32 激活、导数及归并规则，CPU FP64 真值独立计算。
+数值与验证：[BF16/FP32 舍入规则](../BF16_SWIGLU_NUMERICS.md) · [测试参考与验收](../../tests/bf16/TEST_SPEC.md)。BigOp 与契约参考共用 FP32 激活、导数及归并规则，CPU FP64 真值独立计算。
 
 ## 三个阅读场景
 

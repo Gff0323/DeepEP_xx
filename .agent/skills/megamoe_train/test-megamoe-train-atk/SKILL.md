@@ -12,7 +12,7 @@ description: 在容器默认 Python 中准备 ATK 与内部 CV 双标杆比较�
 开始前读取当前分支的以下文件，命令均从仓库根目录执行：
 
 - [训练模块 README](../../../../experiments/megamoe_train/README.md)：运行环境、测试模式与报告。
-- [测试方案](../../../../experiments/megamoe_train/tests/bf16/TEST_PLAN.md)及[用例清单](../../../../experiments/megamoe_train/tests/bf16/cases.json)：覆盖理由、shape、数据分布和 seed。
+- [测试规范](../../../../experiments/megamoe_train/tests/bf16/TEST_SPEC.md)及[用例清单](../../../../experiments/megamoe_train/tests/bf16/cases.json)：覆盖理由、shape、数据分布和 seed。
 - [测试入口](../../../../experiments/megamoe_train/tests/bf16/test_mega_moe.py)及[ATK 适配器](../../../../experiments/megamoe_train/tests/bf16/atk_compare.py)：实际参数、比较器身份和门限。
 
 不依赖 `moe-op-benchmark`，不另建测试框架，不调用 `atk task` 或 ATK 用例生成器。当前 ATK 只比较仓库生成的实际值、标杆和真值，不自动泛化 shape 或输入数值。
@@ -142,4 +142,4 @@ ATK 对每个 rank 的 `y`、`dx`、`dtopk_weights`、`dw1`、`dw2` 分别比较
 
 交付实际源码/原生库身份、Python 和 ATK 版本、命令、设备及 EP、套件/case 范围、退出码、PASS/FAIL/ERROR/NOT_RUN 数量、各失败输出和报告路径。没有执行的用例明确标为未测；不能将一组通过扩大为其他保存模式、EP 或完整套件通过。
 
-当前典型清单不包含其他路由、数据分布或保存模式。历史 GLM 4K 的 ATK 失败与 GLM M512 未完成状态见测试方案；收敛清单、环境加载或静态检查不改变这些记录，也不证明新二进制已通过。
+当前典型清单不包含其他路由、数据分布或保存模式。历史 GLM M4096 的 ATK 超差与 GLM M512 未完成状态见[训练模块说明](../../../../experiments/megamoe_train/README.md)的历史结果段；测试方案只记录用例与判据，不累积设备数据。收敛清单、环境加载或静态检查不改变这些记录，也不证明新二进制已通过。
