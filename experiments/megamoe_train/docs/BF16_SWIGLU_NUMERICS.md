@@ -124,7 +124,7 @@ clipping 在 FP32 中进行，掩码依原始 Gate/Up 判断，边界值保留�
 前向原始 Gate/Up，save=none 才重算。最终 BF16 转换采用最近偶数舍入。公共数值规则适用于
 所有已有保存模式，当前发布用例仍仅覆盖 BF16 保存。CPU FP64 真值和 ATK 门限不变，旧
 BigOp 结果保留原版本标识。MXFP8 诊断重放采用同一份 MegaMoE 契约；测试
-范围和具名历史结果见 [TEST_PLAN.md](../tests/bf16/TEST_PLAN.md)。
+范围和具名历史结果见 [TEST_SPEC.md](../tests/bf16/TEST_SPEC.md)。
 
 ## 源码入口与回归例
 

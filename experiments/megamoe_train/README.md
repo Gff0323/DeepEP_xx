@@ -175,7 +175,7 @@ operator tests with reduced expert counts, not full-model or convergence validat
 M means tokens entering the operator per rank; EP alone does not split M.
 The upstream dy is fixed-seed random input shared by all comparison paths;
 y.backward(dy) computes all four input gradients.
-See the [test plan (中文)](tests/bf16/TEST_PLAN.md) for the rationale and known limits.
+See the [test spec (中文)](tests/bf16/TEST_SPEC.md) for the rationale and known limits.
 
 There is one entry, `tests/bf16/test_mega_moe.py`, with these helpers:
 
@@ -189,8 +189,8 @@ There is one entry, `tests/bf16/test_mega_moe.py`, with these helpers:
 ### Run the typical cases
 
 After installing the wheel built from this branch, use the same Python containing
-ATK and atk-private-precision. Select authorized, idle physical devices explicitly.
-The launcher maps them to logical local ranks; the example uses two physical cards.
+ATK and atk-private-precision. Select authorized, idle physical devices explicitly;
+the launcher maps them to logical local ranks.
 
 ```bash
 # List all 12 configurations without importing Torch/ATK or using a device.
@@ -199,30 +199,25 @@ python experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
 
 # Precision: forward, all four gradients and counts.
 python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
-  --suite priority --skip performance --atk-ratios 5 1.5 1.5 \
+  --suite priority --skip performance \
   --shmem-ip-port tcp://127.0.0.1:29862
-
-# Select just the three M512 cases.
-python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
-  --suite priority --case-id flash_m512 --case-id pro_m512 --case-id glm_m512 \
-  --skip performance --shmem-ip-port tcp://127.0.0.1:29862
 
 # Performance only, without ATK or CPU FP64 reference computation.
 python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
-  --suite priority --skip precision --warmup 5 --loops 20 \
+  --suite priority --skip precision \
   --shmem-ip-port tcp://127.0.0.1:29862
 ```
 
-`--suite model` and `--suite all` select the same 12 published cases.
-The deferred smoke/core/extended suites are no longer accepted.
-Without --skip, precision runs before performance. `--case-id` is repeatable;
-suite shapes come from the manifest. Standalone explicit shape arguments remain
-available outside suite mode. No deferred JSON files are discovered automatically.
-The default persistent mode reuses workers and one operator/runtime; inputs,
-references and gradients are recomputed per case. Use --isolate-cases for fresh
-workers/runtime per case. CPU FP64 and complete gradient tensors can require
-substantial host RAM; check actual container resources before selecting EP2/4/8.
-SHMEM uses the supplied port and Gloo uses port+2; both must be available.
+[tests/bf16/README.md](tests/bf16/README.md) is the runbook: case selection,
+custom shapes, the three timing scopes and metric definitions, report fields,
+and known issues. Notes: `--suite model` and `--suite all` select the same 12
+published cases and the deferred smoke/core/extended suites are no longer
+accepted; without --skip, precision runs before performance; suite shapes come
+from the manifest while standalone shape arguments work only outside suite
+mode; the default persistent mode reuses workers and one operator/runtime with
+inputs recomputed per case (`--isolate-cases` gives fresh workers); CPU FP64
+and complete gradients can require substantial host RAM; SHMEM uses the
+supplied port and Gloo port+2.
 
 ### Precision decisions and reports
 
@@ -249,6 +244,55 @@ exit; setup/device/communication/cleanup errors stop the suite and leave remaini
 cases NOT_RUN. Restart after a device or collective error.
 The NPU Event performance timings exclude reference computation and reporting;
 case wall-clock timings are not operator performance measurements.
+
+Performance follows the source harness `test/bigop_fused` (`test_speed.py`,
+`timing.py`, `golden.py`) at `ascend_deepep_hkq@f575fc1`: three synchronized
+Event scopes
+(forward, autograd backward with the graph built outside the window, and
+forward plus backward in one window), `--warmup`/`--loops` samples each, and one
+synchronization around every window. No device Timer is built, enabled or read.
+Only test-side code is derived: the step timer, kernel Timer decoding, router,
+auxiliary loss and Megatron `MoELayer` plumbing are not adopted, and no kernel,
+Host, API or build file changes with it.
+The report names the two sides `megamoe_bf16` and `baseline`; `--baseline on`
+(the default) also times the ported dropless small-operator chain — permute,
+all-to-all dispatch, grouped GMM1, SwiGLU with routing weights, grouped GMM2,
+all-to-all combine and weighted unpermute — on the same routing, weights and
+upstream gradient, then prints per-scope speedups. The chain performs the same
+number of GEMMs as the operator: it recomputes GMM1 exactly in the `none` save
+mode and reuses the saved Gate/Up otherwise. `--baseline off` times the operator
+alone.
+
+Every scope also reports **MFU**: the RFK-model GMM FLOPs divided by the
+windowed latency and by the 432 TFLOPS BF16 cube peak, for `megamoe_bf16` and
+`baseline` alike. All-to-all, permute and activation stay inside the window, so
+these are operator-level GMM utilizations rather than a model MFU. The
+`roofline` block covers the same three scopes with the source's 410.4 TFLOPS
+denominator (95% of peak), recording each scope's floor, measured time and
+overhead; `floor / measured` is that scope's share of the derated roofline, about
+5% higher than its MFU, and is derived rather than stored separately.
+
+Workers only write JSON; rank 0 prints the summary once, one line per scope
+with both sides, speedup and MFU, then the roofline line and one compact line
+per remaining rank. `--baseline off` drops the baseline columns and reports the
+skip reason instead.
+
+A `--suite` run ends with the consolidated table the review asked for: one row
+per case with the shape including the total expert count, all three latencies,
+and the speedup, MFU and roofline floor triplets (forward/backward/complete),
+plus the complete-scope overhead — all from rank 0 medians.
+
+`--log` controls how much surrounds that table and defaults to `quiet`:
+`quiet` prints only the case lines, the per-case `[PERF]` block and the table;
+`rank0` adds the per-phase `[STAGE]`/`[TIME]` log, `[INPUT]` and the
+`[PERF] stage` progress markers for rank 0, which is what locates a stall;
+`all` prints the phase log for every rank. Use `rank0` when a run may hang.
+
+The baseline is informational and never changes PASS/FAIL. It reports
+`SKIPPED` with a reason when no HCCL subgroup can be created for `all_to_all`
+(the coordination group is Gloo) or when the packed routes exceed the 16 GiB
+working-set budget. The router, which the source times on both sides, is outside
+this entry because the public operator takes routing ids and weights directly.
 
 The earlier EP8 snapshot passed the four Flash and four Pro cases, and GLM M2048
 and M8192. GLM M4096 failed the dtopk_weights maximum ATK ratio; GLM M512 was not

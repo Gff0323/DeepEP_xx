@@ -1,9 +1,10 @@
-# MegaMoE BF16 典型尺寸测试方案
+# MegaMoE BF16 典型尺寸测试规范
 
 更新日期：2026-11-05。当前 [cases.json](cases.json) 仅发布 12 条典型模型尺寸用例：
 Flash、Pro、GLM 各取每 rank M=512、2048、4096、8192。
 其他通用边界、数据分布、保存模式和历史矩阵用例已在仓库外本地归档，不属于当前发布清单。
-清单与设备验收分开记录；设备精度、性能结果对应具体源码提交与构建产物。
+清单与设备验收分开记录；设备精度、性能结果对应具体源码提交与构建产物。清单存在不代表
+设备验收通过。
 
 ## 1. 范围与模型参数
 
@@ -86,21 +87,42 @@ python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
 ```
 
 `--skip precision` 仅运行有限值、计数检查和性能计时，不依赖 ATK；不加 --skip 则先精度后性能。
+性能按源仓 `test/bigop_fused` 的口径给出三个同步 Event 区间（前向、反向、前向+反向），`--warmup`/`--loops` 各一组样本，窗口前后各同步一次，不构建也不读取设备 Timer；报告把两侧记作 `megamoe_bf16` 与 `baseline`。`--baseline on`（默认）另测移植的 dropless 小算子链（permute、dispatch、GMM1、带路由权重的 SwiGLU、GMM2、combine、加权 unpermute），与算子共用同一份路由、权重和上游梯度，GEMM 数量对齐（`none` 重算 GMM1，其余复用保存的 Gate/Up），输出各口径 speedup；`--baseline off` 只测 MegaMoE BF16。三个口径同时给 MFU（RFK 模型的 GMM FLOPs ÷ 432 TFLOPS 峰值）与 roofline（源仓 410.4 TFLOPS 分母的 floor/measured/overhead），`floor ÷ measured` 即相对该降额上限的达成率，比同口径 MFU 高约 5%，因此不再单独存百分比字段；区间内含 alltoall/permute/激活，属算子级 GMM 利用率，不是模型级 MFU。baseline 只作信息对照，不参与 PASS/FAIL，无法建立 HCCL 子组或超过 16 GiB 打包路由预算时记 `SKIPPED` 及原因。
 默认跨用例复用 worker/runtime，输入和参考每次重新计算；`--isolate-cases` 使用独立执行器。
 CPU FP64 参考和完整权重梯度可能占用较多主机内存，需要先核对实际容器资源。
 
+### 性能指标定义
+
+`floor`、`MFU` 全部由 shape 和常量推导，不是测量值，读报告前先对齐口径：
+
+```text
+route_flops = M × topk × F × K            # 每 1 RFK；M 为每 rank token 数，K=hidden，F=ffn
+flops        = RFK × route_flops
+floor_ms     = flops / (410.4e12) × 1e3   # 410.4 = 432 峰值 × 0.95，源仓常量
+MFU          = flops / measured / 432e12  # 裸峰值分母
+```
+
+| 口径 | RFK | 构成（每个路由行） |
+| --- | --- | --- |
+| forward | 6 | GMM1 = 4（`2·K·2F`）+ GMM2 = 2（`2·F·K`） |
+| backward | 12 | dHp 2 + dW2 2 + dX 4 + dW1 4；`--save-gmm1-output none` 重算 GMM1 时为 16 |
+| complete | 18 / 22 | forward + backward |
+
+因此 `floor` 三口径恒为 **1 : 2 : 3**，且与路由分布无关（只与 M/topk/F/K 有关）。三个前提同时成立才成立：恒定 410.4 TF；窗口 100% 为 GEMM（通信、permute、激活、launch 都被忽略，所以它是**下界**）；路由不丢行（行数恰为 `M×topk`，容量不足导致截断时 floor 偏高）。实测低于 floor 说明常量或 RFK 模型有误，不是算子超过硬件。
+
+`--suite` 结束时 rank 0 打印汇总表，列为：`M/H/F/tk/E`（`E = EP × expert_per_rank`，每专家行数 `M×tk/E` 决定 ready 相关分支）、三口径中位时延、`speedup f/b/fb`（baseline ÷ megamoe_bf16）、`MFU% f/b/fb`、`floor f/b/fb`、`fb_overhead`（`complete` 的 measured − floor，即该窗口内的非 GEMM 时间）。三口径独立采样，`fb_overhead` 不等于 `fwd_overhead + bwd_overhead`，不要相加。
+
 每次输出新目录，保留 suite_summary.json、suite.log、逐用例 summary.json 和逐 rank 指标。
 ATK 失败保留 actual/benchmark/golden 张量。数值失败使整套失败；运行错误停止后续用例，
-不得把 ERROR/NOT_RUN 当作 PASS。记录源码、dirty diff、wheel/SO 哈希、环境、卡号、命令和 seed。
+不得把 ERROR/NOT_RUN 当作 PASS。报告顶层的 `identity` 自动写入 `revision`、`wheel` 版本和
+三个原生库的路径与 SHA256；`revision` 缺省为 `null` 时以 SHA256 作为二进制身份。仍需人工记录
+dirty diff、环境、卡号、命令和 seed。
 
-## 5. 历史证据与未验收范围
+## 5. 未覆盖范围
 
-2026-11-04 的旧快照基于 4dffcfc 加模型用例，Kernel SO SHA256 为
-40925bc7a99d61f1ea5b8cbff9749c9dea7ac975a669e8b1557580eefeb8be26。
-按本组 12 条筛选旧 EP8 结果：Flash 四条、Pro 四条 PASS；GLM M2048/M8192 PASS，
-M4096 的 rank7 dtopk_weights 最大误差比例 6.6435790853>5，判为 FAIL；
-GLM M512 尚无完整设备数值结果。该最坏点 CPU=0.0101755898675151、
-融合=-3.09375、BigOp=-0.45703125。
+当前清单只用于典型尺寸的算子级回归，不构成发布资格。未覆盖：其他路由与数据分布、非 BF16
+保存模式、完整专家数（清单使用缩减专家）、多机与 EP 子组、并发与重复调用生命周期、真实模型
+router 与共享专家、多 microbatch，以及整网 loss 收敛。
 
 这只是具名旧快照的证据，不是当前目标分支新二进制的资格验证。
 该历史记录沿用当时的原始 BF16 BigOp。`fp32-boundaries-v2` 升级激活及归并精度后，
@@ -113,3 +135,5 @@ CPU FP64 真值，仅重算 BigOp。其余四项输出没有在这轮缓存复�
 脚本完成 EP2、H7168 的 BF16/none/MXFP8 完整块、尾块及 clipping 前后向对照，18 个
 rank-case 全部通过现有混合容差和精确 counts；此轮未执行 CPU FP64 或 ATK。
 原始结果与临时脚本保存在仓库外，PR 说明记录各轮的版本与具体覆盖。
+
+性能测试的实测数据不写入本文件，随每次运行的报告保存。
