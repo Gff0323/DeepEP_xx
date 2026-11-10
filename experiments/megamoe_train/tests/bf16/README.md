@@ -95,7 +95,14 @@ python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1,2,3,4,5,6,7 
 | `backward` | 窗口外先跑一次前向建图（不计时），窗口内只圈 `y.backward(dy)` |
 | `complete` | 一次窗口内前向 + 反向 |
 
-`--warmup N --loops M` 对三个口径和 baseline 共用。**不构建、不开启、不读取任何设备 Timer**。
+`--warmup N --loops M` 对三个口径和 baseline 共用。**性能口径不构建、不开启、不读取任何设备 Timer**。
+
+设备 Timer 是单独的可选阶段（`--timer`，需要 `-DDEEPEP_MEGAMOE_TRAIN_TIMER=ON` 的构建）：
+在精度/性能判据都跑完之后，额外跑一次前向和一次反向，两次启动之间把 timer 缓冲落盘并清零，
+输出 `<output>/timer/rank_<r>_megamoe_bf16_{forward,backward}_timer.{bin,_parsed.csv}`，
+报告里写 `timer.forward/backward.summary`（每阶段最慢核，单位 us）。它只用于解释延迟，
+**不参与 PASS/FAIL，也不替代上面的 Event 口径**。`--timer-ranks 0` 指定落盘的 rank；
+解码可离线做：`python -m deep_ep_experimental.megamoe_train.timer --check-schema`。
 
 `--baseline on`（默认）额外计时移植过来的 dropless 小算子链（permute、alltoall dispatch、
 GMM1、带路由权重的 SwiGLU、GMM2、combine、加权 unpermute），与算子共用同一份路由、权重

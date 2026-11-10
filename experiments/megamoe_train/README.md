@@ -65,6 +65,14 @@ re-enable backward splitting. SwiGLU selection and saved formats are independent
 of this option. For example, set `export DEEPEP_BF16_FORCE_EXPERT_READY=ON` before
 the wheel build above to build the fallback.
 
+`DEEPEP_MEGAMOE_TRAIN_TIMER` is the single device-timer build option and requires
+`DEEPEP_BUILD_MEGAMOE_TRAIN=ON`. It accepts `ON` or `OFF` as an environment
+variable in the wheel build, or as a CMake option
+(`-DDEEPEP_MEGAMOE_TRAIN_TIMER=ON`). The default is `OFF`, where preprocessing
+erases every probe: a release build carries no cycle reads, no extra pipe
+barriers and no extra GM traffic. `ON` compiles the stage timer into both
+kernels; see [Device timer](#device-timer).
+
 Rebuild and reinstall the complete wheel after changing Host or device sources;
 the Host extension and device library must come from the same build.
 All EP ranks must use the same build and readiness option. Both readiness modes
@@ -250,7 +258,8 @@ Performance follows the source harness `test/bigop_fused` (`test_speed.py`,
 Event scopes
 (forward, autograd backward with the graph built outside the window, and
 forward plus backward in one window), `--warmup`/`--loops` samples each, and one
-synchronization around every window. No device Timer is built, enabled or read.
+synchronization around every window. No device Timer is built, enabled or read by these scopes; the opt-in
+stage timer in [Device timer](#device-timer) is a separate diagnostic.
 Only test-side code is derived: the step timer, kernel Timer decoding, router,
 auxiliary loss and Megatron `MoELayer` plumbing are not adopted, and no kernel,
 Host, API or build file changes with it.
@@ -303,3 +312,51 @@ reclassify any earlier failure. No NPU test was run for this manifest reduction.
 The precision references are adapted from
 [fft__/ascend_deepep_hkq](https://gitcode.com/fft__/ascend_deepep_hkq), commit
 `568ac7c07e2e669582f7ce684bf5dd27f503efad`.
+
+## Device timer
+
+The operator keeps an opt-in device timer for stage attribution. It is the training kernel's
+own `GetSystemCycle()` instrumentation: every AIC/AIV records `[start, end]` cycle pairs into a
+GM buffer whose layout is fixed at compile time. The performance numbers published by
+`--suite model` stay NPU-Event based; the timer exists to explain a latency, not to report it.
+
+Build and run:
+
+```bash
+export DEEPEP_MEGAMOE_TRAIN_TIMER=ON   # or -DDEEPEP_MEGAMOE_TRAIN_TIMER=ON
+# ... rebuild and reinstall the wheel ...
+
+python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
+  --suite model --case-id pro_m2048 --skip precision \
+  --timer --timer-ranks 0 --shmem-ip-port tcp://127.0.0.1:29862
+```
+
+The phase runs one extra forward and one extra backward after the pass/fail gates, dumps the
+buffer between the two launches (both kernels reuse the same slots), and writes
+`<output>/timer/rank_<r>_megamoe_bf16_{forward,backward}_timer.{bin,_parsed.csv}` plus a
+per-stage summary in that case's `rank_<rank>.json`.
+
+From Python, the surface is the buffer, not a flag:
+
+```python
+timer = op.allocate_timer()                    # zeroed int64, ~2 MiB
+y, counts = op(x, ids, p, w1, w2, capacity, timer=timer)
+y.backward(dy)                                 # writes the backward spans
+op.timer_enabled                               # False when the SO has no timer
+```
+
+Notes and limits:
+
+- The buffer is a fixed 251 904 int64 slots (96 logical cores x (10 fixed + 20 dynamic x 64
+  expert slots)); forward and backward share the same slots, so dump between launches.
+- Forward records routing, all-gather, per-expert dispatch, GMM1/GMM2 (split into input wait and
+  compute), SwiGLU (wait and compute), Combine (wait and compute), the Combine tail wait and
+  unpermute.
+- Backward records gather, count-table restore, dO dispatch, GMM1 recompute, P1 GMM2-grad and the
+  SwiGLU-grad epilogue, P2 dX/Combine, dW1/dW2, the AIC exit spins and the P5/P6 unpermute chain,
+  plus per-expert waits (`AIV_P1_WAIT` accumulates, so `AIV_SWIGLU_GRAD_E = wait + compute`).
+- Reads are `PipeBarrier<PIPE_ALL>` boundary pairs, so a span is wall time on that core, not
+  pure compute; the parsers report the slowest lane per stage because cores split the tiles.
+- `deep_ep_experimental.megamoe_train.timer` decodes offline: no Torch, no device. Run
+  `python -m deep_ep_experimental.megamoe_train.timer --check-schema` to confirm the Python
+  mirror still matches the device headers.

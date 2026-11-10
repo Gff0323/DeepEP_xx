@@ -142,6 +142,25 @@ def parse_args(argv=None):
     parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--shmem-ip-port", default="tcp://127.0.0.1:29862")
     parser.add_argument("--output", type=Path, default=None, help="New report directory")
+    parser.add_argument(
+        "--timer",
+        action="store_true",
+        help=(
+            "Trace one forward and one backward with the device cycle timer and decode both dumps; "
+            "requires a build with -DDEEPEP_MEGAMOE_TRAIN_TIMER=ON"
+        ),
+    )
+    parser.add_argument(
+        "--timer-dir",
+        type=Path,
+        default=None,
+        help="Timer dump directory; default <output>/timer",
+    )
+    parser.add_argument(
+        "--timer-ranks",
+        default="0",
+        help="Comma-separated ranks that dump their timer buffer (default 0)",
+    )
     args = parser.parse_args(argv)
     if (args.list_cases or args.case_id) and not args.suite:
         parser.error("--list-cases and --case-id require --suite")
@@ -182,6 +201,13 @@ def parse_args(argv=None):
     args.devices = args.devices or (
         parse_devices(inherited) if inherited else list(range(int(os.environ.get("LOCAL_WORLD_SIZE", "2"))))
     )
+    if args.timer:
+        try:
+            args.timer_ranks = sorted({int(item) for item in str(args.timer_ranks).split(",") if item.strip()})
+        except ValueError:
+            parser.error("--timer-ranks must be a comma-separated list of rank indices")
+        if not args.timer_ranks:
+            parser.error("--timer-ranks must name at least one rank")
     world = int(os.environ.get("WORLD_SIZE", str(len(args.devices))))
     if not 2 <= world <= 1024 or not 1 <= args.seq <= 16384 or not 1 <= args.expert_per_rank <= 32:
         parser.error("Requires EP in 2..1024, seq in 1..16384 and local experts in 1..32")
@@ -283,6 +309,10 @@ def launch_options(args):
         argv += ["--atk"]
     if args.diagnose_mxfp8:
         argv += ["--diagnose-mxfp8"]
+    if args.timer:
+        argv += ["--timer", "--timer-ranks", ",".join(map(str, args.timer_ranks))]
+        if args.timer_dir is not None:
+            argv += ["--timer-dir", str(args.timer_dir)]
     if args.atk_ratios is not None:
         argv += ["--atk-ratios", *map(str, args.atk_ratios)]
     return argv
@@ -1398,8 +1428,90 @@ def measure(op, tensors, capacity, args, mode):
     return report, counts
 
 
-_LOG_LEVEL = "all"
+def trace_timer(op, tensors, capacity, args, output, rank, phase):
+    """One traced forward and one traced backward, decoded into stage tables.
 
+    Forward and backward reuse the same per-core slots, so the buffer is
+    dumped (and re-zeroed) between the two launches; a dump therefore always
+    belongs to exactly one kernel. The autograd function keeps the buffer it
+    was given at forward time, so the backward writes into the same tensor.
+    """
+    import torch
+
+    from deep_ep_experimental.megamoe_train.timer import protocol as timer_protocol
+    from deep_ep_experimental.megamoe_train.timer import parse_timer_csv
+
+    if not op.timer_enabled:
+        raise RuntimeError(
+            "MegaMoe BF16 timer requested but the device kernel was built without "
+            "DEEPEP_MEGAMOE_TRAIN_TIMER=ON"
+        )
+    x, ids, p, w1, w2, dy = tensors
+    for leaf in (x, p, w1, w2):
+        leaf.grad = None
+    timer = op.allocate_timer()
+    directory = Path(args.timer_dir) if args.timer_dir else output / "timer"
+    report = {"status": "RUN", "buffer_int64": timer_protocol.TOTAL_BUFFER_SIZE, "ranks": args.timer_ranks}
+    dumping = rank in args.timer_ranks
+
+    with phase("timer_forward"):
+        y, counts = op(
+            x,
+            ids,
+            p,
+            w1,
+            w2,
+            capacity,
+            save_gmm1_output=args.save_gmm1_output,
+            swiglu_limit=args.swiglu_limit,
+            timer=timer,
+        )
+        torch.npu.synchronize()
+        if dumping:
+            report["forward"] = dump_timer(timer, directory, rank, "forward", parse_timer_csv)
+    with phase("timer_backward"):
+        timer.zero_()
+        y.backward(dy)
+        torch.npu.synchronize()
+        if dumping:
+            report["backward"] = dump_timer(timer, directory, rank, "backward", parse_timer_csv)
+    if dumping:
+        values = dict(y=y, dx=x.grad, dtopk_weights=p.grad, dw1=w1.grad, dw2=w2.grad)
+        report["passed"] = all(bool(torch.isfinite(value).all().item()) for value in values.values())
+        if rank == 0 and _LOG_LEVEL != "quiet":
+            for kernel in ("forward", "backward"):
+                for item in report.get(kernel, {}).get("summary", [])[:8]:
+                    print(
+                        f"[TIMER] {kernel} {item['engine']} {item['stage']} {item['max_us']:.2f}us",
+                        flush=True,
+                    )
+    else:
+        report["skipped"] = f"rank {rank} is not in --timer-ranks"
+    return report
+
+
+def dump_timer(timer, directory, rank, kernel, parse_timer_csv):
+    """Write one raw dump and decode it with the offline timer package."""
+    import torch
+    from array import array
+
+    directory.mkdir(parents=True, exist_ok=True)
+    raw = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer.bin"
+    host = timer.detach().cpu().to(torch.int64).contiguous()
+    try:
+        host.numpy().tofile(raw)
+    except (ImportError, RuntimeError):
+        # No numpy: the buffer is small (~250k int64), so a plain array write
+        # keeps the dump path dependency-free on a lean worker image.
+        with raw.open("wb") as stream:
+            array("q", host.tolist()).tofile(stream)
+    rows = parse_timer_csv.decode(raw, kernel)
+    parsed = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_parsed.csv"
+    parse_timer_csv.write_csv(rows, parsed, kernel)
+    return {"raw": str(raw), "parsed": str(parsed), "summary": parse_timer_csv.summarize(rows)}
+
+
+_LOG_LEVEL = "all"
 
 def log_visible(rank):
     """Phase logs follow --log: all ranks, rank 0 only, or silent."""
@@ -1696,6 +1808,16 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
             "status": "NOT_RUN",
             "reason": "--skip performance" if not performance else "precision or smoke checks failed",
         }
+    # The timer is diagnostic: it runs after the pass/fail gates and never
+    # changes them. It needs its own forward+backward, so it is opt-in.
+    if args.timer:
+        if int(failed.item()):
+            report["timer"] = {"status": "SKIPPED", "reason": "earlier checks failed"}
+        else:
+            with phase("timer_trace"):
+                report["timer"] = trace_timer(
+                    op, tensors, capacity, args, output, rank, phase
+                )
     return report, output
 
 
