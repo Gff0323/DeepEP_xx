@@ -20,12 +20,18 @@ ASCEND_MEGAMOE_EXPORT int deepep_train_mega_moe_bf16_swiglu_decoupled_for_saved_
 ASCEND_MEGAMOE_EXPORT void deepep_train_mega_moe_bf16_forward_kernel_do(
     uint32_t block_dim, void* stream, uint8_t* context, uint8_t* x, uint8_t* topk_ids, uint8_t* topk_weights,
     uint8_t* weight1, uint8_t* weight2, uint8_t* y, uint8_t* expert_token_nums, uint8_t* training_saved_state,
-    uint8_t* dispatch_output, uint8_t* forward_transient_workspace, const uint8_t* tiling_host, uint64_t ffts_addr);
+    uint8_t* dispatch_output, uint8_t* forward_transient_workspace, const uint8_t* tiling_host, uint64_t ffts_addr,
+    uint8_t* timer);
 
 ASCEND_MEGAMOE_EXPORT void deepep_train_mega_moe_bf16_backward_ready_k_kernel_do(
     uint32_t block_dim, void* stream, uint8_t* context, uint8_t* grad_y, uint8_t* topk_weights, uint8_t* weight1,
     uint8_t* weight2, uint8_t* grad_x, uint8_t* grad_topk_weights, uint8_t* grad_weight1, uint8_t* grad_weight2,
     uint8_t* training_saved_state, uint8_t* dispatch_output, uint8_t* backward_workspace, const uint8_t* tiling_host,
-    uint64_t ffts_addr, uint32_t split_experts);
+    uint64_t ffts_addr, uint32_t split_experts, uint8_t* timer);
+
+// Answers whether this device SO was built with DEEPEP_MEGAMOE_TRAIN_TIMER.
+// The Host calls it directly (the extension links the SO), so the build flag
+// has exactly one source of truth.
+ASCEND_MEGAMOE_EXPORT int deepep_train_mega_moe_bf16_timer_enabled(void);
 
 }  // extern "C"

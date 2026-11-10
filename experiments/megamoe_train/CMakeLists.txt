@@ -3,6 +3,8 @@
 
 # BF16 training is an independent optional component; root owns the SDKs.
 option(DEEPEP_BF16_FORCE_EXPERT_READY "Wait for whole-expert Dispatch in training forward and backward" OFF)
+option(DEEPEP_MEGAMOE_TRAIN_TIMER
+    "Instrument the BF16 training kernels with the device cycle timer (diagnostic builds only)" OFF)
 if(DEEPEP_BF16_FORCE_EXPERT_READY)
     set(train_force_expert_ready 1)
 else()
@@ -43,6 +45,11 @@ set(train_device_flags -O2 -std=c++17 -fPIC -xasc --npu-arch=dav-3510
     -DCATLASS_ARCH=3510 -DL2_CACHE_HINT
     -DDEEPEP_BF16_FORCE_EXPERT_READY=${train_force_expert_ready}
     -DDEEPEP_BF16_SWIGLU_DECOUPLE=2)
+# The timer lives entirely in the device SO: without this flag the macros erase
+# every probe, and the Host asks the built SO whether tracing is available.
+if(DEEPEP_MEGAMOE_TRAIN_TIMER)
+    list(APPEND train_device_flags -DDEEPEP_BF16_TIMER=1)
+endif()
 foreach(path IN LISTS train_include)
     list(APPEND train_device_flags "-I${path}")
 endforeach()

@@ -20,11 +20,14 @@ class _TrainRuntime(Runtime):
 
 class _MegaMoeBF16TrainFunction(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, op, x, ids, weights, w1, w2, max_recv, limit, mode):
+    def forward(ctx, op, x, ids, weights, w1, w2, max_recv, limit, mode, timer):
         op._check_ready()
-        result = op._executor.forward(x, ids, weights, w1, w2, max_recv, limit, mode)
+        result = op._executor.forward(x, ids, weights, w1, w2, max_recv, limit, mode, timer)
         ctx.op = op
         ctx.max_recv, ctx.limit, ctx.mode = max_recv, limit, mode
+        # The timer buffer is an output-only side channel, not a differentiable
+        # input: keep it for backward and answer None for its gradient slot.
+        ctx.timer = timer
         ctx.save_for_backward(weights, w1, w2, result.counts, result.saved_state, result.dispatch_output)
         ctx.mark_non_differentiable(result.counts)
         return result.y, result.counts
@@ -46,8 +49,9 @@ class _MegaMoeBF16TrainFunction(torch.autograd.Function):
             ctx.max_recv,
             ctx.limit,
             ctx.mode,
+            ctx.timer,
         )
-        return None, result.dx, None, result.dtopk_weights, result.dw1, result.dw2, None, None, None
+        return None, result.dx, None, result.dtopk_weights, result.dw1, result.dw2, None, None, None, None
 
 
 class MegaMoeBF16Train(torch.nn.Module):
@@ -99,12 +103,17 @@ class MegaMoeBF16Train(torch.nn.Module):
         *,
         swiglu_limit=0.0,
         save_gmm1_output="bf16",
+        timer=None,
     ):
         """Return (y, counts); autograd provides dX, dTopK, dW1 and dW2.
 
         Floating inputs are contiguous BF16 tensors on the construction NPU;
         expert IDs are int32. Weights use [E,2F,H]/[E,H,F], with legacy layouts
         [E,H,2F]/[E,F,H] retained. Counts are non-differentiable.
+
+        ``timer`` is an optional int64 buffer from :meth:`allocate_timer`. Both
+        the forward and the autograd backward pass write into the same buffer;
+        the kernel only records when a buffer is passed.
         """
         integer("max_recv_tokens", max_recv_tokens, 1, (1 << 31) - 1)
         limit = float(swiglu_limit)
@@ -112,9 +121,45 @@ class MegaMoeBF16Train(torch.nn.Module):
             raise ValueError("swiglu_limit must be finite and representable as float32")
         if save_gmm1_output not in ("bf16", "none", "mxfp8", "auto"):
             raise ValueError("save_gmm1_output must be bf16, none, mxfp8 or auto")
+        timer = self._check_timer(timer)
         return _MegaMoeBF16TrainFunction.apply(
-            self, x, topk_ids, topk_weights, w1, w2, max_recv_tokens, limit, save_gmm1_output
+            self, x, topk_ids, topk_weights, w1, w2, max_recv_tokens, limit, save_gmm1_output, timer
         )
+
+    @property
+    def timer_enabled(self):
+        """True when the loaded device SO was built with the device timer."""
+        from . import _C
+
+        return bool(_C.timer_enabled())
+
+    def allocate_timer(self, device=None):
+        """Allocate one zeroed timer buffer for forward and backward tracing.
+
+        A fresh (or re-zeroed) buffer per traced iteration keeps slots that
+        this invocation never writes from being read as stale events.
+        """
+        from . import _C
+
+        if not self.timer_enabled:
+            raise RuntimeError(
+                "the device kernel was built without DEEPEP_MEGAMOE_TRAIN_TIMER=ON; rebuild before tracing"
+            )
+        target = f"npu:{self._runtime.device}" if device is None else device
+        return torch.zeros(_C.timer_buffer_size(), dtype=torch.int64, device=target)
+
+    def _check_timer(self, timer):
+        if timer is None:
+            return None
+        if not self.timer_enabled:
+            raise RuntimeError(
+                "the device kernel was built without DEEPEP_MEGAMOE_TRAIN_TIMER=ON; rebuild before tracing"
+            )
+        if not isinstance(timer, torch.Tensor) or timer.dtype != torch.int64:
+            raise ValueError("timer must be an int64 tensor from allocate_timer")
+        if timer.device != torch.device(f"npu:{self._runtime.device}"):
+            raise ValueError("timer must live on the construction device")
+        return timer
 
     def close(self):
         """Collectively release the window; callers must finish backward first."""

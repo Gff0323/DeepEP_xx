@@ -41,6 +41,7 @@
 #include "layout/mega_moe_context.hpp"
 #include "routing/mega_moe_combine_send.hpp"
 #include "schedule/forward_prepared_phase.hpp"
+#include "common/mega_moe_bf16_timer.hpp"
 
 namespace MegaMoeBF16ForwardCatlassImpl {
 
@@ -253,7 +254,8 @@ __aicore__ inline void GroupMatmulSwiglu(
     MegaMoeBF16Impl::BlockEpilogueSwigluForwardBF16<Gmm1L1TileShape, true>& epilogueOp, const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx, int32_t& vecSetSyncCom, uint32_t expertIdx, bool useTileReady,
-    uint32_t readyBlocksPerProducerPartition)
+    uint32_t readyBlocksPerProducerPartition
+    MEGA_MOE_BF16_TIMER_PARAM(timer))
 {
     using ReadyLayout = MegaMoeBF16Training::ForwardDispatchTileReadyLayout;
     static_assert(ReadyLayout::kReadyRows % GMM1_TILE_M == 0,
@@ -319,6 +321,9 @@ __aicore__ inline void GroupMatmulSwiglu(
 
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
+                // Closed after this expert's readiness chain, so AIC_GMM1_WAIT
+                // also covers tile-ready polling in the streaming schedule.
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1_WAIT, expertIdx));
             }
             // Automatic readiness checks each task's input when tile-ready is
             // selected, since static swizzling can visit non-adjacent M tiles.
@@ -380,6 +385,10 @@ __aicore__ inline void GroupMatmulSwiglu(
             if (vecSetSyncCom) {
                 WaitForVector();
             }
+            // Keep the per-expert schema: WAIT is this expert's input wait and
+            // GMM1 covers the Cube work plus the Vector handshakes.
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1_WAIT, expertIdx));
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1, expertIdx));
             auto tensorBlockA =
                 tla::GetTile(tensorA, tla::MakeCoord(mLoc, kLoc), tla::MakeShape(actualShape.m(), actualShape.k()));
             auto tensorBlockUbFirst =
@@ -403,9 +412,13 @@ __aicore__ inline void GroupMatmulSwiglu(
                 AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
                     mLoc * gmm1Params.outputN + nLoc, 0, 0, 0, 0, 0};
                 if (loopIdx == startLoopIdx) {
+                    MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIV_SWIGLU_WAIT, expertIdx));
                 }
                 WaitForCube();
                 if (loopIdx == startLoopIdx) {
+                    MEGA_MOE_BF16_TIMER_BLOCK(
+                        timer.template Tok<Overwrite>(AscendTimer::AIV_SWIGLU_WAIT, expertIdx));
+                    MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIV_SWIGLU, expertIdx));
                 }
                 epilogueOp.template Run<SaveMode>(epilogueShape, epilogueOffset);
                 NotifyCube();
@@ -414,10 +427,12 @@ __aicore__ inline void GroupMatmulSwiglu(
     }
     if constexpr (g_coreType == AscendC::AIC) {
         if (startLoopIdx < coreLoops) {
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1, expertIdx));
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
         if (gmm1Params.subBlockIdx == 0 && startLoopIdx < coreLoops) {
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIV_SWIGLU, expertIdx));
         }
     }
     startBlockIdx = (startBlockIdx + coreLoops) % gmm1Params.blockNum;
@@ -430,7 +445,8 @@ __aicore__ inline void GroupMatmulSwigluGm(
     MegaMoeBF16Impl::BlockEpilogueSwigluForwardBF16<Gmm1L1TileShape, true>& epilogueOp, const Params& params,
     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape, const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx, uint32_t expertIdx, bool useTileReady, uint32_t readyBlocksPerProducerPartition,
-    uint64_t savedElementOffset)
+    uint64_t savedElementOffset
+    MEGA_MOE_BF16_TIMER_PARAM(timer))
 {
     using ReadyLayout = MegaMoeBF16Training::ForwardDispatchTileReadyLayout;
     static_assert(ReadyLayout::kReadyRows % GMM1_TILE_M == 0,
@@ -473,11 +489,14 @@ __aicore__ inline void GroupMatmulSwigluGm(
             return;
         }
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIV_SWIGLU_WAIT, expertIdx));
         while (AscendC::ReadGmByPassDCache(gmmReady) != gmm1Params.blockNum) {
             const int64_t start = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - start < 100) {
             }
         }
+        MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIV_SWIGLU_WAIT, expertIdx));
+        MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIV_SWIGLU, expertIdx));
     }
     AscendC::GlobalTensor<bfloat16_t> savedGate, savedUp;
     // BF16 already owns persistent raw planes. none/mxfp8 reuse Hp for
@@ -528,6 +547,9 @@ __aicore__ inline void GroupMatmulSwigluGm(
 
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
+                // Closed after this expert's readiness chain, so AIC_GMM1_WAIT
+                // also covers tile-ready polling in the streaming schedule.
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1_WAIT, expertIdx));
             }
             // Automatic readiness checks each task's input when tile-ready is
             // selected, since static swizzling can visit non-adjacent M tiles.
@@ -586,6 +608,8 @@ __aicore__ inline void GroupMatmulSwigluGm(
                     }
                 }
             }
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1_WAIT, expertIdx));
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1, expertIdx));
             auto tensorBlockA =
                 tla::GetTile(tensorA, tla::MakeCoord(mLoc, kLoc), tla::MakeShape(actualShape.m(), actualShape.k()));
             auto tensorBlockGate =
@@ -623,10 +647,12 @@ __aicore__ inline void GroupMatmulSwigluGm(
         AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::AtomicAdd(gmmReady, 1);
         if (startLoopIdx < coreLoops) {
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1, expertIdx));
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
         if (startLoopIdx < coreLoops) {
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIV_SWIGLU, expertIdx));
         }
     }
     startBlockIdx = (startBlockIdx + coreLoops) % gmm1Params.blockNum;
@@ -636,7 +662,8 @@ template <bool TransW = true>
 __aicore__ inline void GroupMatmul2(ForwardGroupMatmulParam<1, TransW>& gmm2Params, const Params& params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
                                     const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom,
-                                    uint32_t groupIdx, uint32_t expertRowOffset, uint16_t& pingpongIdx, int32_t rankId)
+                                    uint32_t groupIdx, uint32_t expertRowOffset, uint16_t& pingpongIdx, int32_t rankId
+                                    MEGA_MOE_BF16_TIMER_PARAM(timer))
 {
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = gmm2Params.n;
@@ -672,6 +699,7 @@ __aicore__ inline void GroupMatmul2(ForwardGroupMatmulParam<1, TransW>& gmm2Para
 
         if constexpr (g_coreType == AscendC::AIC) {
             if (loopIdx == startLoopIdx) {
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM2_WAIT, groupIdx));
                 BlockScheduler gmm1Scheduler({m, k, n}, Catlass::MakeCoord(GMM1_TILE_M, L1_TILE_N));
                 const uint32_t target = gmm1Scheduler.GetCoreLoops();
                 __gm__ int32_t* flag = (__gm__ int32_t*)swigluFlags.GetPhyAddr();
@@ -680,6 +708,8 @@ __aicore__ inline void GroupMatmul2(ForwardGroupMatmulParam<1, TransW>& gmm2Para
                     while (AscendC::GetSystemCycle() - start < 100) {
                     }
                 }
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM2_WAIT, groupIdx));
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM2, groupIdx));
             }
             if (vecSetSyncCom >= 2) {
                 WaitForVector(pingpongIdx + FLAG_ID_MAX);
@@ -698,9 +728,13 @@ __aicore__ inline void GroupMatmul2(ForwardGroupMatmulParam<1, TransW>& gmm2Para
         if constexpr (g_coreType == AscendC::AIV) {
             if (gmm2Params.subBlockIdx == 1) {
                 if (loopIdx == startLoopIdx) {
+                    MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIV_COMBINE_WAIT, groupIdx));
                 }
                 WaitForCube(pingpongIdx);
                 if (loopIdx == startLoopIdx) {
+                    MEGA_MOE_BF16_TIMER_BLOCK(
+                        timer.template Tok<Overwrite>(AscendTimer::AIV_COMBINE_WAIT, groupIdx));
+                    MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIV_COMBINE, groupIdx));
                 }
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
@@ -715,10 +749,12 @@ __aicore__ inline void GroupMatmul2(ForwardGroupMatmulParam<1, TransW>& gmm2Para
     }
     if constexpr (g_coreType == AscendC::AIC) {
         if (startLoopIdx < coreLoops) {
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM2, groupIdx));
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
         if (gmm2Params.subBlockIdx == 1 && startLoopIdx < coreLoops) {
+            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIV_COMBINE, groupIdx));
         }
     }
     startBlockIdx = (startBlockIdx + coreLoops) % gmm2Params.blockNum;

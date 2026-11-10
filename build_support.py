@@ -201,6 +201,9 @@ def build_configuration(environment=None):
     force_expert_ready = enabled("DEEPEP_BF16_FORCE_EXPERT_READY", env)
     if force_expert_ready and not train:
         raise RuntimeError("DEEPEP_BF16_FORCE_EXPERT_READY requires DEEPEP_BUILD_MEGAMOE_TRAIN=ON")
+    train_timer = enabled("DEEPEP_MEGAMOE_TRAIN_TIMER", env)
+    if train_timer and not train:
+        raise RuntimeError("DEEPEP_MEGAMOE_TRAIN_TIMER requires DEEPEP_BUILD_MEGAMOE_TRAIN=ON")
     beta = env.get("DEEPEP_BUILD_MEGAMOE", "OFF")
     timer = env.get("DEEPEP_MEGAMOE_TIMER", "OFF")
     if beta not in {"ON", "OFF"} or timer not in {"ON", "OFF"}:
@@ -287,6 +290,7 @@ def build_configuration(environment=None):
     result["megamoe_train"] = {
         "enabled": train,
         "force_expert_ready": force_expert_ready,
+        "timer": train_timer,
         "source_commit": "b8cff14854d12aef77b6ae54b5890123759b4d28",
         "gmm1_schedule": "expert-ready" if force_expert_ready else "adaptive-auto",
         "swiglu_decouple": "auto",
@@ -379,6 +383,8 @@ class VariantBuild(ConfiguredBuild):
             variant += "-megamoe-train"
             if enabled("DEEPEP_BF16_FORCE_EXPERT_READY"):
                 variant += "-expert-ready"
+            if enabled("DEEPEP_MEGAMOE_TRAIN_TIMER"):
+                variant += "-timer"
         self.build_base = str(Path(self.build_base) / variant)
         super().finalize_options()
 
@@ -426,6 +432,7 @@ class CMakeBuild(build_ext):
             f"-DCATLASS_ROOT={configuration.get('CATLASS_ROOT', '')}",
             f"-DDEEPEP_BUILD_MEGAMOE_TRAIN={'ON' if configuration.get('megamoe_train', {}).get('enabled', False) else 'OFF'}",
             f"-DDEEPEP_BF16_FORCE_EXPERT_READY={'ON' if configuration.get('megamoe_train', {}).get('force_expert_ready', False) else 'OFF'}",
+            f"-DDEEPEP_MEGAMOE_TRAIN_TIMER={'ON' if configuration.get('megamoe_train', {}).get('timer', False) else 'OFF'}",
             f"-DDEEPEP_BUILD_EP_GMM_FUSED={'ON' if ep_gmm_fused else 'OFF'}",
             f"-DCMAKE_INSTALL_PREFIX={destination}",
         ]

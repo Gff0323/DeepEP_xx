@@ -4,6 +4,8 @@
 
 #include "bf16/training.hpp"
 
+#include "kernels/bf16/common/ascend_timer_v2.hpp"
+
 namespace py = pybind11;
 PYBIND11_MODULE(_C, module)
 {
@@ -24,4 +26,10 @@ PYBIND11_MODULE(_C, module)
         .def("forward", &BF16Executor::forward)
         .def("backward", &BF16Executor::backward)
         .def("close", &BF16Executor::close);
+    // Device timer surface: the buffer size is a compile-time layout constant,
+    // and support is answered by the linked device SO, not by Python.
+    module.def("timer_buffer_size", []() { return AscendTimer::TOTAL_BUFFER_SIZE; },
+               "int64 elements required by one MegaMoe BF16 training timer buffer");
+    module.def("timer_enabled", []() { return deepep_train_mega_moe_bf16_timer_enabled() != 0; },
+               "whether the loaded device SO was built with DEEPEP_MEGAMOE_TRAIN_TIMER=ON");
 }

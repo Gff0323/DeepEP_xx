@@ -66,7 +66,7 @@ void LaunchMegaMoeBF16ForwardKernel(torch::Tensor context, torch::Tensor x, torc
                                     torch::Tensor training_saved_state, torch::Tensor dispatch_output,
                                     torch::Tensor forward_transient_workspace, const MegaMoeTilingData& tiling,
                                     uint32_t block_dim, void* symmetric_buffer, std::size_t symmetric_buffer_bytes,
-                                    int rank, int world_size, uint64_t ffts_addr)
+                                    int rank, int world_size, uint64_t ffts_addr, uint8_t* timer)
 {
     TORCH_CHECK(symmetric_buffer != nullptr, "symmetric_buffer must not be null");
     TORCH_CHECK(world_size <= 1024, "MegaMoe BF16 supports at most 1024 EP ranks");
@@ -80,7 +80,8 @@ void LaunchMegaMoeBF16ForwardKernel(torch::Tensor context, torch::Tensor x, torc
            BytePtr(topk_weights.data_ptr()), BytePtr(weight1.data_ptr()), BytePtr(weight2.data_ptr()),
            BytePtr(y.data_ptr()), BytePtr(expert_token_nums.data_ptr()), BytePtr(training_saved_state.data_ptr()),
            dispatch_output.defined() ? BytePtr(dispatch_output.data_ptr()) : nullptr,
-           BytePtr(forward_transient_workspace.data_ptr()), reinterpret_cast<const uint8_t*>(&tiling), ffts_addr);
+           BytePtr(forward_transient_workspace.data_ptr()), reinterpret_cast<const uint8_t*>(&tiling), ffts_addr,
+           timer);
 
     (void)symmetric_buffer_bytes;
 }
@@ -92,7 +93,7 @@ void LaunchMegaMoeBF16BackwardKernel(torch::Tensor context, torch::Tensor grad_y
                                      torch::Tensor dispatch_output, torch::Tensor backward_workspace,
                                      const MegaMoeTilingData& tiling, uint32_t splitExperts, uint32_t block_dim,
                                      void* symmetric_buffer, std::size_t symmetric_buffer_bytes, int rank,
-                                     int world_size, uint64_t ffts_addr)
+                                     int world_size, uint64_t ffts_addr, uint8_t* timer)
 {
     TORCH_CHECK(symmetric_buffer != nullptr, "symmetric_buffer must not be null");
     TORCH_CHECK(world_size <= 1024, "MegaMoe BF16 supports at most 1024 EP ranks");
@@ -105,6 +106,7 @@ void LaunchMegaMoeBF16BackwardKernel(torch::Tensor context, torch::Tensor grad_y
            BytePtr(weight1.data_ptr()), BytePtr(weight2.data_ptr()), BytePtr(grad_x.data_ptr()),
            BytePtr(grad_topk_weights.data_ptr()), BytePtr(grad_weight1.data_ptr()), BytePtr(grad_weight2.data_ptr()),
            BytePtr(training_saved_state.data_ptr()), BytePtr(dispatch_output.data_ptr()),
-           BytePtr(backward_workspace.data_ptr()), reinterpret_cast<const uint8_t*>(&tiling), ffts_addr, splitExperts);
+           BytePtr(backward_workspace.data_ptr()), reinterpret_cast<const uint8_t*>(&tiling), ffts_addr, splitExperts,
+           timer);
     (void)symmetric_buffer_bytes;
 }

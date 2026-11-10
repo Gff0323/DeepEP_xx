@@ -48,10 +48,14 @@
 #include "routing/mega_moe_combine_send.hpp"
 #include "epilogue/block_epilogue_swiglu_backward_bf16.hpp"
 #include "catlass/mega_moe_bf16_backward_catlass_impl.hpp"
+#include "common/mega_moe_bf16_backward_timer.hpp"
+#include "common/mega_moe_bf16_timer.hpp"
 
 using namespace AscendC;
 
 namespace MegaMoeImpl {
+
+using namespace MegaMoeBF16BackwardTimer;
 
 using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
 
@@ -78,7 +82,7 @@ public:
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR gradY, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
                                 GM_ADDR gradX, GM_ADDR gradTopkWeights, GM_ADDR gradWeight1, GM_ADDR gradWeight2,
                                 GM_ADDR trainingSavedState, GM_ADDR dispatchOutput, GM_ADDR backwardWorkspace,
-                                MegaMoeTilingData* tilingData, uint32_t splitExperts);
+                                MegaMoeTilingData* tilingData, uint32_t splitExperts, GM_ADDR timerAddr = nullptr);
     __aicore__ inline void Process();
 
 private:
@@ -229,13 +233,20 @@ private:
     GM_ADDR gradWeight1GmAddr_{nullptr};
     GM_ADDR gradWeight2GmAddr_{nullptr};
     GM_ADDR gradTopkWeightsGmAddr_{nullptr};
+
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    // timer_ holds the per-stage/per-expert slots; timerAll_ only closes the
+    // whole-invocation slot so the trace can be normalised against it.
+    AscendTimerDevice timer_;
+    AscendTimerDevice timerAll_;
+#endif
 };
 
 __aicore__ inline void MegaMoeBF16Backward::Init(GM_ADDR context, GM_ADDR gradY, GM_ADDR topkWeights, GM_ADDR weight1,
                                                  GM_ADDR weight2, GM_ADDR gradX, GM_ADDR gradTopkWeights,
                                                  GM_ADDR gradWeight1, GM_ADDR gradWeight2, GM_ADDR trainingSavedState,
                                                  GM_ADDR dispatchOutput, GM_ADDR backwardWorkspace,
-                                                 MegaMoeTilingData* tilingData, uint32_t splitExperts)
+                                                 MegaMoeTilingData* tilingData, uint32_t splitExperts, GM_ADDR timerAddr)
 {
 #if DEEPEP_BF16_FORCE_EXPERT_READY
     // Keep the device split policy consistent with Host allocation.
@@ -297,6 +308,24 @@ __aicore__ inline void MegaMoeBF16Backward::Init(GM_ADDR context, GM_ADDR gradY,
                       bwWs_.ptrGradZ, bwWs_.ptrHp, bwWs_.ptrDpProducts, savedState_.ptrDispatchedTopkWeights, 0, 0,
                       tilingData->swigluLimit, savedGateUpMode_});
     epilogueOp_.UpdateNextProblem({0, n_, 0, 0});
+
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    timer_.Init(timerAddr);
+    timerAll_.Init(timerAddr);
+    timerAll_.Tik();
+    timer_.Tik();
+    // Backward-only stages share the dynamic slot space with the forward
+    // entries, so publish their per-expert iteration counts separately.
+    timer_.setDynamicActualIter(AscendTimer::AIV_BW_DISPATCH, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_BW_RECOMPUTE, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_BW_DO_WAIT, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_BW_GMM2GRAD, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIV_BW_SWIGLU_GRAD, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_BW_GMM1GRAD, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIV_BW_COMBINE, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_BW_DW1, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_BW_DW2, expertPerRank_);
+#endif
 }
 
 // Fixed-position P0 staging window at the top of UB, above the P1/P2 tile
@@ -537,6 +566,7 @@ __aicore__ inline void MegaMoeBF16Backward::CopyGMToGMPerTokenV2(GlobalTensor<Qu
 __aicore__ inline void MegaMoeBF16Backward::DispatchTokensBackward(GM_ADDR dstBase, uint32_t expertIdx,
                                                                    uint32_t ordinal)
 {
+    MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_BW_DISPATCH, expertIdx));
     int64_t widthA = k_;
     int32_t pingpongId = 0;
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -594,6 +624,7 @@ __aicore__ inline void MegaMoeBF16Backward::DispatchTokensBackward(GM_ADDR dstBa
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
+    MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AscendTimer::AIV_BW_DISPATCH, expertIdx));
 }
 
 __aicore__ inline bool MegaMoeBF16Backward::UpdateGroupParams(uint32_t expertIdx)
@@ -777,7 +808,8 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1RecomputePhase()
         const int64_t planeOffset =
             expertRowBase * (n_ / MegaMoeBF16BackwardCatlassImpl::SWIGLU_N_HALF) * sizeof(bfloat16_t);
         GroupMatmulRecompute(gmm1Params, problemShape_, gmmAddrInfo, bwWs_.ptrRecomputeGate + planeOffset,
-                             bwWs_.ptrRecomputeUp + planeOffset, startBlockIdx, expertIdx);
+                             bwWs_.ptrRecomputeUp + planeOffset, startBlockIdx, expertIdx
+                             MEGA_MOE_BF16_TIMER_ARG(timer_));
         cumMRows_ += Get<M_VALUE>(problemShape_);
     }
 }
@@ -827,7 +859,8 @@ __aicore__ inline void MegaMoeBF16Backward::GMM2GradPhase()
                 gmm2Params, epilogueOp_, problemShape_, gmmAddrInfo,
                 bwWs_.ptrHp + expertRowBase * (n_ / 2) * sizeof(bfloat16_t), startBlockIdx, nextTargetAiv, expertIdx,
                 expertRowBase, dispatchFlag, dispatchTarget, rowReady,
-                reinterpret_cast<__gm__ int32_t*>(bwWs_.ptrBwFlagDHpReady) + expertIdx * INT_CACHELINE);
+                reinterpret_cast<__gm__ int32_t*>(bwWs_.ptrBwFlagDHpReady) + expertIdx * INT_CACHELINE
+                MEGA_MOE_BF16_TIMER_ARG(timer_));
             if constexpr (g_coreType == AscendC::AIV) {
                 // Idle AIVs must also publish completion after dZ/Hp/partial stores retire.
                 PipeBarrier<PIPE_ALL>();
@@ -837,7 +870,7 @@ __aicore__ inline void MegaMoeBF16Backward::GMM2GradPhase()
         } else {
             GMM2GradSwiGLUGradDualAiv(gmm2Params, epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx,
                                       vecSetSyncCom_, nextTargetAiv, expertIdx, expertRowBase, dispatchFlag,
-                                      dispatchTarget, BW_P1_EVENT);
+                                      dispatchTarget, BW_P1_EVENT MEGA_MOE_BF16_TIMER_ARG(timer_));
         }
         ++nonemptyOrdinal;
         cumMRows_ += Get<M_VALUE>(problemShape_);
@@ -871,7 +904,7 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1GradPhase()
             UpdateGlobalBuffer(gmmAddrInfo, BW_PHASE_GMM1GRAD, expertIdx);
             // mLoc is expert-relative; keep Combine's slice offset at zero.
             GMM1GradCombine<0>(gmm1Params, params_, problemShape_, gmmAddrInfo, startBlockIdx, vecSetSyncCom_,
-                               expertIdx, 0, gmm2PingPongIdx_);
+                               expertIdx, 0, gmm2PingPongIdx_ MEGA_MOE_BF16_TIMER_ARG(timer_));
             cumMRows_ += Get<M_VALUE>(problemShape_);
         }
     }
@@ -901,9 +934,10 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1GradReuseDOPhase()
         const int64_t rows = Get<M_VALUE>(problemShape_);
         if constexpr (g_coreType == AscendC::AIC) {
             // Wait for all AIV dZ/Hp stores, which also retire the corresponding AIC dO reads.
-
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
             while (ReadGmByPassDCache(dzReady) < 2 * static_cast<int32_t>(blockNum_)) {
             }
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIC_DZ_WAIT_EXPERT_BASE + expertIdx));
 
             {
                 // Drain each CATLASS handle before another reuses its L1/L0 storage.
@@ -914,14 +948,18 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1GradReuseDOPhase()
                 Get<K_VALUE>(dwShape) = rows;
                 GMMAddrInfo dwAddr{};
                 UpdateGlobalBuffer(dwAddr, BW_PHASE_DW2, expertIdx);
-                GMM2DW(dw2Params, dwShape, dwAddr, dw2StartBlockIdx, expertIdx);
+                GMM2DW(dw2Params, dwShape, dwAddr, dw2StartBlockIdx, expertIdx
+                       MEGA_MOE_BF16_TIMER_ARG(timer_));
                 PipeBarrier<PIPE_ALL>();  // retire this core's dO reads and dW2 writes
             }
 
             // Count idle AICs too; no core may overwrite dO before all dW2 readers retire.
             AtomicAdd(doReleased, int32_t(1));
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
             while (ReadGmByPassDCache(doReleased) < static_cast<int32_t>(blockNum_)) {
             }
+            MEGA_MOE_BF16_TIMER_BLOCK(
+                timer_.template Tok<Overwrite>(AIC_DO_REUSE_WAIT_EXPERT_BASE + expertIdx));
         }
         {
             BackwardGroupMatmulParam<RowMajor, WeightLayout, 0, true> dxParams;
@@ -929,7 +967,7 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1GradReuseDOPhase()
             UpdateGlobalBuffer(dxAddr, BW_PHASE_GMM1GRAD, expertIdx);
             GMM1GradCombineGM<WeightLayout>(dxParams, params_, problemShape_, dxAddr,
                                             bwWs_.ptrDX + cumMRows_ * k_ * sizeof(bfloat16_t), dxStartBlockIdx,
-                                            expertIdx, dxReady);
+                                            expertIdx, dxReady MEGA_MOE_BF16_TIMER_ARG(timer_));
         }
         cumMRows_ += rows;
     }
@@ -959,7 +997,8 @@ __aicore__ inline void MegaMoeBF16Backward::GMM1DWPhase()
         }
         Get<K_VALUE>(problemShape_) = me;
         UpdateGlobalBuffer(gmmAddrInfo, BW_PHASE_DW1, expertIdx);
-        GMM1DW(gmm1Params, problemShape_, gmmAddrInfo, startBlockIdx, expertIdx);
+        GMM1DW(gmm1Params, problemShape_, gmmAddrInfo, startBlockIdx, expertIdx
+               MEGA_MOE_BF16_TIMER_ARG(timer_));
         cumMRows_ += me;
     }
 }
@@ -987,7 +1026,8 @@ __aicore__ inline void MegaMoeBF16Backward::GMM2DWPhase()
         }
         Get<K_VALUE>(problemShape_) = me;
         UpdateGlobalBuffer(gmmAddrInfo, BW_PHASE_DW2, expertIdx);
-        GMM2DW(gmm2Params, problemShape_, gmmAddrInfo, startBlockIdx, expertIdx);
+        GMM2DW(gmm2Params, problemShape_, gmmAddrInfo, startBlockIdx, expertIdx
+               MEGA_MOE_BF16_TIMER_ARG(timer_));
         cumMRows_ += me;
     }
 }
@@ -1211,6 +1251,10 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     // needs no TPipe and no ownership handover into P1.  P5/P6 allocate
     // their reduction buffers in local pipes.
     InitStageLayout();
+    // Bridges the wakeup-to-first-stage window (rest of Init + layout setup);
+    // the lane's start_cycle_ comes from Init's Tik.
+    MEGA_MOE_BF16_TIMER_BLOCK(
+        timer_.template Tok<Overwrite>(g_coreType == AscendC::AIC ? AIC_INIT : AIV_INIT));
     // The Host-side token-table clear is ordered before this kernel on the
     // same stream. The entry device synchronization makes that local
     // ordering visible to every peer without a Host stream synchronize or
@@ -1219,13 +1263,19 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
 
     // ---- P0-A: gather raw grad_y into route order -> ptrA0 (all AIV) ----
     if constexpr (g_coreType == AscendC::AIV) {
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         GatherRoutes();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_GATHER));
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
 
         SyncAll<true>();
         CrossRankSyncInWorldSize();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_XSYNC_GATHER));
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         RestoreTokenPerExpert();
         SyncAll<true>();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_RESTORE_TABLE));
         if (MegaMoeBF16Training::UseGmForBackwardDataGrad(savedGateUpMode_) && splitExperts_ > 0 && aivCoreIdx_ == 0) {
             // Word1 of expert0's dHp flag cacheline signals that every AIV
             // has finished count-table restore and producer metadata setup.
@@ -1257,12 +1307,20 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     // BF16/MXFP8 modes consume the matching forward-persistent gate/up in P1.
     // Only save=none recomputes GMM1 into backward GM scratch. The AIC does
     // not hand these results through AIV UB, so it can overlap P0-A/P0-B.
+    if constexpr (g_coreType == AscendC::AIV) {
+        // AIVs only walk the phase (param ctor + per-expert count-table reads),
+        // so this slot is the bookkeeping cost, not the GMM1 itself.
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
+    }
     if (savedGateUpMode_ == MegaMoeBF16Training::kSaveNone) {
         if (params_.tilingData->transW) {
             GMM1RecomputePhase<true>();
         } else {
             GMM1RecomputePhase<false>();
         }
+    }
+    if constexpr (g_coreType == AscendC::AIV) {
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_RECOMPUTE_PASS));
     }
 
     // ---- P1: GMM2 dHp + SwiGLU backward epilogue ----
@@ -1292,11 +1350,14 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     if (!useGmDataGrad) {
         const int32_t p1OutstandingMask = vecSetSyncCom_;
         if constexpr (g_coreType == AscendC::AIC) {
+            // Pair-local tail events plus the all-AIV counter form one
+            // AIC_SPIN_DZ bar: P1 exit on the cube side.
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
             if ((p1OutstandingMask & 1) != 0) {
                 WaitForVector(BW_P1_EVENT);  // AIV0 wrote its last dZ tile
             }
             if ((p1OutstandingMask & 2) != 0) {
-                WaitForVector(BW_P1_EVENT + FLAG_ID_MAX);  // AIV1 wrote the last dZ tile
+                WaitForVector(BW_P1_EVENT + FLAG_ID_MAX);  // AIV1 wrote its last dZ tile
             }
             // Pair-local events cover only local tiles; P2/P3 require every AIV's dZ stores.
             const int32_t p1ReadyTarget = 2 * static_cast<int32_t>(blockNum_);
@@ -1305,6 +1366,7 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
                 while (GetSystemCycle() - start < 100) {
                 }
             }
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIC_SPIN_DZ));
         }
     }
     if constexpr (g_coreType == AscendC::AIV) {
@@ -1337,13 +1399,14 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
     if constexpr (g_coreType == AscendC::AIC) {
         if (!useGmDataGrad) {
             // Tail sync: ensure AIV0 consumed every dX tile before P3/P4.
-
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
             if (vecSetSyncCom_ == 1) {
                 WaitForVector(0);
             } else if (vecSetSyncCom_ >= 2) {
                 WaitForVector(gmm2PingPongIdx_);
                 WaitForVector(1 - gmm2PingPongIdx_);
             }
+            MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIC_P2_TAIL));
         }
     }
 
@@ -1356,11 +1419,13 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
             GMM1DWPhase<false>();
         }
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         while (2 * static_cast<int32_t>(blockNum_) != ReadGmByPassDCache(bwFlagHDone_)) {
             const int64_t start = GetSystemCycle();
             while (GetSystemCycle() - start < 100) {
             }
         }
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIC_SPIN_HP));
 
         if (!useGmDataGrad) {
             if (params_.tilingData->transW) {
@@ -1382,44 +1447,59 @@ __aicore__ inline void MegaMoeBF16Backward::Process()
         // are drained and every local AIV has reached this point; otherwise a peer can start
         // dX unpermute from a partially-written ptrD.
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
         CrossRankSyncInWorldSize();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_XSYNC_UNPERMUTE));
 
         // P5: unpermute dX.
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         TPipe unpermutePipe;
         UnpermuteBuffInit(&unpermutePipe);
         UnpermuteBackward();
         PipeBarrier<PIPE_ALL>();
         unpermutePipe.Destroy();
         SyncAll<true>();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_UNPERMUTE));
 
         // All ranks must finish reading dX before ptrD is reused for dp.
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         CrossRankSyncInWorldSize();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_XSYNC_DP));
 
         TPipe topkGradPipe;
         TopkGradBuffInit(&topkGradPipe);
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         ReduceAndRouteTopkGrad();
         PipeBarrier<PIPE_ALL>();
         topkGradPipe.Destroy();
         SyncAll<true>();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_DP_REDUCE));
 
         // Finish remote dp writes before any rank reads ptrD.
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         CrossRankSyncInWorldSize();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_XSYNC_TOPK));
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         UnpermuteTopkGrad();
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_TOPK_UNPERMUTE));
 
         // The exit barrier protects the next forward from this rank's count-table reset.
 
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik());
         ResetTokenPerExpert();
         SyncAll<true>();
         CrossRankSyncInWorldSize();
+        MEGA_MOE_BF16_TIMER_BLOCK(timer_.template Tok<Overwrite>(AIV_TABLE_RESET));
     }
+    MEGA_MOE_BF16_TIMER_BLOCK(timerAll_.template Tok<Overwrite>(BW_KERNEL_TIMING_IDX));
 }
 
 }  // namespace MegaMoeImpl

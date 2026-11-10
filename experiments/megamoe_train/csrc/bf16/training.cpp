@@ -17,7 +17,9 @@
 #include "shmem.h"
 
 #include "check.hpp"
+#include "kernel_launch.hpp"
 #include "launcher.hpp"
+#include "csrc/kernels/bf16/common/ascend_timer_v2.hpp"
 #include "csrc/kernels/bf16/common/mega_moe_tiling.hpp"
 #include "csrc/kernels/bf16/layout/mega_moe_layout.hpp"
 #include "csrc/kernels/bf16/layout/mega_moe_saved_meta.hpp"
@@ -36,6 +38,26 @@ void CheckNpuContiguous(const torch::Tensor& tensor, const char* name)
 {
     TORCH_CHECK(tensor.device().type() == c10::DeviceType::PrivateUse1, name, " must be an NPU tensor");
     TORCH_CHECK(tensor.is_contiguous(), name, " must be contiguous");
+}
+
+// Device-side timer buffer validation. The kernel keeps its pointer null when
+// the caller passes nothing, so a timer-enabled build is still free of timer
+// work when tracing is off. Build support is answered by the device SO itself
+// (linked into this extension), never by a second copy of the compile flag.
+uint8_t* TimerPointer(const c10::optional<torch::Tensor>& timer, const char* operation)
+{
+    if (!timer.has_value() || !timer->defined()) {
+        return nullptr;
+    }
+    const torch::Tensor& value = *timer;
+    TORCH_CHECK(value.device().type() == c10::DeviceType::PrivateUse1 && value.is_contiguous() &&
+                    value.scalar_type() == torch::kInt64,
+                operation, ": timer must be a contiguous NPU int64 tensor");
+    TORCH_CHECK(value.numel() >= AscendTimer::TOTAL_BUFFER_SIZE, operation, ": timer needs at least ",
+                AscendTimer::TOTAL_BUFFER_SIZE, " int64 elements, got ", value.numel());
+    TORCH_CHECK(deepep_train_mega_moe_bf16_timer_enabled() != 0, operation,
+                ": the device kernel was built without DEEPEP_MEGAMOE_TRAIN_TIMER=ON; rebuild before passing timer");
+    return static_cast<uint8_t*>(value.data_ptr());
 }
 
 torch::Tensor AllocateForwardTransientWorkspace(
@@ -196,8 +218,9 @@ ForwardResult MegaMoeBF16Forward(torch::Tensor context, torch::Tensor x, torch::
                                  torch::Tensor topkWeights, torch::Tensor weight1, torch::Tensor weight2,
                                  int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes,
                                  uint64_t ffts_addr, void* symmetricBuffer, double swigluLimit,
-                                 const std::string& save_gmm1_output)
+                                 const std::string& save_gmm1_output, c10::optional<torch::Tensor> timer)
 {
+    uint8_t* timerPointer = TimerPointer(timer, "MegaMoe BF16 forward");
     CheckNpuContiguous(x, "x");
     CheckNpuContiguous(topkIds, "topk_ids");
     CheckNpuContiguous(topkWeights, "topk_weights");
@@ -275,11 +298,14 @@ ForwardResult MegaMoeBF16Forward(torch::Tensor context, torch::Tensor x, torch::
         context, x, topkIds, topkWeights, weight1, weight2, y, expertTokenNums, trainingSavedState, dispatchOutput,
         forwardTransientWorkspace, tiling,
         static_cast<uint32_t>(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic()),
-        symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr);
+        symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr, timerPointer);
     const auto stream = c10_npu::getCurrentNPUStream();
     for (const auto* tensor : {&context, &x, &topkIds, &topkWeights, &weight1, &weight2, &y, &expertTokenNums,
                                &trainingSavedState, &dispatchOutput, &forwardTransientWorkspace}) {
         c10_npu::NPUCachingAllocator::recordStream(tensor->storage().data_ptr(), stream);
+    }
+    if (timer.has_value() && timer->defined()) {
+        c10_npu::NPUCachingAllocator::recordStream(timer->storage().data_ptr(), stream);
     }
     return {y, expertTokenNums, trainingSavedState, dispatchOutput};
 }
@@ -289,8 +315,9 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
                                    torch::Tensor trainingSavedState, torch::Tensor dispatchOutput,
                                    int64_t maxRecvTokens, int rank, int worldSize, std::size_t symmetricBufferBytes,
                                    uint64_t ffts_addr, void* symmetricBuffer, double swigluLimit,
-                                   const std::string& save_gmm1_output)
+                                   const std::string& save_gmm1_output, c10::optional<torch::Tensor> timer)
 {
+    uint8_t* timerPointer = TimerPointer(timer, "MegaMoe BF16 backward");
     const int64_t m = gradY.size(0);
     const int64_t k = gradY.size(1);
     TORCH_CHECK(weight1.dim() == 3 && weight2.dim() == 3, "weight1 and weight2 must be rank-3 tensors");
@@ -430,12 +457,15 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
         context, gradY, topkWeights, weight1, weight2, gradX, gradTopkWeights, gradWeight1, gradWeight2,
         trainingSavedState, dispatchOutput, backwardWorkspace, tiling, splitExperts,
         static_cast<uint32_t>(platform_ascendc::PlatformAscendCManager::GetInstance()->GetCoreNumAic()),
-        symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr);
+        symmetricBuffer, symmetricBufferBytes, rank, worldSize, ffts_addr, timerPointer);
     const auto stream = c10_npu::getCurrentNPUStream();
     for (const auto* tensor :
          {&context, &gradY, &topkWeights, &weight1, &weight2, &expertTokenNums, &trainingSavedState, &dispatchOutput,
           &gradX, &gradTopkWeights, &gradWeight1, &gradWeight2, &backwardWorkspace}) {
         c10_npu::NPUCachingAllocator::recordStream(tensor->storage().data_ptr(), stream);
+    }
+    if (timer.has_value() && timer->defined()) {
+        c10_npu::NPUCachingAllocator::recordStream(timer->storage().data_ptr(), stream);
     }
     return {gradX, gradTopkWeights, gradWeight1, gradWeight2};
 }
@@ -463,23 +493,24 @@ void BF16Executor::close()
 
 ops::ForwardResult BF16Executor::forward(torch::Tensor x, torch::Tensor topk_ids, torch::Tensor topk_weights,
                                          torch::Tensor weight1, torch::Tensor weight2, int64_t max_recv_tokens,
-                                         double swiglu_limit, const std::string& save_gmm1_output)
+                                         double swiglu_limit, const std::string& save_gmm1_output,
+                                         c10::optional<torch::Tensor> timer)
 {
     TORCH_CHECK(address_ != 0, "training operator has been closed");
     return ops::MegaMoeBF16Forward(Context(x), x, topk_ids, topk_weights, weight1, weight2, max_recv_tokens, rank_,
                                    world_size_, SymmetricBufferBytes(), ffts_addr_, SymmetricBuffer(), swiglu_limit,
-                                   save_gmm1_output);
+                                   save_gmm1_output, timer);
 }
 
 ops::BackwardResult BF16Executor::backward(torch::Tensor grad_y, torch::Tensor topk_weights, torch::Tensor weight1,
                                            torch::Tensor weight2, torch::Tensor counts, torch::Tensor saved_state,
                                            torch::Tensor dispatch_output, int64_t max_recv_tokens, double swiglu_limit,
-                                           const std::string& save_gmm1_output)
+                                           const std::string& save_gmm1_output, c10::optional<torch::Tensor> timer)
 {
     TORCH_CHECK(address_ != 0, "training operator has been closed");
     return ops::MegaMoeBF16Backward(Context(grad_y), grad_y, topk_weights, weight1, weight2, counts, saved_state,
                                     dispatch_output, max_recv_tokens, rank_, world_size_, SymmetricBufferBytes(),
-                                    ffts_addr_, SymmetricBuffer(), swiglu_limit, save_gmm1_output);
+                                    ffts_addr_, SymmetricBuffer(), swiglu_limit, save_gmm1_output, timer);
 }
 
 torch::Tensor BF16Executor::Context(const torch::Tensor& like)

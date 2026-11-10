@@ -18,6 +18,7 @@
 #include "tla/layout.hpp"
 #include "epilogue/block_epilogue_swiglu_forward_bf16.hpp"
 #include "catlass/mega_moe_bf16_forward_catlass_impl.hpp"
+#include "common/mega_moe_bf16_timer.hpp"
 #include "common/mega_moe_forward_save.hpp"
 #include "routing/mega_moe_topk_weight_gather.hpp"
 #include "routing/mega_moe_unpermute.hpp"
@@ -42,7 +43,8 @@ public:
                                 GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR permutedInputOut,
                                 GM_ADDR actualRecvTokensOut, GM_ADDR savedMetaOut, GM_ADDR workspaceGM,
                                 MegaMoeTilingData* tilingData, GM_ADDR transientWorkspaceGM = nullptr,
-                                GM_ADDR dispatchOutputGM = nullptr, bool allowCompactTokenCountExchange = true);
+                                GM_ADDR dispatchOutputGM = nullptr, bool allowCompactTokenCountExchange = true,
+                                GM_ADDR timerAddr = nullptr);
     __aicore__ inline void Process();
     template <uint32_t SaveMode, bool TransW>
     __aicore__ inline void ProcessSelected();
@@ -174,6 +176,13 @@ private:
     using BlockEpilogue =
         MegaMoeBF16Impl::BlockEpilogueSwigluForwardBF16<MegaMoeBF16ForwardCatlassImpl::Gmm1L1TileShape, true>;
     BlockEpilogue epilogueOp_;  // GMMswiglu调用
+
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    // timer_ carries the per-stage/per-expert slots; timerAll_ only closes the
+    // whole-invocation slot so the trace can be normalised against it.
+    AscendTimerDevice timer_;
+    AscendTimerDevice timerAll_;
+#endif
 };
 
 __aicore__ inline void MegaMoeBF16Forward::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights,
@@ -182,7 +191,8 @@ __aicore__ inline void MegaMoeBF16Forward::Init(GM_ADDR context, GM_ADDR x, GM_A
                                                 GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR permutedInputOut,
                                                 GM_ADDR actualRecvTokensOut, GM_ADDR savedMetaOut, GM_ADDR workspaceGM,
                                                 MegaMoeTilingData* tilingData, GM_ADDR transientWorkspaceGM,
-                                                GM_ADDR dispatchOutputGM, bool allowCompactTokenCountExchange)
+                                                GM_ADDR dispatchOutputGM, bool allowCompactTokenCountExchange,
+                                                GM_ADDR timerAddr)
 {
     m_ = tilingData->m;
     k_ = tilingData->k;
@@ -242,6 +252,25 @@ __aicore__ inline void MegaMoeBF16Forward::Init(GM_ADDR context, GM_ADDR x, GM_A
         Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128));
     tokenPerExpertCurRankAddr_ =
         params_.peermemInfo.ptrTokenPerExpert + TokenPerExpertLayout(rankId_, 0, 0) * sizeof(int32_t);
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    timer_.Init(timerAddr);
+    timerAll_.Init(timerAddr);
+    // Opening both here makes AIV_INIT_PARAM the kernel-entry window and keeps
+    // timerAll_ independent of every later Tik/Tok pair.
+    timerAll_.Tik();
+    timer_.Tik();
+    // Publish the per-expert slot count so a parser never invent tasks for
+    // experts this rank does not own.
+    timer_.setDynamicActualIter(AscendTimer::AIV_DISPATCH, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIV_SWIGLU_WAIT, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIV_SWIGLU, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIV_COMBINE_WAIT, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIV_COMBINE, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_GMM1_WAIT, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_GMM1, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_GMM2_WAIT, expertPerRank_);
+    timer_.setDynamicActualIter(AscendTimer::AIC_GMM2, expertPerRank_);
+#endif
 }
 
 __aicore__ inline void MegaMoeBF16Forward::EnableDispatchTileReady(GM_ADDR transientWorkspaceGM)
@@ -1069,6 +1098,14 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessSelected()
 template <uint32_t SaveMode, bool TransW, bool GmSwiglu>
 __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
 {
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    if constexpr (g_coreType == AscendC::AIV) {
+        // Init's timer_.Tik() opened the kernel-entry window; close it here and
+        // re-arm, so AIV_INIT_PARAM is wakeup-to-Process, not wakeup-to-exit.
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_INIT_PARAM);
+        timer_.Tik();
+    }
+#endif
     // The Host enqueues the local token-table memset on this same stream and
     // launches immediately. Reaching this barrier proves
     // every rank's local clear has completed before any peer starts routing.
@@ -1106,11 +1143,30 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
         GatherRoutedTopkWeights();
     }
     SyncAll<true>();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    if constexpr (g_coreType == AscendC::AIV) {
+        // Routing sort + packing of this rank's tokens.
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_INITROUTING_SORT);
+        timer_.Tik();
+    }
+#endif
 
     ResetWorkSpaceFlagList();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    if constexpr (g_coreType == AscendC::AIV) {
+        // Single line on purpose: the comment above stays attached to the call.
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_INITROUTING_EXPERT_TOKEN_COUNT);
+        timer_.Tik();
+    }
+#endif
 
     // 3. cnt值全ep域内的发送以及本端接收整理
     CrossRankSyncCntPerExpert();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    if constexpr (g_coreType == AscendC::AIV) {
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_ALLGATHER);
+    }
+#endif
     if (subBlockIdx_ == 0) {
         PipeBarrier<PIPE_ALL>();
         firstPipe.Destroy();
@@ -1164,12 +1220,15 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
             UpdateGlobalBuffer(gmmAddrInfo, 0);
             if constexpr (g_coreType == AscendC::AIV) {
                 if (subBlockIdx_ == 1) {
+                    MEGA_MOE_BF16_TIMER_BLOCK(timer_.Tik(AscendTimer::AIV_DISPATCH, expertIdx));
                     // Bypass L2 only for ordinary BF16 Dispatch packed-X stores.
                     // GMM1 creates its own input tensor with its original read policy.
                     GlobalTensor<QuantOutType> dispatchedX;
                     dispatchedX.SetGlobalBuffer(reinterpret_cast<__gm__ QuantOutType*>(gmmAddrInfo.aGlobal));
                     dispatchedX.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
                     DispatchTokens<true, waitForFullExpert>(gmmAddrInfo, expertIdx, dispatchedX, useTileReady);
+                    MEGA_MOE_BF16_TIMER_BLOCK(
+                        timer_.template Tok<Overwrite>(AscendTimer::AIV_DISPATCH, expertIdx));
                 }
             }
             // Producer and consumer share one invocation-wide protocol
@@ -1178,11 +1237,13 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
             if constexpr (useGmSwiglu) {
                 MegaMoeBF16ForwardCatlassImpl::GroupMatmulSwigluGm<true, waitForFullExpert, SaveMode, TransW>(
                     gmm1Params, epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, expertIdx,
-                    useTileReady, readyBlocksPerProducerPartition, Get<IDX_C_OFFSET>(baseOffset_));
+                    useTileReady, readyBlocksPerProducerPartition, Get<IDX_C_OFFSET>(baseOffset_)
+                    MEGA_MOE_BF16_TIMER_ARG(timer_));
             } else {
                 MegaMoeBF16ForwardCatlassImpl::GroupMatmulSwiglu<true, waitForFullExpert, SaveMode, TransW>(
                     gmm1Params, epilogueOp_, params_, problemShape_, gmmAddrInfo, startBlockIdx_, gmm1VecSetSyncCom_,
-                    expertIdx, useTileReady, readyBlocksPerProducerPartition);
+                    expertIdx, useTileReady, readyBlocksPerProducerPartition
+                    MEGA_MOE_BF16_TIMER_ARG(timer_));
             }
         }
     }
@@ -1240,27 +1301,52 @@ __aicore__ inline void MegaMoeBF16Forward::ProcessWithSaveMode()
                 UpdateGlobalBuffer(gmmAddrInfo, 1);
                 MegaMoeBF16ForwardCatlassImpl::GroupMatmul2(gmm2Params, params_, problemShape_, gmmAddrInfo,
                                                             startBlockIdx_, gmm2VecSetSyncCom_, expertIdx, 0,
-                                                            gmm2PingPongIdx_, rankId_);
+                                                            gmm2PingPongIdx_, rankId_
+                                                            MEGA_MOE_BF16_TIMER_ARG(timer_));
             }
         }
     }
     EndSync();
     EndGMM2Sync();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    if constexpr (g_coreType == AscendC::AIV) {
+        timer_.Tik();
+    }
+#endif
     SyncAll<true>();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    if constexpr (g_coreType == AscendC::AIV) {
+        // Tail of Combine: every local peer's sends must have landed.
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_WAIT_COMB);
+    }
+#endif
 
     // 6. unpermute & 清理win区上放置token的位置
     if constexpr (g_coreType == AIV) {
         ResetTokenPerExpert();
         SyncAll<true>();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+        timer_.Tik();
+#endif
         CrossRankSyncInWorldSize();  // 全卡软同步，确认combine send完成
+#if MEGA_MOE_BF16_TIMER_ENABLED
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_UNPERMUTE_WAIT);
+        timer_.Tik();
+#endif
         UnpermuteV2();
         PipeBarrier<PIPE_ALL>();
         // Publish a safe-to-reuse boundary only after the last SHMEM payload
         // reader has drained. A faster rank may enqueue the next invocation as
         // soon as it leaves this barrier without racing a slower peer.
         CrossRankSyncInWorldSize();
+#if MEGA_MOE_BF16_TIMER_ENABLED
+        timer_.template Tok<Overwrite>(AscendTimer::AIV_UNPERMUTE);
+#endif
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    timerAll_.template Tok<Overwrite>(AscendTimer::KERNEL_TIMING_IDX);
+#endif
 }
 
 }  // namespace MegaMoeImpl
