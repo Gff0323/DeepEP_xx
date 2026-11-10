@@ -13,6 +13,13 @@ address views and context; `schedule/` contains readiness and scheduling helpers
 unpermute. `common/` retains shared tiling data, constants, copy helpers and
 `op_kernel/` utilities. Host-only tiling helpers live in `csrc/bf16/`.
 
+`common/ascend_timer_v2.hpp` is the opt-in device-timer protocol shared with the
+Host and the Python decoder; `ascend_timer_v2_device.hpp` is its device half and
+`mega_moe_bf16_timer.hpp` supplies the `MEGA_MOE_BF16_TIMER_*` macros that erase
+every probe when `DEEPEP_MEGAMOE_TRAIN_TIMER` is off.
+`common/mega_moe_bf16_backward_timer.hpp` holds the backward-only fixed slots
+(backward needs whole-stage bars the forward schema does not name).
+
 ## Computation and scheduling
 
 ```text
