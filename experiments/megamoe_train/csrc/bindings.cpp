@@ -2,6 +2,7 @@
 // Modified by guofanfeng 2026
 // Modified by xixing 2026
 
+#include "bf16/kernel_launch.hpp"
 #include "bf16/training.hpp"
 
 #include "kernels/bf16/common/ascend_timer_v2.hpp"
