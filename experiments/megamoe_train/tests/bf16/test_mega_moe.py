@@ -1429,19 +1429,19 @@ def measure(op, tensors, capacity, args, mode):
 
 
 def trace_timer(op, tensors, capacity, args, output, rank, phase):
-    """One traced forward and one traced backward, decoded into stage tables.
+    """One traced forward and one traced backward, decoded into a stage table.
 
-    Forward and backward reuse the same per-core slots, so the buffer is
-    dumped (and re-zeroed) between the two launches; a dump therefore always
-    belongs to exactly one kernel. The autograd function keeps the buffer it
-    was given at forward time, so the backward writes into the same tensor.
+    Forward and backward reuse the same per-core slots, so the buffer is dumped
+    (and re-zeroed) between the two launches; a dump therefore belongs to
+    exactly one kernel. The autograd function keeps the buffer it was given at
+    forward time, so the backward writes into the same tensor.
+
+    Decoding is best effort: the raw dump is written first, and a stale
+    installed decoder only downgrades this phase to an error entry.
     """
     import torch
 
-    from deep_ep_experimental.megamoe_train.timer import parse_backward_timer
-    from deep_ep_experimental.megamoe_train.timer import parse_timer_csv
     from deep_ep_experimental.megamoe_train.timer import protocol as timer_protocol
-    from deep_ep_experimental.megamoe_train.timer import trace_parser
 
     if not op.timer_enabled:
         raise RuntimeError(
@@ -1470,33 +1470,31 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
         )
         torch.npu.synchronize()
         if dumping:
-            report["forward"] = dump_timer(
-                timer, directory, rank, "forward", parse_timer_csv, parse_backward_timer, trace_parser
-            )
+            report["forward"] = dump_timer(timer, directory, rank, "forward")
     with phase("timer_backward"):
         timer.zero_()
         y.backward(dy)
         torch.npu.synchronize()
         if dumping:
-            report["backward"] = dump_timer(
-                timer, directory, rank, "backward", parse_timer_csv, parse_backward_timer, trace_parser
-            )
-    if dumping:
-        values = dict(y=y, dx=x.grad, dtopk_weights=p.grad, dw1=w1.grad, dw2=w2.grad)
-        report["passed"] = all(bool(torch.isfinite(value).all().item()) for value in values.values())
-        if rank == 0 and _LOG_LEVEL != "quiet" and "backward" in report:
-            # parse_backward_timer keeps the operator's stage table; print it so
-            # a run tells the story without opening Perfetto.
-            from deep_ep_experimental.megamoe_train.timer.parse_backward_timer import summarize
-
-            summarize(directory, rank, rank)
-    else:
+            report["backward"] = dump_timer(timer, directory, rank, "backward")
+    if not dumping:
         report["skipped"] = f"rank {rank} is not in --timer-ranks"
+        return report
+
+    values = dict(y=y, dx=x.grad, dtopk_weights=p.grad, dw1=w1.grad, dw2=w2.grad)
+    report["passed"] = all(bool(torch.isfinite(value).all().item()) for value in values.values())
+    if log_visible(rank):
+        for kernel in ("forward", "backward"):
+            entry = report.get(kernel, {})
+            if "error" in entry:
+                print(f"[TIMER][ERROR] rank={rank} {kernel}: {entry['error']}", flush=True)
+            elif entry:
+                print(f"[TIMER] rank={rank} {kernel} dump={entry.get('raw')} trace={entry.get('trace')}", flush=True)
     return report
 
 
-def dump_timer(timer, directory, rank, kernel, parse_timer_csv, parse_backward_timer, trace_parser):
-    """Write one raw dump, parse it with the ported parser, emit the trace."""
+def dump_timer(timer, directory, rank, kernel):
+    """Write the raw dump first, then parse and plot it if the decoder exists."""
     import torch
     from array import array
 
@@ -1510,22 +1508,29 @@ def dump_timer(timer, directory, rank, kernel, parse_timer_csv, parse_backward_t
         # keeps the dump path dependency-free on a lean worker image.
         with raw.open("wb") as stream:
             array("q", host.tolist()).tofile(stream)
-    parsed = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_parsed.csv"
-    from deep_ep_experimental.megamoe_train.timer import trace as timer_trace
+    result = {"raw": str(raw)}
+    if not any(host.tolist()):
+        result["error"] = (
+            "dump is all zero: the kernel wrote no spans, so the device SO was built "
+            "without DEEPEP_BF16_TIMER or the buffer never reached it"
+        )
+        return result
+    try:
+        from deep_ep_experimental.megamoe_train.timer import parse_backward_timer
+        from deep_ep_experimental.megamoe_train.timer import parse_timer_csv
+        from deep_ep_experimental.megamoe_train.timer import trace_parser
 
-    if kernel == "forward":
-        parse_timer_csv.parse_rank(raw, parsed)
-    else:
-        # 96 logical cores = 32 AIC groups; the dump always covers all of them.
-        parse_backward_timer.parse_rank(raw, parsed, groups=32)
-    trace_parser.generate_trace_files(directory, rank, rank, phase=kernel)
-    merged = directory / "timer_json" / f"all_rank_{kernel}_trace.json"
-    return {
-        "raw": str(raw),
-        "parsed": str(parsed),
-        "trace": str(merged),
-        "trace_dir": str(directory / "timer_json"),
-    }
+        parsed = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_parsed.csv"
+        if kernel == "forward":
+            parse_timer_csv.parse_rank(raw, parsed)
+        else:
+            # 96 logical cores = 32 AIC groups; the dump always covers all of them.
+            parse_backward_timer.parse_rank(raw, parsed, groups=32)
+        merged = trace_parser.generate_trace_files(directory, rank, rank, phase=kernel)
+        result.update(parsed=str(parsed), trace=str(merged), trace_dir=str(directory / "timer_json"))
+    except Exception as error:  # noqa: BLE001 - diagnostic path
+        result["error"] = f"{type(error).__name__}: {error}"
+    return result
 
 
 _LOG_LEVEL = "all"
@@ -1825,16 +1830,28 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
             "status": "NOT_RUN",
             "reason": "--skip performance" if not performance else "precision or smoke checks failed",
         }
-    # The timer is diagnostic: it runs after the pass/fail gates and never
-    # changes them. It needs its own forward+backward, so it is opt-in.
+    # The timer is diagnostic: it runs after the pass/fail gates and must never
+    # change them. A broken decoder, a stale installed package or a zeroed dump
+    # is recorded as an error in the report, not as a failed case: the raw dump
+    # is already on disk and can be decoded later.
     if args.timer:
         if int(failed.item()):
             report["timer"] = {"status": "SKIPPED", "reason": "earlier checks failed"}
         else:
             with phase("timer_trace"):
-                report["timer"] = trace_timer(
-                    op, tensors, capacity, args, output, rank, phase
-                )
+                try:
+                    report["timer"] = trace_timer(
+                        op, tensors, capacity, args, output, rank, phase
+                    )
+                except Exception as error:  # noqa: BLE001 - diagnostic path
+                    report["timer"] = {
+                        "status": "ERROR",
+                        "error": f"{type(error).__name__}: {error}",
+                        "hint": "raw .bin dumps are still on disk; decode them with "
+                        "python -m deep_ep_experimental.megamoe_train.timer forward|backward|trace",
+                    }
+                    if log_visible(rank):
+                        print(f"[TIMER][ERROR] rank={rank} {type(error).__name__}: {error}", flush=True)
     return report, output
 
 
