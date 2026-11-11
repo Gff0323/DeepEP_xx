@@ -1601,7 +1601,13 @@ def execute_case(local_rank, args, rank, world, op, local_mem, phase_seconds, ex
     from precision_metrics import evaluate
 
     phase = phase_timer(rank, phase_seconds)
-    config = {key: value for key, value in vars(args).items() if key not in ("devices", "output")}
+    # Path-valued options (--timer-dir, --output) must not leak into the report
+    # as Path objects: the report is JSON.
+    config = {
+        key: (str(value) if isinstance(value, Path) else value)
+        for key, value in vars(args).items()
+        if key not in ("devices", "output")
+    }
     configurations = [None] * world
     dist.all_gather_object(configurations, config)
     if any(value != configurations[0] for value in configurations):
