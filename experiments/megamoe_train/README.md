@@ -357,18 +357,21 @@ Notes and limits:
   plus per-expert waits (`AIV_P1_WAIT` accumulates, so `AIV_SWIGLU_GRAD_E = wait + compute`).
 - Reads are `PipeBarrier<PIPE_ALL>` boundary pairs, so a span is wall time on that core, not
   pure compute; the parsers report the slowest lane per stage because cores split the tiles.
-- The decoder also emits a Chrome/Perfetto trace, which is what renders as a pipeline. The test
-  entry writes it next to each dump; on an existing `.bin`:
+- Decoding is the training operator's own toolset, under one module with four commands:
 
   ```bash
-  python -m deep_ep_experimental.megamoe_train.timer \
-    <output>/timer/rank_0_megamoe_bf16_forward_timer.bin --kernel forward --trace
+  T=python\ -m\ deep_ep_experimental.megamoe_train.timer
+  $T forward  --dir <output>/timer --rank-end 0                    # raw -> parsed CSV
+  $T backward --dir <output>/timer --rank-end 0 --summary \
+              --r 32768 --k 7168 --f 8192                          # parsed CSV + stage table
+  $T trace    --timer-dir <output>/timer --rank-end 0 --phase backward  # Perfetto JSON
+  $T check-schema                                                  # Python mirror vs C++ headers
   ```
 
-  then drop the produced `_trace.json` on `ui.perfetto.dev`. One track per logical core
-  (`group_<g>_<AIC|AIV0|AIV1>`), one slice per probe, waits under the `dependency_wait`
-  category (hide them with `--no-wait`). Timestamps are absolute cycles minus the earliest
-  start, so slices from different cores of one rank line up as the real pipeline.
-- `deep_ep_experimental.megamoe_train.timer` decodes offline: no Torch, no device. Run
-  `python -m deep_ep_experimental.megamoe_train.timer --check-schema` to confirm the Python
-  mirror still matches the device headers.
+  `trace` writes `rank_<r>_megamoe_bf16_<phase>_trace.json` plus a merged
+  `all_rank_<phase>_trace.json` under `<output>/timer/timer_json/`; drop either on
+  `ui.perfetto.dev`. One track per logical core (`group_<g>_<AIC|AIV>_<sub>`), waits tagged
+  `cat=wait` and kept only for backward (they are the stalls that view is meant to expose).
+  `backward --summary` prints the per-stage table (`AIC_max`/`AIV_max`/`all_max`, `%KERNEL`) and
+  turns the five GEMM stages into TFLOPS against the 410.4 TF roofline when `--r/--k/--f` are given.
+- The timer phases stay off unless `--timer` is passed, and they never affect PASS/FAIL.

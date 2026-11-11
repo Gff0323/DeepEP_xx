@@ -130,3 +130,69 @@ def dynamic_logical_index(type_index, iteration):
 
 def timer_buffer_bytes():
     return TOTAL_BUFFER_SIZE * 8
+
+
+def check_cpp_schema(root=None):
+    """Compare this mirror against the device headers, when they are present.
+
+    A silent drift between the C++ layout and this file would show up as
+    plausible-looking garbage columns, so the check compares the numbers that
+    define the layout rather than trusting a hand-maintained copy.
+    """
+    import json
+    import re
+    from pathlib import Path
+
+    base = Path(root) if root else Path(__file__).resolve().parents[4] / "csrc" / "kernels" / "bf16" / "common"
+    shared = base / "ascend_timer_v2.hpp"
+    backward = base / "mega_moe_bf16_backward_timer.hpp"
+    if not shared.exists() or not backward.exists():
+        return {"status": "SKIPPED", "reason": f"device headers not found under {base}"}
+    shared_text = shared.read_text(encoding="utf-8")
+    backward_text = backward.read_text(encoding="utf-8")
+
+    def count_entries(text, enum_name):
+        body = text.split(f"enum {enum_name} {{", 1)[1].split("};", 1)[0]
+        entries = []
+        for line in body.splitlines():
+            line = line.split("//", 1)[0].strip()
+            if not line or not line.endswith(","):
+                continue
+            entries.append(line)
+        return entries
+
+    fixed_entries = count_entries(shared_text, "FixedTiming")
+    dynamic_entries = count_entries(shared_text, "DynamicTimingType")
+    max_iter = int(re.search(r"MAX_DYNAMIC_ITER\s*=\s*(\d+)", shared_text).group(1))
+    cores = int(re.search(r"N_CORE_COUNT\s*=\s*(\d+)", shared_text).group(1))
+    bases = [
+        int(re.search(rf"{name}\s*=\s*(\d+)", backward_text).group(1))
+        for name in ("AIC_DZ_WAIT_EXPERT_BASE", "AIV_DX_WAIT_EXPERT_BASE", "AIC_DO_REUSE_WAIT_EXPERT_BASE")
+    ]
+
+    problems = []
+    if len(fixed_entries) != len(FIXED_NAMES):
+        problems.append(f"fixed slots: C++ {len(fixed_entries)} vs Python {len(FIXED_NAMES)}")
+    if len(dynamic_entries) != len(DYNAMIC_NAMES):
+        problems.append(f"dynamic slots: C++ {len(dynamic_entries)} vs Python {len(DYNAMIC_NAMES)}")
+    if max_iter != MAX_DYNAMIC_ITER:
+        problems.append(f"MAX_DYNAMIC_ITER: C++ {max_iter} vs Python {MAX_DYNAMIC_ITER}")
+    if cores != N_CORE_COUNT:
+        problems.append(f"N_CORE_COUNT: C++ {cores} vs Python {N_CORE_COUNT}")
+    expected_bases = [
+        len(BACKWARD_FIXED_NAMES) - 3 * MAX_EXPERTS,
+        len(BACKWARD_FIXED_NAMES) - 2 * MAX_EXPERTS,
+        len(BACKWARD_FIXED_NAMES) - MAX_EXPERTS,
+    ]
+    if bases != expected_bases:
+        problems.append(f"backward expert bases: C++ {bases} vs Python {expected_bases}")
+    if problems:
+        raise ValueError("timer schema drift: " + "; ".join(problems))
+    return {
+        "status": "OK",
+        "fixed": len(fixed_entries),
+        "dynamic": len(dynamic_entries),
+        "max_iter": max_iter,
+        "cores": cores,
+        "total_buffer_size": TOTAL_BUFFER_SIZE,
+    }

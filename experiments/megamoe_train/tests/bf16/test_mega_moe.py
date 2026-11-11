@@ -1438,8 +1438,10 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
     """
     import torch
 
-    from deep_ep_experimental.megamoe_train.timer import protocol as timer_protocol
+    from deep_ep_experimental.megamoe_train.timer import parse_backward_timer
     from deep_ep_experimental.megamoe_train.timer import parse_timer_csv
+    from deep_ep_experimental.megamoe_train.timer import protocol as timer_protocol
+    from deep_ep_experimental.megamoe_train.timer import trace_parser
 
     if not op.timer_enabled:
         raise RuntimeError(
@@ -1468,30 +1470,33 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
         )
         torch.npu.synchronize()
         if dumping:
-            report["forward"] = dump_timer(timer, directory, rank, "forward", parse_timer_csv)
+            report["forward"] = dump_timer(
+                timer, directory, rank, "forward", parse_timer_csv, parse_backward_timer, trace_parser
+            )
     with phase("timer_backward"):
         timer.zero_()
         y.backward(dy)
         torch.npu.synchronize()
         if dumping:
-            report["backward"] = dump_timer(timer, directory, rank, "backward", parse_timer_csv)
+            report["backward"] = dump_timer(
+                timer, directory, rank, "backward", parse_timer_csv, parse_backward_timer, trace_parser
+            )
     if dumping:
         values = dict(y=y, dx=x.grad, dtopk_weights=p.grad, dw1=w1.grad, dw2=w2.grad)
         report["passed"] = all(bool(torch.isfinite(value).all().item()) for value in values.values())
-        if rank == 0 and _LOG_LEVEL != "quiet":
-            for kernel in ("forward", "backward"):
-                for item in report.get(kernel, {}).get("summary", [])[:8]:
-                    print(
-                        f"[TIMER] {kernel} {item['engine']} {item['stage']} {item['max_us']:.2f}us",
-                        flush=True,
-                    )
+        if rank == 0 and _LOG_LEVEL != "quiet" and "backward" in report:
+            # parse_backward_timer keeps the operator's stage table; print it so
+            # a run tells the story without opening Perfetto.
+            from deep_ep_experimental.megamoe_train.timer.parse_backward_timer import summarize
+
+            summarize(directory, rank, rank)
     else:
         report["skipped"] = f"rank {rank} is not in --timer-ranks"
     return report
 
 
-def dump_timer(timer, directory, rank, kernel, parse_timer_csv):
-    """Write one raw dump and decode it with the offline timer package."""
+def dump_timer(timer, directory, rank, kernel, parse_timer_csv, parse_backward_timer, trace_parser):
+    """Write one raw dump, parse it with the ported parser, emit the trace."""
     import torch
     from array import array
 
@@ -1505,19 +1510,21 @@ def dump_timer(timer, directory, rank, kernel, parse_timer_csv):
         # keeps the dump path dependency-free on a lean worker image.
         with raw.open("wb") as stream:
             array("q", host.tolist()).tofile(stream)
-    rows = parse_timer_csv.decode(raw, kernel)
     parsed = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_parsed.csv"
-    parse_timer_csv.write_csv(rows, parsed, kernel)
     from deep_ep_experimental.megamoe_train.timer import trace as timer_trace
 
-    traced = timer_trace.write_trace(rows, directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_trace.json",
-                                     kernel, rank=rank)
+    if kernel == "forward":
+        parse_timer_csv.parse_rank(raw, parsed)
+    else:
+        # 96 logical cores = 32 AIC groups; the dump always covers all of them.
+        parse_backward_timer.parse_rank(raw, parsed, groups=32)
+    trace_parser.generate_trace_files(directory, rank, rank, phase=kernel)
+    merged = directory / "timer_json" / f"all_rank_{kernel}_trace.json"
     return {
         "raw": str(raw),
         "parsed": str(parsed),
-        "trace": traced["path"],
-        "trace_slices": traced["events"],
-        "summary": parse_timer_csv.summarize(rows),
+        "trace": str(merged),
+        "trace_dir": str(directory / "timer_json"),
     }
 
 
