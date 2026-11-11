@@ -357,6 +357,18 @@ Notes and limits:
   plus per-expert waits (`AIV_P1_WAIT` accumulates, so `AIV_SWIGLU_GRAD_E = wait + compute`).
 - Reads are `PipeBarrier<PIPE_ALL>` boundary pairs, so a span is wall time on that core, not
   pure compute; the parsers report the slowest lane per stage because cores split the tiles.
+- The decoder also emits a Chrome/Perfetto trace, which is what renders as a pipeline. The test
+  entry writes it next to each dump; on an existing `.bin`:
+
+  ```bash
+  python -m deep_ep_experimental.megamoe_train.timer \
+    <output>/timer/rank_0_megamoe_bf16_forward_timer.bin --kernel forward --trace
+  ```
+
+  then drop the produced `_trace.json` on `ui.perfetto.dev`. One track per logical core
+  (`group_<g>_<AIC|AIV0|AIV1>`), one slice per probe, waits under the `dependency_wait`
+  category (hide them with `--no-wait`). Timestamps are absolute cycles minus the earliest
+  start, so slices from different cores of one rank line up as the real pipeline.
 - `deep_ep_experimental.megamoe_train.timer` decodes offline: no Torch, no device. Run
   `python -m deep_ep_experimental.megamoe_train.timer --check-schema` to confirm the Python
   mirror still matches the device headers.

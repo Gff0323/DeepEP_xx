@@ -21,6 +21,7 @@ from .protocol import (
     TOTAL_BUFFER_SIZE,
 )
 from .parse_timer_csv import decode, load_raw, write_csv
+from .trace import write_trace
 
 __all__ = [
     "BACKWARD_FIXED_NAMES",
@@ -35,4 +36,5 @@ __all__ = [
     "decode",
     "load_raw",
     "write_csv",
+    "write_trace",
 ]

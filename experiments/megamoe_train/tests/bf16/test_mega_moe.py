@@ -1508,7 +1508,17 @@ def dump_timer(timer, directory, rank, kernel, parse_timer_csv):
     rows = parse_timer_csv.decode(raw, kernel)
     parsed = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_parsed.csv"
     parse_timer_csv.write_csv(rows, parsed, kernel)
-    return {"raw": str(raw), "parsed": str(parsed), "summary": parse_timer_csv.summarize(rows)}
+    from deep_ep_experimental.megamoe_train.timer import trace as timer_trace
+
+    traced = timer_trace.write_trace(rows, directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_trace.json",
+                                     kernel, rank=rank)
+    return {
+        "raw": str(raw),
+        "parsed": str(parsed),
+        "trace": traced["path"],
+        "trace_slices": traced["events"],
+        "summary": parse_timer_csv.summarize(rows),
+    }
 
 
 _LOG_LEVEL = "all"

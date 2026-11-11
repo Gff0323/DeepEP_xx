@@ -69,7 +69,12 @@ def _events(kernel, dynamic_counts):
 
 
 def decode(raw_path, kernel, *, cores=None):
-    """Yield one dict per logical core with ``{event: (start, end, us)}``."""
+    """Yield one dict per logical core with ``{event: (start, end, us)}``.
+
+    A nonzero ``AIV_*`` span recorded by a cube core (or the reverse) means a
+    probe landed on the wrong engine, so it is reported instead of being
+    plotted on a lane where it cannot have happened.
+    """
     raw = load_raw(raw_path)
     dynamic_counts = raw[p.N_TIMING_COUNTER:]
     events, dynamic, counts = _events(kernel, dynamic_counts)
@@ -81,6 +86,8 @@ def decode(raw_path, kernel, *, cores=None):
             base = p.counter_index(core_id, logical_index)
             start, end = raw[base], raw[base + 1]
             duration = (end - start) / p.CYCLE_TO_US if end > start else 0.0
+            if duration > 0.0:
+                _check_lane(raw_path, name, core_id, engine)
             values[name] = (start, end, duration)
         rows.append(
             dict(
@@ -93,6 +100,16 @@ def decode(raw_path, kernel, *, cores=None):
             )
         )
     return rows
+
+
+def _check_lane(raw_path, name, core_id, engine):
+    expected = "AIC" if name.startswith("AIC_") else ("AIV" if name.startswith("AIV_") else None)
+    if expected is not None and not engine.startswith(expected):
+        raise ValueError(
+            f"{raw_path}: slot {name} is nonzero on logical core {core_id} ({engine}); "
+            f"only {expected} cores may record it. A probe is on the wrong engine path - "
+            "recheck the Tik/Tok placement rather than the decoder."
+        )
 
 
 def write_csv(rows, path, kernel):
@@ -206,6 +223,17 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, help="parsed CSV path; default next to the dump")
     parser.add_argument("--summary", action="store_true", help="print the slowest lanes per stage")
     parser.add_argument("--json", action="store_true", help="print the summary as JSON")
+    parser.add_argument(
+        "--trace",
+        type=Path,
+        nargs="?",
+        const=Path(""),
+        help="also write a Chrome/Perfetto trace JSON (default next to the dump); "
+        "drop it on ui.perfetto.dev to see the pipeline",
+    )
+    parser.add_argument("--rank", type=int, default=0, help="rank label used in the trace")
+    parser.add_argument("--no-wait", action="store_true", help="omit dependency-wait slices from the trace")
+    parser.add_argument("--kernel-bar", action="store_true", help="include the whole-kernel bar in the trace")
     parser.add_argument("--check-schema", action="store_true", help="only report the expected buffer size")
     args = parser.parse_args(argv)
     if args.check_schema:
@@ -219,6 +247,22 @@ def main(argv=None):
     output = args.output or args.raw.with_name(args.raw.stem + "_parsed.csv")
     rows = decode(args.raw, args.kernel)
     write_csv(rows, output, args.kernel)
+    if args.trace is not None:
+        from .trace import write_trace
+
+        trace_path = args.trace if str(args.trace) else args.raw.with_name(args.raw.stem + "_trace.json")
+        info = write_trace(
+            rows,
+            trace_path,
+            args.kernel,
+            rank=args.rank,
+            include_wait=not args.no_wait,
+            include_kernel=args.kernel_bar,
+        )
+        print(
+            f"[TIMER] trace -> {info['path']} "
+            f"(slices={info['events']}, lanes={info['lanes']}, envelope={info['envelope_us']}us)"
+        )
     if args.summary or args.json:
         summary = summarize(rows)
         if args.json:
