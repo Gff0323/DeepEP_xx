@@ -328,13 +328,14 @@ export DEEPEP_MEGAMOE_TRAIN_TIMER=ON   # or -DDEEPEP_MEGAMOE_TRAIN_TIMER=ON
 
 python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1 \
   --suite model --case-id pro_m2048 --skip precision \
-  --timer --timer-ranks 0 --shmem-ip-port tcp://127.0.0.1:29862
+  --timer --shmem-ip-port tcp://127.0.0.1:29862
 ```
 
 The phase runs one extra forward and one extra backward after the pass/fail gates, dumps the
 buffer between the two launches (both kernels reuse the same slots), and writes
 `<output>/timer/rank_<r>_megamoe_bf16_{forward,backward}_timer.{bin,_parsed.csv}` plus a
-per-stage summary in that case's `rank_<rank>.json`.
+per-stage summary in that case's `rank_<rank>.json`. Every rank is dumped by default;
+`--timer-ranks 0,2,5` is available only for a deliberately restricted diagnostic run.
 
 From Python, the surface is the buffer, not a flag:
 

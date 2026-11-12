@@ -156,13 +156,16 @@ def parsed_csv_path(timer_dir, rank, phase):
 
 
 def generate_trace_files(timer_dir, rank_start, rank_end, output_dir=None,
-                         merged_name=None, name_suffix="", phase="forward"):
+                         merged_name=None, name_suffix="", phase="forward", ranks=None):
     timer_dir = Path(timer_dir)
     output_dir = Path(output_dir) if output_dir else timer_dir / "timer_json"
     output_dir.mkdir(parents=True, exist_ok=True)
     all_events = []
+    # The historical range API is unchanged; an explicit rank list lets a
+    # distributed run merge exactly the ranks it dumped in one call.
+    rank_values = list(range(rank_start, rank_end + 1)) if ranks is None else list(ranks)
 
-    for rank in range(rank_start, rank_end + 1):
+    for rank in rank_values:
         csv_path = parsed_csv_path(timer_dir, rank, phase)
         if not csv_path.exists():
             if phase == "backward":

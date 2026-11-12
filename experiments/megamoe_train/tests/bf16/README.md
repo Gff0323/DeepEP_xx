@@ -101,7 +101,9 @@ python -u experiments/megamoe_train/tests/bf16/test_mega_moe.py 0,1,2,3,4,5,6,7 
 在精度/性能判据都跑完之后，额外跑一次前向和一次反向，两次启动之间把 timer 缓冲落盘并清零，
 输出 `<output>/timer/rank_<r>_megamoe_bf16_{forward,backward}_timer.{bin,_parsed.csv}`，
 报告里写 `timer.forward/backward.summary`（每阶段最慢核，单位 us）。它只用于解释延迟，
-**不参与 PASS/FAIL，也不替代上面的 Event 口径**。`--timer-ranks 0` 指定落盘的 rank；
+**不参与 PASS/FAIL，也不替代上面的 Event 口径**。默认落盘并合并全部 rank；
+`--timer-ranks 0,2` 只用于明确的诊断子集。合并前会等待所选 rank 都完成 dump，
+`timer_json/all_rank_<phase>_trace.json` 因而包含所有被选 rank，不会互相覆盖。
 解码可离线做：`python -m deep_ep_experimental.megamoe_train.timer --check-schema`。
 
 `--baseline on`（默认）额外计时移植过来的 dropless 小算子链（permute、alltoall dispatch、

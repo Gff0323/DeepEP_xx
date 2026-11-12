@@ -158,8 +158,8 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--timer-ranks",
-        default="0",
-        help="Comma-separated ranks that dump their timer buffer (default 0)",
+        default=None,
+        help="Comma-separated ranks that dump their timer buffer (default: every rank)",
     )
     args = parser.parse_args(argv)
     if (args.list_cases or args.case_id) and not args.suite:
@@ -201,7 +201,7 @@ def parse_args(argv=None):
     args.devices = args.devices or (
         parse_devices(inherited) if inherited else list(range(int(os.environ.get("LOCAL_WORLD_SIZE", "2"))))
     )
-    if args.timer:
+    if args.timer and args.timer_ranks is not None:
         try:
             args.timer_ranks = sorted({int(item) for item in str(args.timer_ranks).split(",") if item.strip()})
         except ValueError:
@@ -310,7 +310,9 @@ def launch_options(args):
     if args.diagnose_mxfp8:
         argv += ["--diagnose-mxfp8"]
     if args.timer:
-        argv += ["--timer", "--timer-ranks", ",".join(map(str, args.timer_ranks))]
+        argv += ["--timer"]
+        if args.timer_ranks is not None:
+            argv += ["--timer-ranks", ",".join(map(str, args.timer_ranks))]
         if args.timer_dir is not None:
             argv += ["--timer-dir", str(args.timer_dir)]
     if args.atk_ratios is not None:
@@ -1429,17 +1431,15 @@ def measure(op, tensors, capacity, args, mode):
 
 
 def trace_timer(op, tensors, capacity, args, output, rank, phase):
-    """One traced forward and one traced backward, decoded into a stage table.
+    """Trace every selected rank and merge all dumps into one trace per kernel.
 
-    Forward and backward reuse the same per-core slots, so the buffer is dumped
-    (and re-zeroed) between the two launches; a dump therefore belongs to
-    exactly one kernel. The autograd function keeps the buffer it was given at
-    forward time, so the backward writes into the same tensor.
-
-    Decoding is best effort: the raw dump is written first, and a stale
-    installed decoder only downgrades this phase to an error entry.
+    Forward and backward reuse the same per-core slots, so each rank dumps (and
+    re-zeros) its buffer between the two launches. All ranks synchronize before
+    one rank merges their parsed CSVs, avoiding per-rank overwrites of the
+    merged all_rank trace.
     """
     import torch
+    import torch.distributed as dist
 
     from deep_ep_experimental.megamoe_train.timer import protocol as timer_protocol
 
@@ -1448,13 +1448,18 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
             "MegaMoe BF16 timer requested but the device kernel was built without "
             "DEEPEP_MEGAMOE_TRAIN_TIMER=ON"
         )
+    world = dist.get_world_size()
+    ranks = args.timer_ranks if args.timer_ranks is not None else list(range(world))
+    if not ranks or min(ranks) < 0 or max(ranks) >= world:
+        raise ValueError(f"--timer-ranks must be within 0..{world - 1}")
+    merge_rank = min(ranks)
     x, ids, p, w1, w2, dy = tensors
     for leaf in (x, p, w1, w2):
         leaf.grad = None
     timer = op.allocate_timer()
     directory = Path(args.timer_dir) if args.timer_dir else output / "timer"
-    report = {"status": "RUN", "buffer_int64": timer_protocol.TOTAL_BUFFER_SIZE, "ranks": args.timer_ranks}
-    dumping = rank in args.timer_ranks
+    report = {"status": "RUN", "buffer_int64": timer_protocol.TOTAL_BUFFER_SIZE, "ranks": ranks}
+    dumping = rank in ranks
     backward_traced = bool(getattr(op, "timer_backward_enabled", False))
     report["backward_instrumented"] = backward_traced
 
@@ -1473,13 +1478,17 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
         torch.npu.synchronize()
         if dumping:
             report["forward"] = dump_timer(timer, directory, rank, "forward")
+    merge_timer_trace(directory, rank, merge_rank, ranks, "forward", report)
+
     with phase("timer_backward"):
         timer.zero_()
         y.backward(dy)
         torch.npu.synchronize()
         if dumping and backward_traced:
             report["backward"] = dump_timer(timer, directory, rank, "backward")
-    if dumping and not backward_traced:
+    if backward_traced:
+        merge_timer_trace(directory, rank, merge_rank, ranks, "backward", report)
+    elif dumping:
         report["backward"] = {
             "status": "NOT_INSTRUMENTED",
             "reason": "this build instruments forward only "
@@ -1487,7 +1496,6 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
         }
     if not dumping:
         report["skipped"] = f"rank {rank} is not in --timer-ranks"
-        return report
 
     values = dict(y=y, dx=x.grad, dtopk_weights=p.grad, dw1=w1.grad, dw2=w2.grad)
     report["passed"] = all(bool(torch.isfinite(value).all().item()) for value in values.values())
@@ -1499,6 +1507,27 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
             elif entry:
                 print(f"[TIMER] rank={rank} {kernel} dump={entry.get('raw')} trace={entry.get('trace')}", flush=True)
     return report
+
+
+def merge_timer_trace(directory, rank, merge_rank, ranks, kernel, report):
+    """Merge all rank CSVs once, after every selected rank has finished dumping."""
+    import torch.distributed as dist
+
+    dist.barrier()
+    merged = [None]
+    if rank == merge_rank:
+        try:
+            from deep_ep_experimental.megamoe_train.timer import trace_parser
+
+            merged[0] = str(trace_parser.generate_trace_files(directory, 0, 0, phase=kernel, ranks=ranks))
+        except Exception as error:  # noqa: BLE001 - diagnostic path
+            merged[0] = f"ERROR: {type(error).__name__}: {error}"
+    dist.broadcast_object_list(merged, src=merge_rank)
+    if merged[0].startswith("ERROR:"):
+        report.setdefault(kernel, {})["trace_error"] = merged[0][7:]
+    else:
+        report.setdefault(kernel, {})["trace"] = merged[0]
+        report[kernel]["trace_dir"] = str(directory / "timer_json")
 
 
 def dump_timer(timer, directory, rank, kernel):
@@ -1526,7 +1555,6 @@ def dump_timer(timer, directory, rank, kernel):
     try:
         from deep_ep_experimental.megamoe_train.timer import parse_backward_timer
         from deep_ep_experimental.megamoe_train.timer import parse_timer_csv
-        from deep_ep_experimental.megamoe_train.timer import trace_parser
 
         parsed = directory / f"rank_{rank}_megamoe_bf16_{kernel}_timer_parsed.csv"
         if kernel == "forward":
@@ -1534,8 +1562,7 @@ def dump_timer(timer, directory, rank, kernel):
         else:
             # 96 logical cores = 32 AIC groups; the dump always covers all of them.
             parse_backward_timer.parse_rank(raw, parsed, groups=32)
-        merged = trace_parser.generate_trace_files(directory, rank, rank, phase=kernel)
-        result.update(parsed=str(parsed), trace=str(merged), trace_dir=str(directory / "timer_json"))
+        result["parsed"] = str(parsed)
     except Exception as error:  # noqa: BLE001 - diagnostic path
         result["error"] = f"{type(error).__name__}: {error}"
     return result
