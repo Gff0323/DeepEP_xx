@@ -438,6 +438,7 @@ BackwardResult MegaMoeBF16Backward(torch::Tensor context, torch::Tensor gradY, t
         }
     }
     if (!MegaMoeBF16Training::UseGmForBackwardDataGrad(tiling.savedGateUpMode)) splitExperts = 0;
+    tiling.backwardSplitExperts = splitExperts;
 #endif
     const MegaMoeBF16BackwardWorkspaceLayout backwardLayout(tiling, splitExperts);
     auto backwardWorkspace = AllocateBackwardWorkspace(backwardLayout, gradY);

@@ -106,7 +106,7 @@ void LaunchMegaMoeBF16BackwardKernel(torch::Tensor context, torch::Tensor grad_y
            BytePtr(weight1.data_ptr()), BytePtr(weight2.data_ptr()), BytePtr(grad_x.data_ptr()),
            BytePtr(grad_topk_weights.data_ptr()), BytePtr(grad_weight1.data_ptr()), BytePtr(grad_weight2.data_ptr()),
            BytePtr(training_saved_state.data_ptr()), BytePtr(dispatch_output.data_ptr()),
-           BytePtr(backward_workspace.data_ptr()), reinterpret_cast<const uint8_t*>(&tiling), ffts_addr, splitExperts,
-           timer);
+           BytePtr(backward_workspace.data_ptr()), timer, reinterpret_cast<const uint8_t*>(&tiling), ffts_addr);
+    (void)splitExperts;  // already recorded in tiling.backwardSplitExperts
     (void)symmetric_buffer_bytes;
 }

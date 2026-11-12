@@ -50,5 +50,10 @@ struct MegaMoeTilingData {
     // the effective per-launch token-count exchange protocol here.
     // 0=dense, 1=compact. Experimental variants always keep this at zero.
     uint32_t compactTokenCountExchange{0};
+    // Backward dispatch split policy travels with the by-value tiling data so
+    // the optional timer pointer can stay immediately before tiling, matching
+    // the source timer kernel's launch ABI. Appending timer after the tiling
+    // struct corrupts the backward kernel's argument mapping and hangs it.
+    uint32_t backwardSplitExperts{0};
 };
 #endif

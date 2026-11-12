@@ -1483,7 +1483,7 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
         report["backward"] = {
             "status": "NOT_INSTRUMENTED",
             "reason": "this build instruments forward only "
-            "(DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD=OFF); backend probes are not cleared for use yet",
+            "(DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD=OFF)",
         }
     if not dumping:
         report["skipped"] = f"rank {rank} is not in --timer-ranks"

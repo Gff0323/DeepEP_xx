@@ -137,9 +137,9 @@ class MegaMoeBF16Train(torch.nn.Module):
     def timer_backward_enabled(self):
         """True when this build also instruments the backward kernel.
 
-        Backward probes are not cleared for use yet, so a normal timer build
-        instruments forward only; a traced run reports that instead of waiting
-        for a dump that will stay empty.
+        Full timer builds instrument both directions. Forward-only builds are
+        available with DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD=OFF; a traced run
+        reports that mode instead of waiting for a backward dump.
         """
         from . import _C
 

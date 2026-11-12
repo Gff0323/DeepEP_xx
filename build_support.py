@@ -204,6 +204,12 @@ def build_configuration(environment=None):
     train_timer = enabled("DEEPEP_MEGAMOE_TRAIN_TIMER", env)
     if train_timer and not train:
         raise RuntimeError("DEEPEP_MEGAMOE_TRAIN_TIMER requires DEEPEP_BUILD_MEGAMOE_TRAIN=ON")
+    timer_backward_option = env.get("DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD", "ON").upper()
+    if timer_backward_option not in {"ON", "OFF"}:
+        raise RuntimeError("DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD must be ON or OFF")
+    if timer_backward_option == "ON" and not train_timer and "DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD" in env:
+        raise RuntimeError("DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD requires DEEPEP_MEGAMOE_TRAIN_TIMER=ON")
+    train_timer_backward = train_timer and timer_backward_option == "ON"
     beta = env.get("DEEPEP_BUILD_MEGAMOE", "OFF")
     timer = env.get("DEEPEP_MEGAMOE_TIMER", "OFF")
     if beta not in {"ON", "OFF"} or timer not in {"ON", "OFF"}:
@@ -291,6 +297,7 @@ def build_configuration(environment=None):
         "enabled": train,
         "force_expert_ready": force_expert_ready,
         "timer": train_timer,
+        "timer_backward": train_timer_backward,
         "source_commit": "b8cff14854d12aef77b6ae54b5890123759b4d28",
         "gmm1_schedule": "expert-ready" if force_expert_ready else "adaptive-auto",
         "swiglu_decouple": "auto",
@@ -385,6 +392,8 @@ class VariantBuild(ConfiguredBuild):
                 variant += "-expert-ready"
             if enabled("DEEPEP_MEGAMOE_TRAIN_TIMER"):
                 variant += "-timer"
+                if os.environ.get("DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD", "ON").upper() == "OFF":
+                    variant += "-forward-only"
         self.build_base = str(Path(self.build_base) / variant)
         super().finalize_options()
 
@@ -433,6 +442,7 @@ class CMakeBuild(build_ext):
             f"-DDEEPEP_BUILD_MEGAMOE_TRAIN={'ON' if configuration.get('megamoe_train', {}).get('enabled', False) else 'OFF'}",
             f"-DDEEPEP_BF16_FORCE_EXPERT_READY={'ON' if configuration.get('megamoe_train', {}).get('force_expert_ready', False) else 'OFF'}",
             f"-DDEEPEP_MEGAMOE_TRAIN_TIMER={'ON' if configuration.get('megamoe_train', {}).get('timer', False) else 'OFF'}",
+            f"-DDEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD={'ON' if configuration.get('megamoe_train', {}).get('timer_backward', False) else 'OFF'}",
             f"-DDEEPEP_BUILD_EP_GMM_FUSED={'ON' if ep_gmm_fused else 'OFF'}",
             f"-DCMAKE_INSTALL_PREFIX={destination}",
         ]

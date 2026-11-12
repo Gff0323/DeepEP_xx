@@ -50,11 +50,10 @@ set(train_device_flags -O2 -std=c++17 -fPIC -xasc --npu-arch=dav-3510
 if(DEEPEP_MEGAMOE_TRAIN_TIMER)
     list(APPEND train_device_flags -DDEEPEP_BF16_TIMER=1)
 endif()
-# Backward probes are not clear for use yet (a single backward GM store wedges
-# the kernel on this part), so the default build instruments forward only and
-# keeps the backward translation unit probe-free.
+# The timer covers both directions by default. Backward can be compiled out for
+# a forward-only diagnostic build without changing the launch ABI.
 option(DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD
-    "Instrument the backward kernel too (currently unstable; forward only is the supported mode)" OFF)
+    "Instrument the backward kernel as well as forward" ON)
 if(DEEPEP_MEGAMOE_TRAIN_TIMER AND NOT DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD)
     set(train_timer_backward_off 1)
 else()
