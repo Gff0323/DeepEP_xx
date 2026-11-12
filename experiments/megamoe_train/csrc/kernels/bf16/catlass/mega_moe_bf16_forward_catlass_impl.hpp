@@ -382,13 +382,17 @@ __aicore__ inline void GroupMatmulSwiglu(
                     }
                 }
             }
+            if (loopIdx == startLoopIdx) {
+                // Close the input wait and open GMM1 exactly once per expert.
+                // Re-arming GMM1 on later tiles would overwrite its start cycle
+                // and leave only the last tile instead of the whole expert.
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1_WAIT, expertIdx));
+                // GMM1 includes the Cube work and the Vector handshakes.
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1, expertIdx));
+            }
             if (vecSetSyncCom) {
                 WaitForVector();
             }
-            // Keep the per-expert schema: WAIT is this expert's input wait and
-            // GMM1 covers the Cube work plus the Vector handshakes.
-            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1_WAIT, expertIdx));
-            MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1, expertIdx));
             auto tensorBlockA =
                 tla::GetTile(tensorA, tla::MakeCoord(mLoc, kLoc), tla::MakeShape(actualShape.m(), actualShape.k()));
             auto tensorBlockUbFirst =
@@ -608,8 +612,13 @@ __aicore__ inline void GroupMatmulSwigluGm(
                     }
                 }
             }
-            MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1_WAIT, expertIdx));
-            MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1, expertIdx));
+            if (loopIdx == startLoopIdx) {
+                // Open GMM1 only on the first tile of this expert, matching the
+                // UB path and the original per-expert timer semantics.
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.template Tok<Overwrite>(AscendTimer::AIC_GMM1_WAIT, expertIdx));
+                // GMM1 includes the GM writes and any later streaming waits.
+                MEGA_MOE_BF16_TIMER_BLOCK(timer.Tik(AscendTimer::AIC_GMM1, expertIdx));
+            }
             auto tensorBlockA =
                 tla::GetTile(tensorA, tla::MakeCoord(mLoc, kLoc), tla::MakeShape(actualShape.m(), actualShape.k()));
             auto tensorBlockGate =
