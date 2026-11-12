@@ -33,4 +33,11 @@ PYBIND11_MODULE(_C, module)
                "int64 elements required by one MegaMoe BF16 training timer buffer");
     module.def("timer_enabled", []() { return deepep_train_mega_moe_bf16_timer_enabled() != 0; },
                "whether the loaded device SO was built with DEEPEP_MEGAMOE_TRAIN_TIMER=ON");
+    module.def("timer_backward_enabled", []() {
+#if DEEPEP_MEGAMOE_TRAIN_TIMER_BWD_OFF
+        return false;
+#else
+        return deepep_train_mega_moe_bf16_timer_enabled() != 0;
+#endif
+    }, "whether this build also instruments the backward kernel");
 }

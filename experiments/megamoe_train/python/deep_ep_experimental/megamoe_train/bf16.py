@@ -133,6 +133,18 @@ class MegaMoeBF16Train(torch.nn.Module):
 
         return bool(_C.timer_enabled())
 
+    @property
+    def timer_backward_enabled(self):
+        """True when this build also instruments the backward kernel.
+
+        Backward probes are not cleared for use yet, so a normal timer build
+        instruments forward only; a traced run reports that instead of waiting
+        for a dump that will stay empty.
+        """
+        from . import _C
+
+        return bool(_C.timer_backward_enabled())
+
     def allocate_timer(self, device=None):
         """Allocate one zeroed timer buffer for forward and backward tracing.
 

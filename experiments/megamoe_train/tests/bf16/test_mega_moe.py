@@ -1455,6 +1455,8 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
     directory = Path(args.timer_dir) if args.timer_dir else output / "timer"
     report = {"status": "RUN", "buffer_int64": timer_protocol.TOTAL_BUFFER_SIZE, "ranks": args.timer_ranks}
     dumping = rank in args.timer_ranks
+    backward_traced = bool(getattr(op, "timer_backward_enabled", False))
+    report["backward_instrumented"] = backward_traced
 
     with phase("timer_forward"):
         y, counts = op(
@@ -1475,8 +1477,14 @@ def trace_timer(op, tensors, capacity, args, output, rank, phase):
         timer.zero_()
         y.backward(dy)
         torch.npu.synchronize()
-        if dumping:
+        if dumping and backward_traced:
             report["backward"] = dump_timer(timer, directory, rank, "backward")
+    if dumping and not backward_traced:
+        report["backward"] = {
+            "status": "NOT_INSTRUMENTED",
+            "reason": "this build instruments forward only "
+            "(DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD=OFF); backend probes are not cleared for use yet",
+        }
     if not dumping:
         report["skipped"] = f"rank {rank} is not in --timer-ranks"
         return report

@@ -27,4 +27,19 @@
     } while (0)
 #endif
 
+#if defined(DEEPEP_BF16_TIMER) && defined(DEEPEP_BF16_TIMER_BWD_OFF)
+// Forward-only timer builds: the backward translation unit compiles with this
+// switch until its probes are cleared for use. Every probe in that TU becomes a
+// no-op, while Init still publishes the per-type counters so a parser can see
+// that backward was not instrumented.
+#undef MEGA_MOE_BF16_TIMER_BLOCK
+#define MEGA_MOE_BF16_TIMER_BLOCK(code) \
+    do {                               \
+    } while (0)
+#undef MEGA_MOE_BF16_TIMER_PARAM
+#define MEGA_MOE_BF16_TIMER_PARAM(name)
+#undef MEGA_MOE_BF16_TIMER_ARG
+#define MEGA_MOE_BF16_TIMER_ARG(name)
+#endif
+
 #endif  // DEEPEP_MEGAMOE_TRAIN_BF16_TIMER_H

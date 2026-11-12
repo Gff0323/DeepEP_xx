@@ -50,6 +50,16 @@ set(train_device_flags -O2 -std=c++17 -fPIC -xasc --npu-arch=dav-3510
 if(DEEPEP_MEGAMOE_TRAIN_TIMER)
     list(APPEND train_device_flags -DDEEPEP_BF16_TIMER=1)
 endif()
+# Backward probes are not clear for use yet (a single backward GM store wedges
+# the kernel on this part), so the default build instruments forward only and
+# keeps the backward translation unit probe-free.
+option(DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD
+    "Instrument the backward kernel too (currently unstable; forward only is the supported mode)" OFF)
+if(DEEPEP_MEGAMOE_TRAIN_TIMER AND NOT DEEPEP_MEGAMOE_TRAIN_TIMER_BACKWARD)
+    set(train_timer_backward_off 1)
+else()
+    set(train_timer_backward_off 0)
+endif()
 foreach(path IN LISTS train_include)
     list(APPEND train_device_flags "-I${path}")
 endforeach()
@@ -57,8 +67,12 @@ file(GLOB_RECURSE train_headers CONFIGURE_DEPENDS "csrc/*.h" "csrc/*.hpp")
 set(train_objects)
 foreach(source mega_moe_bf16_forward mega_moe_bf16_backward)
     set(object "${CMAKE_CURRENT_BINARY_DIR}/${source}.o")
+    set(source_flags ${train_device_flags})
+    if(train_timer_backward_off AND source STREQUAL "mega_moe_bf16_backward")
+        list(APPEND source_flags -DDEEPEP_BF16_TIMER_BWD_OFF=1)
+    endif()
     add_custom_command(OUTPUT "${object}"
-        COMMAND "${TRAIN_BISHENG}" ${train_device_flags} -c
+        COMMAND "${TRAIN_BISHENG}" ${source_flags} -c
             "${CMAKE_CURRENT_SOURCE_DIR}/csrc/kernels/bf16/${source}.cpp" -o "${object}"
         DEPENDS "csrc/kernels/bf16/${source}.cpp" ${train_headers} VERBATIM)
     list(APPEND train_objects "${object}")
@@ -83,7 +97,8 @@ target_include_directories(megamoe_train_ext PRIVATE ${train_include} ${TORCH_IN
 separate_arguments(torch_flags NATIVE_COMMAND "${TORCH_CXX_FLAGS}")
 target_compile_options(megamoe_train_ext PRIVATE ${torch_flags} -O2 -fstack-protector-strong)
 target_compile_definitions(megamoe_train_ext PRIVATE
-    DEEPEP_BF16_FORCE_EXPERT_READY=${train_force_expert_ready})
+    DEEPEP_BF16_FORCE_EXPERT_READY=${train_force_expert_ready}
+    DEEPEP_MEGAMOE_TRAIN_TIMER_BWD_OFF=${train_timer_backward_off})
 target_link_directories(megamoe_train_ext PRIVATE "${ASCEND_HOME_PATH}/lib64")
 target_link_libraries(megamoe_train_ext PRIVATE ${TORCH_LIBRARIES} "${TRAIN_TORCH_PYTHON}"
     "${TRAIN_TORCH_NPU}" megamoe_train_kernel shmem ascendcl ascend_runtime platform tiling_api)
