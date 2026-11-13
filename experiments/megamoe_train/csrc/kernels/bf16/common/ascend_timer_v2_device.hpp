@@ -126,6 +126,34 @@ public:
         dynamic_start_iters_[type_index] = -1;
     }
 
+    // Add a duration measured by the caller to a synthetic span. Callers wrap a
+    // hot region with GetSystemCycle() and flush once per expert, so no
+    // PipeBarrier is inserted into a pipeline that must keep overlapping.
+    // end - start is the sum of the added durations; the position is synthetic,
+    // exactly like Tok<Accumulate>.
+    __aicore__ inline void AddCycles(int32_t timing_index, int64_t cycles)
+    {
+        if (time_addr_ == nullptr || cycles <= 0 || timing_index < 0 ||
+            timing_index >= AscendTimer::N_TIMING_ITEM_PER_CORE) {
+            return;
+        }
+        const int32_t index = CalculateIndex(timing_index);
+        if (index < 0 || index + 1 >= AscendTimer::N_TIMING_COUNTER) {
+            return;
+        }
+        AscendC::GlobalTensor<int64_t> timer;
+        timer.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t*>(time_addr_));
+        const int64_t previous_start = timer(index);
+        const int64_t previous_end = timer(index + 1);
+        const int64_t now = AscendC::GetSystemCycle();
+        if (previous_start == 0 && previous_end == 0) {
+            timer(index) = now - cycles;
+            timer(index + 1) = now;
+        } else {
+            timer(index + 1) = previous_end + cycles;
+        }
+    }
+
 private:
     __aicore__ inline int32_t CalculateIndex(int32_t timing_index) const
     {

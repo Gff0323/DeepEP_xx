@@ -274,6 +274,13 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = Get<N_VALUE>(problemShape);
     const uint32_t k = Get<K_VALUE>(problemShape);
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    // Pure MMAD cycles of this expert, flushed once at exit. Measuring with
+    // GetSystemCycle instead of Tik/Tok keeps the pipe barriers out of the
+    // ping-pong pipeline, so AIC_BW_GMM2GRAD can be split into "cube working"
+    // (this) and "waiting for the vector epilogue" (the rest).
+    int64_t mmadCycles = 0;
+#endif
     AscendC::GlobalTensor<bfloat16_t> a, b, c;
     a.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.aGlobal));
     b.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(gmmAddrInfo.bGlobal));
@@ -331,7 +338,13 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
             auto tileA = tla::GetTile(tensorA, tla::MakeCoord(row, depth), tla::MakeShape(shape.m(), shape.k()));
             auto tileB = tla::GetTile(tensorB, tla::MakeCoord(depth, col), tla::MakeShape(shape.k(), shape.n()));
             auto tileC = tla::GetTile(tensorC, tla::MakeCoord(row, col), tla::MakeShape(shape.m(), shape.n()));
+#if MEGA_MOE_BF16_TIMER_ENABLED
+            const int64_t mmadStart = AscendC::GetSystemCycle();
+#endif
             gmm2Params.blockMmad(tileA, tileB, tileC, shape);
+#if MEGA_MOE_BF16_TIMER_ENABLED
+            mmadCycles += AscendC::GetSystemCycle() - mmadStart;
+#endif
         } else if (gmm2Params.subBlockIdx == (nextTargetAiv & 1U)) {
             epilogueOp.LoadDHpFromGM(dHpBase + (static_cast<int64_t>(row) * n + col) * sizeof(bfloat16_t), shape.m(),
                                      shape.n(), n);
@@ -345,6 +358,7 @@ __aicore__ inline void GMM2GradSwiGLUGradGM(BackwardGroupMatmulParam<RowMajor, W
         // Retire Fixpipe writes before publishing readiness, including AICs with zero tiles.
         AscendC::PipeBarrier<PIPE_ALL>();
         AtomicAdd(dHpReadyFlag, int32_t(1));
+        MEGA_MOE_BF16_TIMER_BLOCK(timer.AddCycles(AIC_MMAD_BUSY_GMM2GRAD, mmadCycles));
         MEGA_MOE_BF16_TIMER_BLOCK(
             timer.template Tok<Overwrite>(AscendTimer::AIC_BW_GMM2GRAD, expertIdx));
     } else {
@@ -378,6 +392,9 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
     const uint32_t m = Get<M_VALUE>(problemShape);
     const uint32_t n = static_cast<uint32_t>(Get<N_VALUE>(problemShape));  // F
     const uint32_t k = static_cast<uint32_t>(Get<K_VALUE>(problemShape));  // K
+#if MEGA_MOE_BF16_TIMER_ENABLED
+    int64_t mmadCycles = 0;
+#endif
     (void)params;
     AscendC::GlobalTensor<bfloat16_t> aGlobal;
     AscendC::GlobalTensor<bfloat16_t> bGlobal;
@@ -433,7 +450,13 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
                 tla::GetTile(tensorB, tla::MakeCoord(kLoc, nLoc), tla::MakeShape(actualShape.k(), actualShape.n()));
             auto tensorBlockUb = tla::GetTile(tensorUbDual, tla::MakeCoord(targetAiv * L1_TILE_M, 0),
                                               tla::MakeShape(actualShape.m(), actualShape.n()));
+#if MEGA_MOE_BF16_TIMER_ENABLED
+            const int64_t mmadStart = AscendC::GetSystemCycle();
+#endif
             gmm2Params.blockMmad(tensorBlockA, tensorBlockB, tensorBlockUb, actualShape);
+#if MEGA_MOE_BF16_TIMER_ENABLED
+            mmadCycles += AscendC::GetSystemCycle() - mmadStart;
+#endif
             NotifyVector(targetEvent);
             outstandingMask |= targetBit;
         }
@@ -455,6 +478,7 @@ __aicore__ inline void GMM2GradSwiGLUGradDualAiv(
         }
     }
     if constexpr (g_coreType == AscendC::AIC) {
+        MEGA_MOE_BF16_TIMER_BLOCK(timer.AddCycles(AIC_MMAD_BUSY_GMM2GRAD, mmadCycles));
         MEGA_MOE_BF16_TIMER_BLOCK(
             timer.template Tok<Overwrite>(AscendTimer::AIC_BW_GMM2GRAD, expertIdx));
     } else {

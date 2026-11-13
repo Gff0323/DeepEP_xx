@@ -35,7 +35,7 @@ CYCLE_TO_TIME_BASE = 1000.0
 # kept in the trace and tagged cat=wait so the timeline highlights the sync
 # stalls being investigated.
 BACKWARD_WAIT_NAMES = {
-    "AIC_SPIN_AIV1",
+    "AIC_MMAD_BUSY_GMM2GRAD",
     "AIC_SPIN_DZ",
     "AIC_SPIN_AIV0",
     "AIC_SPIN_HP",

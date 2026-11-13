@@ -27,8 +27,13 @@ enum BackwardFixedTiming {
     AIV_GATHER = 1,            // P0-A gather grad_y -> peermem ptrA0 (all AIV)
     AIV_XSYNC_GATHER = 2,      // cross-rank barrier after the gather
     AIV_RESTORE_TABLE = 3,     // P0-B restore the saved token-count table + SyncAll
-    // Slot 4 (AIC_SPIN_AIV1), 6 (AIC_SPIN_AIV0) and 15 (AIV_P0_TAIL) are
-    // RETIRED: the static P0 staging region removed the P0->P1 UB ownership
+    // Slot 4 was AIC_SPIN_AIV1 (retired). It now accumulates the pure MMAD
+    // cycles of the fused P1 dHp GEMM, so a stage span can be split into
+    // "cube working" and "waiting for the vector epilogue" without adding a
+    // barrier to the ping-pong pipeline.
+    AIC_MMAD_BUSY_GMM2GRAD = 4,
+    // Slot 6 was AIC_SPIN_AIV0 and slot 15 was AIV_P0_TAIL; both are still
+    // retired: the static P0 staging region removed the P0->P1 UB ownership
     // handover, so there is no whole-stage spin or pipe-teardown tail any more.
     AIC_SPIN_DZ = 5,           // AIC waits the last dZ tiles + both AIVs done (P1 exit)
     AIC_SPIN_HP = 7,           // AIC waits Hp/dpProducts published (P4 entry)
